@@ -1,3 +1,14 @@
+const business = [
+    {
+        id: 1,
+        name: "teste",
+        businessType: "teste de tipo",
+        description: "teste de descricao",
+        mainActivity: "atividade da empresa",
+        state: "estado do negocio",
+    }
+]
+
 const categories = [
     {
         id: 1,
@@ -17,4 +28,4 @@ const transactions = [
     }
 ]
 
-export default {categories, transactions}
+export default {business, categories, transactions}
