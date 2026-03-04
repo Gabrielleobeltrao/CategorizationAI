@@ -116,13 +116,14 @@ async function categorizeTransaction(categories, transactions, business) {
     try {
         const parsed = JSON.parse(responseAI.content)
         const results = parsed.results
+        const allowedCategories = new Set(categories.map(c => c.name))
 
         // update transactions with categories
 
         for (const item of results) {
             const tx = transactions.find(t => t.id === item.id)
             if (tx) {
-                tx.category = item.category
+                tx.category = allowedCategories.has(item.category) ? item.category : ""
             }
         }
 
