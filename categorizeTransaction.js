@@ -69,14 +69,20 @@ async function categorizeTransaction(categories, transactions, business) {
                 content: `
                     Available categories:
                     ${promptCategories(categories)}
+
                     Transaction list:
                     ${promptTransactions(transactions)}
+
                     For each transaction, return ONLY valid JSON in this format:
                     {
                     "results": [
-                        {"id": 1, "category": "nome_da_categoria"}
+                        {"id": 1, "category": ""}
                     ]
                     }
+
+                    Rules:
+                    - category must be exactly one of the available category names.
+                    - if the transaction is unclear or no category applies, set category to "".
                 `
             }
         ],
