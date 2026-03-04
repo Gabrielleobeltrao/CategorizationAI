@@ -7,7 +7,7 @@ const openai = new OpenAI({
     apiKey: process.env.OpenAI_API_KEY,
 })
 
-async function categorizeTransaction(categories, transactions) {
+async function categorizeTransaction(categories, transactions, business) {
 
     // helper functions to produce prompt text
 
@@ -26,9 +26,10 @@ async function categorizeTransaction(categories, transactions) {
     }
 
     function promptBusiness(business) {
-        if (!business || business.length === 0) {
+        if (!business) {
             throw new Error("Business information is required for categorization")
         }
+
 
         const parts = []
 
