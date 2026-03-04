@@ -4,7 +4,7 @@ import dotnet from "dotenv"
 dotnet.config()
 
 const openai = new OpenAI({
-    apiKey: process.env.OpenAI_API_KEY,
+    apiKey: process.env.OPENAI_API_KEY,
 })
 
 async function categorizeTransaction(categories, transactions, business) {
