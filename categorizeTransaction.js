@@ -13,14 +13,14 @@ async function categorizeTransaction(categories, transactions, business) {
 
     function promptCategories(categories) {
 
-        return categories.map(c => 
+        return categories.map(c =>
             `name: ${c.name}, type: ${c.type}, description: ${c.description}`
         ).join("\n")
     }
-    
+
     function promptTransactions(transactions) {
 
-        return transactions.map(t => 
+        return transactions.map(t =>
             `id: ${t.id}, description: ${t.description}, amount: ${t.amount}`
         ).join("\n")
     }
@@ -56,7 +56,7 @@ async function categorizeTransaction(categories, transactions, business) {
     }
 
     // main function
-    
+
     const response = await openai.chat.completions.create({
         model: "gpt-4.1-mini",
         messages: [
@@ -64,8 +64,8 @@ async function categorizeTransaction(categories, transactions, business) {
                 role: "system",
                 content: promptBusiness(business),
             },
-            { 
-                role: "user", 
+            {
+                role: "user",
                 content: `
                     Available categories:
                     ${promptCategories(categories)}
@@ -93,9 +93,9 @@ async function categorizeTransaction(categories, transactions, business) {
                                 type: "object",
                                 properties: {
                                     id: { type: "number" },
-                        category: { type: "string" },
-                    },
-                    required: ["id", "category"]
+                                    category: { type: "string" },
+                                },
+                                required: ["id", "category"]
                             }
                         }
                     },
@@ -107,16 +107,26 @@ async function categorizeTransaction(categories, transactions, business) {
 
     const responseAI = response.choices[0].message
 
-    if (responseAI.function_call && responseAI.function_call.arguments) {
-        return JSON.parse(responseAI.function_call.arguments)
-    }
-
     try {
-        return JSON.parse(responseAI.content)
+        const parsed = JSON.parse(responseAI.content)
+        const results = parsed.results
+
+        // update transactions with categories
+
+        for (const item of results) {
+            const tx = transactions.find(t => t.id === item.id)
+            if (tx) {
+                tx.category = item.category
+            }
+        }
+
+
+        return results
     } catch (e) {
         console.error("Falha ao analisar a resposta:", responseAI)
         throw e
     }
+
 }
 
 export default categorizeTransaction
