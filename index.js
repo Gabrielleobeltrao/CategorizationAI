@@ -1,10 +1,10 @@
-import categorizeTransaction from "./categorizeTransaction"
-import { business, categories, transactions } from "./bd"
+import categorizeTransaction from "./categorizeTransaction.js"
+import bd from "./bd.js"
 
-async function mani() {
-    const result = await categorizeTransaction(categories, transactions, business)
+async function main() {
+    const result = await categorizeTransaction(bd.categories, bd.transactions, bd.business)
     console.log("Resultado da IA:",result)
-    console.log("Transacoes atualizadas:", db.transactions)
+    console.log("Transacoes atualizadas:", bd.transactions)
 }
 
-mani().catch(console.error)
+main().catch(console.error)
