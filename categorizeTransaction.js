@@ -67,11 +67,16 @@ async function categorizeTransaction(categories, transactions, business) {
             { 
                 role: "user", 
                 content: `
-                    Available categories:/n
-                    ${promptCategories(categories)}/n
-                    Transaction list:/n
-                    ${promptTransactions(transactions)}/n
-                    For each transaction, return a JSON object containing {"id":<id transition>,"category":"<category name>"},where the category is exactly one of the names above.
+                    Available categories:
+                    ${promptCategories(categories)}
+                    Transaction list:
+                    ${promptTransactions(transactions)}
+                    For each transaction, return ONLY valid JSON in this format:
+                    {
+                    "results": [
+                        {"id": 1, "category": "nome_da_categoria"}
+                    ]
+                    }
                 `
             }
         ],
