@@ -1,5 +1,4 @@
-const business = [
-    {
+const business = {
         id: 1,
         name: "teste",
         businessType: "teste de tipo",
@@ -7,7 +6,6 @@ const business = [
         mainActivity: "atividade da empresa",
         state: "estado do negocio",
     }
-]
 
 const categories = [
     {
