@@ -76,16 +76,25 @@ async function categorizeTransaction(categories, transactions, business) {
             }
         ],
         response_format: {
-            type: "json",
+            type: "json_schema",
             json_schema: {
                 name: "categorization",
                 schema: {
                     type: "object",
                     properties: {
-                        idTransition: { type: "number" },
+                        results: {
+                            type: "array",
+                            items: {
+                                type: "object",
+                                properties: {
+                                    id: { type: "number" },
                         category: { type: "string" },
                     },
                     required: ["id", "category"]
+                            }
+                        }
+                    },
+                    required: ["results"]
                 }
             }
         }
