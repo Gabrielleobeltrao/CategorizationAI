@@ -1,7 +1,7 @@
 import OpenAI from "openai"
 import dotnet from "dotenv"
 
-dotnet.config()
+dotnet.config({ quiet: true })
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
