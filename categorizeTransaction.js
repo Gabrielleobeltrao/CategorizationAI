@@ -57,7 +57,7 @@ async function categorizeTransaction(categories, transactions) {
     // main function
     
     const response = await openai.chat.completions.create({
-        model: "",
+        model: "gpt-4.1-mini",
         messages: [
             {
                 role: "system",
