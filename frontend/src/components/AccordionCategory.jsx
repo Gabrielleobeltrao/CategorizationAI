@@ -13,14 +13,14 @@ function AccordionCategory({ id, name, type, description }) {
             >
                 {edit ?
                     <input
-                        className="w-full font-bold bg-gray-100 p-2 rounded-md"
+                        className="w-full font-semibold bg-gray-100 p-2 rounded-md"
                         type="text"
                         placeholder="Enter category name"
                         value={name}
                     />
                     :
                     <h3
-                        className="text-base font-bold"
+                        className="text-base font-semibold"
                         onClick={() => setEdit(true)}
                     >
                         {name}
