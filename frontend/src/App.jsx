@@ -1,6 +1,8 @@
 import { BrowserRouter as BrowserRouter, Routes, Route } from 'react-router-dom'
 import LandingPage from './pages/LandingPage.jsx'
 import Login from './pages/Login.jsx'
+import Home from './pages/Home.jsx'
+import Transactions from './pages/Transactions.jsx'
 
 function App() {
   return (
@@ -15,6 +17,16 @@ function App() {
         <Route 
           path="/login" 
           element={<Login />} 
+        />
+
+        <Route 
+          path="/home" 
+          element={<Home />} 
+        />
+
+        <Route 
+          path="/transactions" 
+          element={<Transactions />} 
         />
 
       </Routes>
