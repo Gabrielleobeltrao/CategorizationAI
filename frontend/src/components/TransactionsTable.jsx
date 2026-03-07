@@ -3,7 +3,7 @@ import TransactionRow from "./TransactionRow"
 function TransactionsTable({ transactions }) {
     return (
         <div className="flex flex-col h-full min-h-0">
-            <div>
+            {/* <div className="pb-6">
                 <div className="relative w-full">
                     <select className="w-full p-2 pl-3 rounded-full border-3 border-gray-100 appearance-none">
                         <option value="all accounts" >All Accounts</option>
@@ -22,8 +22,8 @@ function TransactionsTable({ transactions }) {
                         <path d="M6 9l6 6 6-6" />
                     </svg>
                 </div>
-            </div>
-            <div className="grid grid-cols-[0.5fr_1fr] bg-gray-200 p-3 rounded-t-lg mt-6">
+            </div> */}
+            <div className="grid grid-cols-[0.5fr_1fr] bg-gray-200 p-3 rounded-t-lg">
                 <div className="flex items-center gap-2">
                     <input type="checkbox" />
                     <h4>Select All</h4>
