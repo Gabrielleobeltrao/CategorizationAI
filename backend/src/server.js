@@ -14,7 +14,3 @@ connectDB()
         console.error("Failed to connect to MongoDB:", err)
         process.exit(1)
     })
-
-app.listen(PORT, () => {
-    console.log(`API running on port ${PORT}`)
-})
