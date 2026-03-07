@@ -196,6 +196,7 @@ function Transactions() {
                         New Category
                     </button>
                 </div>
+                {categories.length > 0 ? (
                 <div className="flex flex-col gap-4">
                     {categories.map((category) => (
                         <AccordionCategory
@@ -207,6 +208,9 @@ function Transactions() {
                         />
                     ))}
                 </div>
+                ) : (
+                    <h4 className="text-center text-gray-500">No categories found. Please add categories.</h4>
+                )}
             </div>
         </section>
     )
