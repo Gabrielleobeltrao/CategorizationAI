@@ -1,18 +1,11 @@
-import dotenv from "dotenv"
+import "dotenv/config"
+import { connectDB, getDB } from "./bd.js"
 import app from "./app.js"
-import { connectDB } from "./bd.js"
-
-dotenv.config()
+import { createAuth } from "./lib/auth.js"
 
 const PORT = process.env.PORT || 3001
 
-connectDB()
-    .then(() => {
-        app.listen(PORT, () => {
-            console.log(`API running on port ${PORT}`)
-        })
-    })
-    .catch((err) => {
-        console.error("Failed to connect to MongoDB:", err)
-        process.exit(1)
-    })
+await connectDB()
+app.locals.auth = createAuth(getDB())
+
+app.listen(PORT, () => console.log(`API running on ${PORT}`))
