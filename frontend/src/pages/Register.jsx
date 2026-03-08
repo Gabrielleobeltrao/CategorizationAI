@@ -10,10 +10,10 @@ function Register() {
     const [email, setEmail] = useState("")
     const [password, setPassword] = useState("")
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault()
             try {
-                signUp(name, email, password)
+            await signUp(name, email, password)
                 navigate("/home")
             } catch (err) {
                 console.log(err)

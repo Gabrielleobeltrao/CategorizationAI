@@ -9,10 +9,10 @@ function Login() {
 
     const navigate = useNavigate()
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault()
             try {
-                signIn(email, password)
+                await signIn(email, password)
                 navigate("/home")
             } catch (err) {
                 console.log(err)
