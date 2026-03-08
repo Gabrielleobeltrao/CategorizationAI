@@ -1,5 +1,5 @@
-import AccordionCategory from "../components/AccordionCategory"
-import TransactionsTable from "../components/TransactionsTable"
+import AccordionCategory from "../components/categories/AccordionCategory"
+import TransactionsTable from "../components/transactions/TransactionsTable"
 
 const categories = [
     {
