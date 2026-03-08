@@ -1,6 +1,7 @@
 import { BrowserRouter as BrowserRouter, Routes, Route } from 'react-router-dom'
 import LandingPage from './pages/LandingPage.jsx'
 import Login from './pages/Login.jsx'
+import CreateAccount from './pages/CreateAccount.jsx'
 import Home from './pages/Home.jsx'
 import Transactions from './pages/Transactions.jsx'
 
@@ -17,6 +18,11 @@ function App() {
         <Route 
           path="/login" 
           element={<Login />} 
+        />
+
+        <Route 
+          path="/register" 
+          element={<CreateAccount />}
         />
 
         <Route 
