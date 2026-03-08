@@ -1,4 +1,4 @@
-function CreateAccount() {
+function Register() {
     return(
         <section className="w-full h-dvh flex items-center justify-center">
             <div className="flex flex-col gap-4 w-1/3">
@@ -27,4 +27,4 @@ function CreateAccount() {
     )
 }
 
-export default CreateAccount
+export default Register
