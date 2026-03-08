@@ -1,4 +1,5 @@
 import { BrowserRouter as BrowserRouter, Routes, Route } from 'react-router-dom'
+import ProtectedRoute from './components/auth/ProtectedRoute.jsx'
 import LandingPage from './pages/LandingPage.jsx'
 import Login from './pages/Login.jsx'
 import Register from './pages/Register.jsx'
@@ -10,29 +11,36 @@ function App() {
     <BrowserRouter>
       <Routes>
 
-        <Route 
-          path="/" 
-          element={<LandingPage />} 
+        <Route
+          path="/"
+          element={<LandingPage />}
         />
 
-        <Route 
-          path="/login" 
-          element={<Login />} 
+        <Route
+          path="/login"
+          element={<Login />}
         />
 
-        <Route 
-          path="/register" 
+        <Route
+          path="/register"
           element={<Register />}
         />
 
-        <Route 
-          path="/home" 
-          element={<Home />} 
+        <Route
+          path="/home"
+          element={
+            <ProtectedRoute>
+              <Home />
+            </ProtectedRoute>}
         />
 
-        <Route 
-          path="/transactions" 
-          element={<Transactions />} 
+        <Route
+          path="/transactions"
+          element={
+            <ProtectedRoute>
+              <Transactions />
+            </ProtectedRoute>
+          }
         />
 
       </Routes>
