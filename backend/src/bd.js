@@ -1,4 +1,4 @@
-const { MongoClient } = require("mongodb")
+import { MongoClient } from "mongodb"
 
 const uri = process.env.MONGODB_URI
 const dbName = process.env.MONGODB_DB_NAME
@@ -33,4 +33,4 @@ async function closeDB() {
   }
 }
 
-module.exports = { connectDB, getDB, closeDB }
+export { connectDB, getDB, closeDB }
