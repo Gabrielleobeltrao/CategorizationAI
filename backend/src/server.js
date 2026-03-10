@@ -1,5 +1,5 @@
 import "dotenv/config"
-import { connectDB, getDB } from "./bd.js"
+import { connectDB, getDB } from "./db.js"
 import app from "./app.js"
 import { createAuth } from "./lib/auth.js"
 
