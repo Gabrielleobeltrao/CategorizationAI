@@ -1,3 +1,4 @@
+import { ObjectId } from "mongodb"
 import { getDB } from "../db"
 
 // criar
@@ -22,7 +23,7 @@ export async function updateOfficeById(id, patch) {
     // informacoes que podem ser alteradas
     const { name } = patch
 
-    return db.collection({ categories }).findOneAndUpdate(
+    return db.collection("categories").findOneAndUpdate(
         { _id: new ObjectId(id) },
         { $set: { name, updatedAt: new Date() } },
         { returnDocument: "after" }
