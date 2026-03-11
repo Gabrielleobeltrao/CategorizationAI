@@ -17,7 +17,7 @@ export async function createCategory(input) {
 
 // atualizar 
 
-export async function updateOfficeById(id, patch) {
+export async function updateCategiryById(id, patch) {
     const db = getDB()
 
     // informacoes que podem ser alteradas
