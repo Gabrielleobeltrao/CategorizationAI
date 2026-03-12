@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { getClientsByOfficeId } from "../mocks/clients.mock"
+import PopupModal from "../components/ui/PopupModal"
 
 function Home() {
     const navigate = useNavigate()
@@ -14,6 +15,7 @@ function Home() {
 
     const [newUserEmail, setNewUserEmail] = useState("")
     const [newUserPassword, setNewUserPassword] = useState("")
+    const [showUserForm, setShowUserForm] = useState(false)
     const [showClientForm, setShowClientForm] = useState(false)
     const [newClientName, setNewClientName] = useState("")
     const [newClientBusinessType, setNewClientBusinessType] = useState("")
@@ -36,6 +38,7 @@ function Home() {
 
         setNewUserEmail("")
         setNewUserPassword("")
+        setShowUserForm(false)
     }
 
     const handleCreateClient = (e) => {
@@ -69,42 +72,26 @@ function Home() {
                 </header>
 
                 <section className="border border-gray-200 rounded-lg p-4">
-                    <h2 className="text-lg font-semibold">Create Employee Account</h2>
-                    <p className="text-sm text-gray-500">
-                        New account will be linked to office: {employee.officeId}
-                    </p>
-
-                    <form
-                        className="mt-4 flex flex-col gap-3"
-                        onSubmit={handleCreateEmployeeAccount}
-                    >
-                        <input
-                            className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
-                            type="email"
-                            placeholder="Employee email"
-                            value={newUserEmail}
-                            onChange={(e) => setNewUserEmail(e.target.value)}
-                        />
-                        <input
-                            className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
-                            type="password"
-                            placeholder="Password"
-                            value={newUserPassword}
-                            onChange={(e) => setNewUserPassword(e.target.value)}
-                        />
+                    <div className="flex items-start justify-between gap-3">
+                        <div>
+                            <h2 className="text-lg font-semibold">Create Employee Account</h2>
+                            <p className="text-sm text-gray-500">
+                                New account will be linked to office: {employee.officeId}
+                            </p>
+                        </div>
                         <button
-                            className="bg-gray-100 rounded-full p-2"
-                            type="submit"
+                            className="bg-gray-100 rounded-full px-4 py-2 text-sm font-medium"
+                            onClick={() => setShowUserForm(true)}
                         >
-                            Create Employee
+                            New User
                         </button>
-                    </form>
+                    </div>
                 </section>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <button
                         className="border border-gray-200 rounded-lg p-4 text-left"
-                        onClick={() => setShowClientForm((value) => !value)}
+                        onClick={() => setShowClientForm(true)}
                     >
                         <h2 className="text-lg font-semibold">+ New Client</h2>
                         <p className="text-sm text-gray-500">Create a new client for this office</p>
@@ -123,57 +110,84 @@ function Home() {
                     ))}
                 </div>
 
-                {showClientForm && (
-                    <section className="border border-gray-200 rounded-lg p-4">
-                        <h2 className="text-lg font-semibold">New Client</h2>
-                        <form className="mt-4 flex flex-col gap-3" onSubmit={handleCreateClient}>
-                            <input
-                                className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
-                                type="text"
-                                placeholder="Client name"
-                                value={newClientName}
-                                onChange={(e) => setNewClientName(e.target.value)}
-                            />
-                            <input
-                                className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
-                                type="text"
-                                placeholder="Business type"
-                                value={newClientBusinessType}
-                                onChange={(e) => setNewClientBusinessType(e.target.value)}
-                            />
-                            <input
-                                className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
-                                type="text"
-                                placeholder="Description"
-                                value={newClientDescription}
-                                onChange={(e) => setNewClientDescription(e.target.value)}
-                            />
-                            <input
-                                className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
-                                type="text"
-                                placeholder="Main activity"
-                                value={newClientMainActivity}
-                                onChange={(e) => setNewClientMainActivity(e.target.value)}
-                            />
-                            <input
-                                className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
-                                type="text"
-                                placeholder="State"
-                                value={newClientState}
-                                onChange={(e) => setNewClientState(e.target.value)}
-                            />
-                            <button className="bg-gray-100 rounded-full p-2" type="submit">
-                                Save Client
-                            </button>
-                        </form>
-                    </section>
-                )}
-
                 {clients.length === 0 && (
                     <p className="text-sm text-gray-500">
                         No clients found for this office
                     </p>
                 )}
+
+                <PopupModal
+                    isOpen={showUserForm}
+                    title="Create Employee Account"
+                    onClose={() => setShowUserForm(false)}
+                >
+                    <form className="flex flex-col gap-3" onSubmit={handleCreateEmployeeAccount}>
+                        <input
+                            className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
+                            type="email"
+                            placeholder="Employee email"
+                            value={newUserEmail}
+                            onChange={(e) => setNewUserEmail(e.target.value)}
+                        />
+                        <input
+                            className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
+                            type="password"
+                            placeholder="Password"
+                            value={newUserPassword}
+                            onChange={(e) => setNewUserPassword(e.target.value)}
+                        />
+                        <button className="bg-gray-100 rounded-full p-2" type="submit">
+                            Create Employee
+                        </button>
+                    </form>
+                </PopupModal>
+
+                <PopupModal
+                    isOpen={showClientForm}
+                    title="New Client"
+                    onClose={() => setShowClientForm(false)}
+                >
+                    <form className="flex flex-col gap-3" onSubmit={handleCreateClient}>
+                        <input
+                            className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
+                            type="text"
+                            placeholder="Client name"
+                            value={newClientName}
+                            onChange={(e) => setNewClientName(e.target.value)}
+                        />
+                        <input
+                            className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
+                            type="text"
+                            placeholder="Business type"
+                            value={newClientBusinessType}
+                            onChange={(e) => setNewClientBusinessType(e.target.value)}
+                        />
+                        <input
+                            className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
+                            type="text"
+                            placeholder="Description"
+                            value={newClientDescription}
+                            onChange={(e) => setNewClientDescription(e.target.value)}
+                        />
+                        <input
+                            className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
+                            type="text"
+                            placeholder="Main activity"
+                            value={newClientMainActivity}
+                            onChange={(e) => setNewClientMainActivity(e.target.value)}
+                        />
+                        <input
+                            className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
+                            type="text"
+                            placeholder="State"
+                            value={newClientState}
+                            onChange={(e) => setNewClientState(e.target.value)}
+                        />
+                        <button className="bg-gray-100 rounded-full p-2" type="submit">
+                            Save Client
+                        </button>
+                    </form>
+                </PopupModal>
             </div>
         </section>
     )
