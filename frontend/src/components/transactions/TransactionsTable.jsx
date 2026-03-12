@@ -1,6 +1,6 @@
 import TransactionRow from "./TransactionRow"
 
-function TransactionsTable({ transactions }) {
+function TransactionsTable({ transactions, categories }) {
     return (
         <div className="flex flex-col h-full min-h-0">
             {/* <div className="pb-6">
@@ -90,6 +90,7 @@ function TransactionsTable({ transactions }) {
                     <TransactionRow
                         key={transaction.id}
                         index={index}
+                        categories={categories}
                         id={transaction.id}
                         date={transaction.date}
                         description={transaction.description}

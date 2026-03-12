@@ -1,25 +1,4 @@
-const categories = [
-    {
-        id: 1,
-        name: "Supplies",
-        type: "Cost of goods sold",
-        description: "This category includes expenses related to the purchase of materials, products, used in the production or delivery of goods or services. examples like home depot.",
-    },
-    {
-        id: 2,
-        name: "Office supplies",
-        type: "Operating expenses",
-        description: "This category includes expenses related at office expenses, such as paper, pens, printer ink, and other items used in the day-to-day operations of a businesss. examples include staples and office depot.",
-    },
-    {
-        id: 3,
-        name: "Advertising",
-        type: "Operating expenses",
-        description: "This category includes every expense related to promoting a business's products or services. examples include television commercials and online ads examples google ads.",
-    },
-]
-
-function TransactionRow({ index, id, date, description, account, category, amount }) {
+function TransactionRow({ index, categories, id, date, description, account, category, amount }) {
     return (
         <div className={`grid grid-cols-[min-content_0.5fr_2fr_0.75fr_1.5fr_0.5fr] items-center gap-4 px-2 py-3 text-sm ${index % 2 === 0 ? 'bg-gray-100' : 'bg-white'}`}>
             <input className="self-center" type="checkbox" />
@@ -28,6 +7,7 @@ function TransactionRow({ index, id, date, description, account, category, amoun
             <h4>{account}</h4>
             <div className="relative w-full">
                 <select className="w-full p-2 pl-3 rounded-full border-3 border-gray-100 bg-white appearance-none" value={category}>
+                    <option value="">Uncategorized</option>
                     {categories.map((c) => (
                         <option key={c.id} value={c.name}>
                             {c.name}

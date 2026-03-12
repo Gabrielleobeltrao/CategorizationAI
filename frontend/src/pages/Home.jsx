@@ -1,7 +1,10 @@
 import { useMemo } from "react"
+import { useNavigate } from "react-router-dom"
 import { getClientsByOfficeId } from "../mocks/clients.mock"
 
 function Home() {
+    const navigate = useNavigate()
+
     // mock local até integrar com backend/auth
     const employee = {
         id: "usr_1",
@@ -27,7 +30,8 @@ function Home() {
                     {clients.map((client) => (
                         <article
                             key={client.id}
-                            className="border border-gray-200 rounded-lg p-4"
+                            className="border border-gray-200 rounded-lg p-4 cursor-pointer"
+                            onClick={() => navigate(`/transactions?clientId=${client.id}`)}
                         >
                             <h2 className="text-lg font-semibold">{client.name}</h2>
                             <p className="text-sm text-gray-600">{client.businessType}</p>
