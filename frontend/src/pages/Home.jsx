@@ -14,6 +14,12 @@ function Home() {
 
     const [newUserEmail, setNewUserEmail] = useState("")
     const [newUserPassword, setNewUserPassword] = useState("")
+    const [showClientForm, setShowClientForm] = useState(false)
+    const [newClientName, setNewClientName] = useState("")
+    const [newClientBusinessType, setNewClientBusinessType] = useState("")
+    const [newClientDescription, setNewClientDescription] = useState("")
+    const [newClientMainActivity, setNewClientMainActivity] = useState("")
+    const [newClientState, setNewClientState] = useState("")
 
     const clients = useMemo(() => {
         return getClientsByOfficeId(employee.officeId)
@@ -30,6 +36,26 @@ function Home() {
 
         setNewUserEmail("")
         setNewUserPassword("")
+    }
+
+    const handleCreateClient = (e) => {
+        e.preventDefault()
+
+        console.log({
+            officeId: employee.officeId,
+            name: newClientName,
+            businessType: newClientBusinessType,
+            description: newClientDescription,
+            mainActivity: newClientMainActivity,
+            state: newClientState,
+        })
+
+        setNewClientName("")
+        setNewClientBusinessType("")
+        setNewClientDescription("")
+        setNewClientMainActivity("")
+        setNewClientState("")
+        setShowClientForm(false)
     }
 
     return (
@@ -76,6 +102,14 @@ function Home() {
                 </section>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <button
+                        className="border border-gray-200 rounded-lg p-4 text-left"
+                        onClick={() => setShowClientForm((value) => !value)}
+                    >
+                        <h2 className="text-lg font-semibold">+ New Client</h2>
+                        <p className="text-sm text-gray-500">Create a new client for this office</p>
+                    </button>
+
                     {clients.map((client) => (
                         <article
                             key={client.id}
@@ -88,6 +122,52 @@ function Home() {
                         </article>
                     ))}
                 </div>
+
+                {showClientForm && (
+                    <section className="border border-gray-200 rounded-lg p-4">
+                        <h2 className="text-lg font-semibold">New Client</h2>
+                        <form className="mt-4 flex flex-col gap-3" onSubmit={handleCreateClient}>
+                            <input
+                                className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
+                                type="text"
+                                placeholder="Client name"
+                                value={newClientName}
+                                onChange={(e) => setNewClientName(e.target.value)}
+                            />
+                            <input
+                                className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
+                                type="text"
+                                placeholder="Business type"
+                                value={newClientBusinessType}
+                                onChange={(e) => setNewClientBusinessType(e.target.value)}
+                            />
+                            <input
+                                className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
+                                type="text"
+                                placeholder="Description"
+                                value={newClientDescription}
+                                onChange={(e) => setNewClientDescription(e.target.value)}
+                            />
+                            <input
+                                className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
+                                type="text"
+                                placeholder="Main activity"
+                                value={newClientMainActivity}
+                                onChange={(e) => setNewClientMainActivity(e.target.value)}
+                            />
+                            <input
+                                className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
+                                type="text"
+                                placeholder="State"
+                                value={newClientState}
+                                onChange={(e) => setNewClientState(e.target.value)}
+                            />
+                            <button className="bg-gray-100 rounded-full p-2" type="submit">
+                                Save Client
+                            </button>
+                        </form>
+                    </section>
+                )}
 
                 {clients.length === 0 && (
                     <p className="text-sm text-gray-500">
