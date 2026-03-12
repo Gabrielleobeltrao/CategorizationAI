@@ -10,6 +10,10 @@ export async function createClient(input) {
     const doc = {
         officeId: input.officeId,
         name: input.name,
+        businessType: input.businessType,
+        description: input.description,
+        mainActivity: input.mainActivity,
+        state: input.state,
         createdAt: new Date(),
         updatedAt: new Date(),
     }
@@ -24,11 +28,11 @@ export async function updateClientById(id, patch) {
     const db = getDB()
 
     // informacoes que podem ser alteradas
-    const { name } = patch
+    const { name, businessType, description, mainActivity, state } = patch
 
     return db.collection("clients").findOneAndUpdate(
         { _id: new ObjectId(id) },
-        { $set: { name, updatedAt: new Date() } },
+        { $set: { name, businessType, description, mainActivity, state, updatedAt: new Date() } },
         { returnDocument: "after"}
     )
 }
