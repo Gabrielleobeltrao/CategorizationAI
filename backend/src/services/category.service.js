@@ -1,15 +1,19 @@
 import {
   createCategory,
-  updateCategiryById,
+  updateCategoryById,
   listCategoriesByClientId,
   getCategoryById,
 } from "../repositories/category.repository.js"
 
 export async function createCategoryService(input) {
   if (!input?.name) throw new Error("name is required")
+  if (!input?.type) throw new Error("type is required")
+  if (!input?.description) throw new Error("description is required")
 
   return createCategory({
     name: input.name.trim(),
+    type: input.type.trim(),
+    description: input.description.trim()
   })
 }
 
@@ -25,11 +29,23 @@ export async function updateCategoryByIdService(id, patch) {
     safePatch.name = name
   }
 
+  if (typeof patch.type === "string") {
+    const type = patch.type.trim()
+    if (!type) throw new Error("type cannot be empty")
+    safePatch.type = type
+  }
+
+  if (typeof patch.description === "string") {
+    const description = patch.description.trim()
+    if (!description) throw new Error("description cannot be empty")
+    safePatch.description = description
+  }
+
   if (Object.keys(safePatch).length === 0) {
     throw new Error("no valid fields to update")
   }
 
-  return updateCategiryById(id, safePatch)
+  return updateCategoryById(id, safePatch)
 }
 
 export async function listCategoriesByClientIdService(clientId) {

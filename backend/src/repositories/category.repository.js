@@ -8,7 +8,9 @@ export async function createCategory(input) {
 
     // adicionar informacoes da categoria
     const doc = {
-        name: input.name
+        name: input.name,
+        type: input.type,
+        description: input.description
     }
 
     const result = await db.collection("categories").insertOne(doc)
@@ -17,15 +19,15 @@ export async function createCategory(input) {
 
 // atualizar 
 
-export async function updateCategiryById(id, patch) {
+export async function updateCategoryById(id, patch) {
     const db = getDB()
 
     // informacoes que podem ser alteradas
-    const { name } = patch
+    const { name, type, description } = patch
 
     return db.collection("categories").findOneAndUpdate(
         { _id: new ObjectId(id) },
-        { $set: { name, updatedAt: new Date() } },
+        { $set: { name, type, description, updatedAt: new Date() } },
         { returnDocument: "after" }
     )
 }
