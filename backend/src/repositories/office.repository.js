@@ -36,5 +36,5 @@ export async function updateOfficeById(id, patch) {
 
 export async function getOfficeById(id) {
     const db = getDB()
-    return db.collection("office").findOne({_id: new ObjectId(id)})
+    return db.collection("offices").findOne({_id: new ObjectId(id)})
 }
