@@ -25,12 +25,22 @@ export async function createCategory(input) {
 export async function updateCategoryById(id, patch) {
     const db = getDB()
 
-    // informacoes que podem ser alteradas
-    const { name, type, description, clientId } = patch
+    // atualiza somente campos enviados no patch
+    const allowed = {
+        name: patch.name,
+        type: patch.type,
+        description: patch.description,
+        clientId: patch.clientId,
+        updatedAt: new Date(),
+    }
+
+    const $set = Object.fromEntries(
+        Object.entries(allowed).filter(([, value]) => value !== undefined)
+    )
 
     return db.collection("categories").findOneAndUpdate(
         { _id: new ObjectId(id) },
-        { $set: { name, type, description, clientId, updatedAt: new Date() } },
+        { $set },
         { returnDocument: "after" }
     )
 }
