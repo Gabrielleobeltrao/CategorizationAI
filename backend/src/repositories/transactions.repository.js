@@ -26,6 +26,7 @@ export async function insertTransactionsInBatches(transactions) {
       officeId: t.officeId,
       clientId: t.clientId,
       accountId: t.accountId ?? null,
+      accountName: t.accountName ?? null,
       date: t.date, // YYYY-MM-DD
       description: t.description,
       amount: t.amount,
@@ -48,11 +49,11 @@ export async function updateTransactionById(id, patch) {
     const db = getDB()
 
     // informacoes que podem ser alteradas
-    const { date, description, amount, categoryId, category } = patch
+    const { accountName, date, description, amount, categoryId, category } = patch
 
     return db.collection("transactions").findOneAndUpdate(
         { _id: new ObjectId(id) },
-        { $set: { date, description, amount, categoryId, category, updatedAt: new Date() } },
+        { $set: { accountName, date, description, amount, categoryId, category, updatedAt: new Date() } },
         { returnDocument: "after" }
     )
 }

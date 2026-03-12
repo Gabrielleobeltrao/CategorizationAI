@@ -22,6 +22,12 @@ export async function updateTransactionByIdService(id, patch) {
 
   const safePatch = {}
 
+  if (typeof patch.accountName === "string") {
+    const accountName = patch.accountName.trim()
+    if (!accountName) throw new Error("accountName cannot be empty")
+    safePatch.accountName = accountName
+  }
+
   if (typeof patch.date === "string") safePatch.date = patch.date
   if (typeof patch.description === "string") safePatch.description = patch.description.trim()
   if (typeof patch.amount === "number") safePatch.amount = patch.amount
