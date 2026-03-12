@@ -10,7 +10,10 @@ export async function createCategory(input) {
     const doc = {
         name: input.name,
         type: input.type,
-        description: input.description
+        description: input.description,
+        clientId: input.clientId,
+        createdAt: new Date(),
+        updatedAt: new Date(),
     }
 
     const result = await db.collection("categories").insertOne(doc)
@@ -23,11 +26,11 @@ export async function updateCategoryById(id, patch) {
     const db = getDB()
 
     // informacoes que podem ser alteradas
-    const { name, type, description } = patch
+    const { name, type, description, clientId } = patch
 
     return db.collection("categories").findOneAndUpdate(
         { _id: new ObjectId(id) },
-        { $set: { name, type, description, updatedAt: new Date() } },
+        { $set: { name, type, description, clientId, updatedAt: new Date() } },
         { returnDocument: "after" }
     )
 }

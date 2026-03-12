@@ -9,11 +9,13 @@ export async function createCategoryService(input) {
   if (!input?.name) throw new Error("name is required")
   if (!input?.type) throw new Error("type is required")
   if (!input?.description) throw new Error("description is required")
+  if (!input?.clientId) throw new Error("clientId is required")
 
   return createCategory({
     name: input.name.trim(),
     type: input.type.trim(),
-    description: input.description.trim()
+    description: input.description.trim(),
+    clientId: input.clientId,
   })
 }
 
@@ -39,6 +41,12 @@ export async function updateCategoryByIdService(id, patch) {
     const description = patch.description.trim()
     if (!description) throw new Error("description cannot be empty")
     safePatch.description = description
+  }
+
+  if (typeof patch.clientId === "string") {
+    const clientId = patch.clientId.trim()
+    if (!clientId) throw new Error("clientId cannot be empty")
+    safePatch.clientId = clientId
   }
 
   if (Object.keys(safePatch).length === 0) {
