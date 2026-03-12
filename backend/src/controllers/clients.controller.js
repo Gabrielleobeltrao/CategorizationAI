@@ -9,19 +9,19 @@ export async function createClientController(req, res) {
     try {
         const client = await createClientService(req.body)
         return res.status(201).json(client)
-    } catch {
+    } catch (error) {
         return res.status(400).json({
             message: error.message,
         })
     }
 }
 
-export async function listClientsByOfficeIdController(req, res) {
+export async function updateClientByIdController(req, res) {
     try {
         const { id } = req.params
         const updatedClient = await updateClientByIdService(id, req.body)
-        return res.status(201).json(updatedClient)
-    } catch {
+        return res.status(200).json(updatedClient)
+    } catch (error) {
         return res.status(400).json({
             message: error.message,
         })
@@ -30,10 +30,10 @@ export async function listClientsByOfficeIdController(req, res) {
 
 export async function listClientsByOfficeIdController(req, res) {
     try {
-        const officeId = req.params
-        const clients = listClientsByOfficeIdService(officeId)
-        return res.status(201).json(clients)
-    } catch {
+        const { officeId } = req.params
+        const clients = await listClientsByOfficeIdService(officeId)
+        return res.status(200).json(clients)
+    } catch (error) {
         return res.status(400).json({
             message: error.message,
         })
@@ -43,7 +43,7 @@ export async function listClientsByOfficeIdController(req, res) {
 export async function getClientByIdController(req, res) {
     try {
         const { id } = req.params
-        const client = getClientByIdService(id)
+        const client = await getClientByIdService(id)
 
         if (!client) {
             return res.status(404).json({
@@ -51,8 +51,8 @@ export async function getClientByIdController(req, res) {
             })
         }
 
-        return res.status(201).status(client)
-    } catch {
+        return res.status(200).json(client)
+    } catch (error) {
         return res.status(400).json({
             message: error.message,
         })
