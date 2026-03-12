@@ -27,12 +27,23 @@ export async function createClient(input) {
 export async function updateClientById(id, patch) {
     const db = getDB()
 
-    // informacoes que podem ser alteradas
-    const { name, businessType, description, mainActivity, state } = patch
+    // atualiza somente campos enviados no patch
+    const allowed = {
+        name: patch.name,
+        businessType: patch.businessType,
+        description: patch.description,
+        mainActivity: patch.mainActivity,
+        state: patch.state,
+        updatedAt: new Date(),
+    }
+
+    const $set = Object.fromEntries(
+        Object.entries(allowed).filter(([, value]) => value !== undefined)
+    )
 
     return db.collection("clients").findOneAndUpdate(
         { _id: new ObjectId(id) },
-        { $set: { name, businessType, description, mainActivity, state, updatedAt: new Date() } },
+        { $set },
         { returnDocument: "after"}
     )
 }
