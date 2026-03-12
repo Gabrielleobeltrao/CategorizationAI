@@ -1,5 +1,5 @@
 import { ObjectId } from "mongodb"
-import { getDB } from "../db"
+import { getDB } from "../db.js"
 
 // criar
 
