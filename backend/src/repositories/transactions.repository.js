@@ -47,12 +47,24 @@ export async function insertTransactionsInBatches(transactions) {
 export async function updateTransactionById(id, patch) {
     const db = getDB()
 
-    // informacoes que podem ser alteradas
-    const { accountName, date, description, amount, categoryId, category } = patch
+    // atualiza somente campos enviados no patch
+    const allowed = {
+      accountName: patch.accountName,
+      date: patch.date,
+      description: patch.description,
+      amount: patch.amount,
+      categoryId: patch.categoryId,
+      category: patch.category,
+      updatedAt: new Date(),
+    }
+
+    const $set = Object.fromEntries(
+      Object.entries(allowed).filter(([, value]) => value !== undefined)
+    )
 
     return db.collection("transactions").findOneAndUpdate(
         { _id: new ObjectId(id) },
-        { $set: { accountName, date, description, amount, categoryId, category, updatedAt: new Date() } },
+        { $set },
         { returnDocument: "after" }
     )
 }
