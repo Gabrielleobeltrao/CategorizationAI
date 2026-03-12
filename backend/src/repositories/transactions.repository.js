@@ -8,7 +8,7 @@ export async function ensureTransactionsIndexes() {
   const db = getDB()
   await db
     .collection("transactions")
-    .createIndex({ officeId: 1, clientId: 1, date: -1 })
+    .createIndex({ clientId: 1, date: -1 })
 }
 
 // salva transações em lote (batch)
@@ -23,7 +23,6 @@ export async function insertTransactionsInBatches(transactions) {
     if (chunk.length === 0) continue
 
     const docs = chunk.map((t) => ({
-      officeId: t.officeId,
       clientId: t.clientId,
       accountId: t.accountId ?? null,
       accountName: t.accountName ?? null,
@@ -60,7 +59,6 @@ export async function updateTransactionById(id, patch) {
 
 // busca paginada
 export async function listTransactionsPaginated({
-  officeId,
   clientId,
   page = 1,
   limit = 50,
@@ -73,8 +71,7 @@ export async function listTransactionsPaginated({
   const skip = (safePage - 1) * safeLimit
 
   const filter = {
-    officeId,
-    ...(clientId ? { clientId } : {}),
+    clientId,
   }
 
   const [items, total] = await Promise.all([

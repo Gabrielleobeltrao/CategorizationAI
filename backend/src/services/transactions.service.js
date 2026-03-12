@@ -42,15 +42,13 @@ export async function updateTransactionByIdService(id, patch) {
 }
 
 export async function listTransactionsPaginatedService(query) {
-  const officeId = query?.officeId
   const clientId = query?.clientId
   const page = query?.page
   const limit = query?.limit
 
-  if (!officeId) throw new Error("officeId is required")
+  if (!clientId) throw new Error("clientId is required")
 
   return listTransactionsPaginated({
-    officeId,
     clientId,
     page,
     limit,
