@@ -18,11 +18,21 @@ export async function createAccount(input) {
 
 export async function updateAccountById(id, patch) {
   const db = getDB()
-  const { name, type, clientId } = patch
+
+  const allowed = {
+    name: patch.name,
+    type: patch.type,
+    clientId: patch.clientId,
+    updatedAt: new Date(),
+  }
+
+  const $set = Object.fromEntries(
+    Object.entries(allowed).filter(([, value]) => value !== undefined)
+  )
 
   return db.collection("account").findOneAndUpdate(
     { _id: new ObjectId(id) },
-    { $set: { name, type, clientId, updatedAt: new Date() } },
+    { $set },
     { returnDocument: "after" }
   )
 }
