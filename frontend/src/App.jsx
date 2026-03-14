@@ -5,6 +5,8 @@ import Login from './pages/Login.jsx'
 import Register from './pages/Register.jsx'
 import Home from './pages/Home.jsx'
 import Transactions from './pages/Transactions.jsx'
+import ClientsPage from './pages/ClientsPage.jsx'
+import EmployeesPage from './pages/EmployeesPage.jsx'
 
 function App() {
   return (
@@ -31,6 +33,22 @@ function App() {
           element={
             <ProtectedRoute>
               <Home />
+            </ProtectedRoute>}
+        />
+
+        <Route
+          path="/clients"
+          element={
+            <ProtectedRoute>
+              <ClientsPage />
+            </ProtectedRoute>}
+        />
+
+        <Route
+          path="/employees"
+          element={
+            <ProtectedRoute>
+              <EmployeesPage />
             </ProtectedRoute>}
         />
 
