@@ -64,12 +64,9 @@ function Home() {
     return (
         <section className="w-full min-h-dvh p-8">
             <div className="max-w-5xl mx-auto flex flex-col gap-6">
-                <header className="flex flex-col gap-1">
-                    <h1 className="text-3xl font-bold">Clients</h1>
-                    <p className="text-sm text-gray-500">
-                        Office: {employee.officeId}
-                    </p>
-                </header>
+                <section className="flex flex-col gap-1">
+                    <h1 className="text-3xl font-bold">Home</h1>
+                </section>
 
                 <section className="border border-gray-200 rounded-lg p-4">
                     <div className="flex items-start justify-between gap-3">
