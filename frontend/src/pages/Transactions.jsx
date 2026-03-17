@@ -98,7 +98,7 @@ function Transactions() {
     }
 
     return (
-        <section className="h-screen box-border grid grid-cols-8 p-4 overflow-hidden">
+        <section className="w-full h-full min-h-0 box-border grid grid-cols-8 p-4 overflow-hidden">
             <div className="h-full min-h-0 w-full col-span-6 p-4 border-r-4 border-gray-200 flex flex-col">
                 <div className="flex items-center justify-between">
                     <h2 className="text-lg font-bold">Transactions</h2>

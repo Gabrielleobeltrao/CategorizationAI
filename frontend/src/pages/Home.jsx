@@ -62,7 +62,7 @@ function Home() {
     }
 
     return (
-        <section className="w-full min-h-dvh p-8">
+        <section className="w-full p-8">
             <div className="max-w-5xl mx-auto flex flex-col gap-6">
                 <section className="flex flex-col gap-1">
                     <h1 className="text-3xl font-bold">Home</h1>
