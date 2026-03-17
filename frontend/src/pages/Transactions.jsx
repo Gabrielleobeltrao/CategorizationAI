@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState } from "react"
-import { useSearchParams } from "react-router-dom"
+import { useParams, useSearchParams } from "react-router-dom"
 import TransactionsTable from "../components/transactions/TransactionsTable"
 import PopupModal from "../components/ui/PopupModal"
 import { getCategoriesByClientId } from "../mocks/categories.mock"
 import { getTransactionsByClientId } from "../mocks/transactions.mock"
 import { getAccountsByClientId } from "../mocks/accounts.mock"
+import { getClientById } from "../mocks/clients.mock"
 
 function Transactions() {
+    const { clientId: routeClientId } = useParams()
     const [searchParams] = useSearchParams()
-    const clientId = searchParams.get("clientId")
+    const clientId = routeClientId || searchParams.get("clientId")
     const [viewMode, setViewMode] = useState("transactions")
     const [showAccountForm, setShowAccountForm] = useState(false)
     const [showCategoryForm, setShowCategoryForm] = useState(false)
@@ -33,6 +35,11 @@ function Transactions() {
     const accountsFromMocks = useMemo(() => {
         if (!clientId) return []
         return getAccountsByClientId(clientId)
+    }, [clientId])
+
+    const client = useMemo(() => {
+        if (!clientId) return null
+        return getClientById(clientId)
     }, [clientId])
 
     useEffect(() => {
@@ -108,7 +115,11 @@ function Transactions() {
             <div className="h-full min-h-0 flex flex-col gap-3">
                 <section className={`${transactionsSectionClass} min-h-0 rounded-lg border border-gray-200 bg-white ${isTransactionsExpanded ? "p-4" : "px-4 py-2"} flex flex-col overflow-hidden`}>
                     <div className="flex items-center justify-between">
-                        <h2 className="text-lg font-bold">Transactions</h2>
+                        <div>
+                            <h2 className="text-lg font-bold truncate">
+                                {client ? `${client.name}` : "Transactions"}
+                            </h2>
+                        </div>
                     </div>
                     {!isDetailsExpanded && (
                         <div className="pt-4 min-h-0 flex-1">
