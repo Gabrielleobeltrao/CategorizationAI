@@ -25,3 +25,7 @@ const clients = [
 export function getClientsByOfficeId(officeId) {
   return clients.filter((client) => client.officeId === officeId)
 }
+
+export function getClientById(clientId) {
+  return clients.find((client) => client.id === clientId) || null
+}

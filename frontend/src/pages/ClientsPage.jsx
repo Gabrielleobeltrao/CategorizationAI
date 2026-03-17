@@ -63,7 +63,7 @@ function ClientsPage() {
                         <article
                             key={client.id}
                             className="border border-gray-200 rounded-lg p-4 cursor-pointer"
-                            onClick={() => navigate(`/transactions?clientId=${client.id}`)}
+                            onClick={() => navigate(`/clients/${client.id}/transactions`)}
                         >
                             <h2 className="text-lg font-semibold">{client.name}</h2>
                             <p className="text-sm text-gray-600">{client.businessType}</p>

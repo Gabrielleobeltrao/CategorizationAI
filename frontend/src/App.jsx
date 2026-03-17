@@ -7,6 +7,7 @@ import Home from './pages/Home.jsx'
 import Transactions from './pages/Transactions.jsx'
 import ClientsPage from './pages/ClientsPage.jsx'
 import EmployeesPage from './pages/EmployeesPage.jsx'
+import ProfitLossPage from './pages/ProfitLossPage.jsx'
 import AppShell from './components/layout/AppShell.jsx'
 
 function App() {
@@ -40,6 +41,8 @@ function App() {
           <Route path="/clients" element={<ClientsPage />} />
           <Route path="/employees" element={<EmployeesPage />} />
           <Route path="/transactions" element={<Transactions />} />
+          <Route path="/clients/:clientId/transactions" element={<Transactions />} />
+          <Route path="/clients/:clientId/profit-loss" element={<ProfitLossPage />} />
         </Route>
 
       </Routes>
