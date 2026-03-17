@@ -32,6 +32,18 @@ const navItems = [
       </svg>
     ),
   },
+<<<<<<< HEAD
+=======
+  {
+    to: "/transactions",
+    label: "Transactions",
+    icon: (
+      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M3 5h18M3 12h18M3 19h18" />
+      </svg>
+    ),
+  },
+>>>>>>> 7e26d5f015b34d34eb6abc4a615b4253fbd376df
 ]
 
 function Sidebar({ isCollapsed, onToggleCollapse }) {

@@ -104,9 +104,33 @@ function Transactions() {
     const detailsSectionClass = isDetailsExpanded ? "flex-1" : "h-12 flex-none"
 
     return (
+<<<<<<< HEAD
         <section className="w-full h-full min-h-0 box-border p-4 overflow-hidden">
             <div className="h-full min-h-0 flex flex-col gap-3">
                 <section className={`${transactionsSectionClass} min-h-0 rounded-lg border border-gray-200 bg-white ${isTransactionsExpanded ? "p-4" : "px-4 py-2"} flex flex-col overflow-hidden`}>
+=======
+        <section className="w-full h-full min-h-0 box-border grid grid-cols-8 p-4 overflow-hidden">
+            <div className="h-full min-h-0 w-full col-span-6 p-4 border-r-4 border-gray-200 flex flex-col">
+                <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-bold">Transactions</h2>
+                    <button className="text-sm font-bold text-white bg-gray-400 rounded-md px-4 py-2">
+                        Upload Transactions
+                    </button>
+                </div>
+                <div className="pt-8 min-h-0 flex-1">
+                    {transactions.length > 0 ? (
+                        <TransactionsTable
+                            transactions={transactions}
+                            categories={categoryList}
+                        />
+                    ) : (
+                        <h4 className="text-center text-gray-500">No transactions found. Please upload your transactions to get started.</h4>
+                    )}
+                </div>
+            </div>
+            <div className="h-full w-full col-span-2 p-4 flex flex-col min-h-0">
+                <section className="flex-1 min-h-0 p-3 flex flex-col gap-4">
+>>>>>>> 7e26d5f015b34d34eb6abc4a615b4253fbd376df
                     <div className="flex items-center justify-between">
                         <h2 className="text-lg font-bold">Transactions</h2>
                     </div>
