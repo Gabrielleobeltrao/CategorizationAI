@@ -7,6 +7,7 @@ import Home from './pages/Home.jsx'
 import Transactions from './pages/Transactions.jsx'
 import ClientsPage from './pages/ClientsPage.jsx'
 import EmployeesPage from './pages/EmployeesPage.jsx'
+import AppShell from './components/layout/AppShell.jsx'
 
 function App() {
   return (
@@ -29,37 +30,17 @@ function App() {
         />
 
         <Route
-          path="/home"
           element={
             <ProtectedRoute>
-              <Home />
-            </ProtectedRoute>}
-        />
-
-        <Route
-          path="/clients"
-          element={
-            <ProtectedRoute>
-              <ClientsPage />
-            </ProtectedRoute>}
-        />
-
-        <Route
-          path="/employees"
-          element={
-            <ProtectedRoute>
-              <EmployeesPage />
-            </ProtectedRoute>}
-        />
-
-        <Route
-          path="/transactions"
-          element={
-            <ProtectedRoute>
-              <Transactions />
+              <AppShell />
             </ProtectedRoute>
           }
-        />
+        >
+          <Route path="/home" element={<Home />} />
+          <Route path="/clients" element={<ClientsPage />} />
+          <Route path="/employees" element={<EmployeesPage />} />
+          <Route path="/transactions" element={<Transactions />} />
+        </Route>
 
       </Routes>
     </BrowserRouter>
