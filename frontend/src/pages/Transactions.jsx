@@ -153,8 +153,11 @@ function Transactions() {
                                 </div>
 
                                 <div className="min-h-0 flex-1 overflow-y-auto flex flex-col gap-2">
-                                    {accounts.map((account) => (
-                                        <article key={account.id} className="border border-gray-100 rounded-md p-2">
+                                    {accounts.map((account, index) => (
+                                        <article
+                                            key={account.id}
+                                            className={`border border-gray-100 rounded-md p-2 ${index % 2 === 0 ? "bg-gray-100" : "bg-white"}`}
+                                        >
                                             <h3 className="text-sm font-semibold truncate">{account.name}</h3>
                                             <p className="text-xs text-gray-500">{account.type}</p>
                                         </article>
@@ -174,8 +177,11 @@ function Transactions() {
                                 </div>
                                 {categoryList.length > 0 ? (
                                     <div className="min-h-0 flex-1 overflow-y-auto flex flex-col gap-3">
-                                        {categoryList.map((category) => (
-                                            <article key={category.id} className="border border-gray-100 rounded-md p-2">
+                                        {categoryList.map((category, index) => (
+                                            <article
+                                                key={category.id}
+                                                className={`border border-gray-100 rounded-md p-2 ${index % 2 === 0 ? "bg-gray-100" : "bg-white"}`}
+                                            >
                                                 <h3 className="text-sm font-semibold truncate">{category.name}</h3>
                                                 <p className="text-xs text-gray-500">{category.type}</p>
                                                 <p className="text-xs text-gray-400 truncate">{category.description}</p>
