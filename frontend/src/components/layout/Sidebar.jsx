@@ -1,4 +1,5 @@
-import { NavLink } from "react-router-dom"
+import { NavLink, matchPath, useLocation } from "react-router-dom"
+import { getClientById } from "../../mocks/clients.mock"
 
 const navItems = [
   {
@@ -35,13 +36,41 @@ const navItems = [
 ]
 
 function Sidebar({ isCollapsed, onToggleCollapse }) {
+  const location = useLocation()
+  const clientScopeMatch = matchPath("/clients/:clientId/*", location.pathname)
+  const clientId = clientScopeMatch?.params?.clientId
+  const selectedClient = clientId ? getClientById(clientId) : null
+
+  const clientMenuItems = clientId
+    ? [
+        {
+          to: `/clients/${clientId}/transactions`,
+          label: "Transactions",
+          icon: (
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 5h18M3 12h18M3 19h18" />
+            </svg>
+          ),
+        },
+        {
+          to: `/clients/${clientId}/profit-loss`,
+          label: "Profit & Loss",
+          icon: (
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M4 19V5M20 19H4M7 14l3-3 3 2 4-5" />
+            </svg>
+          ),
+        },
+      ]
+    : []
+
   return (
     <aside
       className={`h-full border-r border-gray-200 bg-white p-3 transition-all duration-200 ${
         isCollapsed ? "w-16" : "w-60"
       }`}
     >
-      <div className="mb-3 border-b border-gray-100 pb-3">
+      <div className="mb-2">
         <button
           type="button"
           className="flex items-center justify-center rounded-lg px-2 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
@@ -79,6 +108,36 @@ function Sidebar({ isCollapsed, onToggleCollapse }) {
           </NavLink>
         ))}
       </nav>
+
+      {clientMenuItems.length > 0 && (
+        <div className="mt-4 border-t border-gray-100 pt-4">
+          {!isCollapsed && (
+            <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+              {selectedClient ? selectedClient.name : "Client"}
+            </p>
+          )}
+
+          <nav className="flex flex-col gap-2">
+            {clientMenuItems.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={({ isActive }) =>
+                  `flex items-center rounded-lg py-2 text-sm font-medium transition-colors ${
+                    isCollapsed ? "justify-center px-2" : "gap-2 px-3"
+                  } ${
+                    isActive ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
+                  }`
+                }
+                title={isCollapsed ? item.label : undefined}
+              >
+                <span>{item.icon}</span>
+                {!isCollapsed && <span>{item.label}</span>}
+              </NavLink>
+            ))}
+          </nav>
+        </div>
+      )}
     </aside>
   )
 }
