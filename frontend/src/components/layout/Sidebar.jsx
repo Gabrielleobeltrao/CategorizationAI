@@ -32,8 +32,6 @@ const navItems = [
       </svg>
     ),
   },
-<<<<<<< HEAD
-=======
   {
     to: "/transactions",
     label: "Transactions",
@@ -43,7 +41,6 @@ const navItems = [
       </svg>
     ),
   },
->>>>>>> 7e26d5f015b34d34eb6abc4a615b4253fbd376df
 ]
 
 function Sidebar({ isCollapsed, onToggleCollapse }) {
