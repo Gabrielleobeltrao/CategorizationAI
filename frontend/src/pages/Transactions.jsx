@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "react-router-dom"
-import AccordionCategory from "../components/categories/AccordionCategory"
 import TransactionsTable from "../components/transactions/TransactionsTable"
 import PopupModal from "../components/ui/PopupModal"
 import { getCategoriesByClientId } from "../mocks/categories.mock"
@@ -10,6 +9,7 @@ import { getAccountsByClientId } from "../mocks/accounts.mock"
 function Transactions() {
     const [searchParams] = useSearchParams()
     const clientId = searchParams.get("clientId")
+    const [viewMode, setViewMode] = useState("transactions")
     const [showAccountForm, setShowAccountForm] = useState(false)
     const [showCategoryForm, setShowCategoryForm] = useState(false)
     const [newAccountName, setNewAccountName] = useState("")
@@ -97,72 +97,96 @@ function Transactions() {
         setShowCategoryForm(false)
     }
 
-    return (
-        <section className="w-full h-full min-h-0 box-border grid grid-cols-8 p-4 overflow-hidden">
-            <div className="h-full min-h-0 w-full col-span-6 p-4 border-r-4 border-gray-200 flex flex-col">
-                <div className="flex items-center justify-between">
-                    <h2 className="text-lg font-bold">Transactions</h2>
-                    <button className="text-sm font-bold text-white bg-gray-400 rounded-md px-4 py-2">
-                        Upload Transactions
-                    </button>
-                </div>
-                <div className="pt-8 min-h-0 flex-1">
-                    {transactions.length > 0 ? (
-                        <TransactionsTable
-                            transactions={transactions}
-                            categories={categoryList}
-                        />
-                    ) : (
-                        <h4 className="text-center text-gray-500">No transactions found. Please upload your transactions to get started.</h4>
-                    )}
-                </div>
-            </div>
-            <div className="h-full w-full col-span-2 p-4 flex flex-col min-h-0">
-                <section className="flex-1 min-h-0 p-3 flex flex-col gap-4">
-                    <div className="flex items-center justify-between">
-                        <h2 className="text-lg font-bold">Accounts</h2>
-                        <button
-                            className="text-sm font-bold text-white bg-gray-400 rounded-md px-4 py-2"
-                            onClick={() => setShowAccountForm(true)}
-                        >
-                            New Account
-                        </button>
-                    </div>
+    const isTransactionsExpanded = viewMode === "transactions"
+    const isDetailsExpanded = viewMode === "details"
 
-                    <div className="min-h-0 flex-1 overflow-y-auto flex flex-col gap-2">
-                        {accounts.map((account) => (
-                            <article key={account.id} className="border border-gray-100 rounded-md p-2">
-                                <h3 className="text-sm font-semibold">{account.name}</h3>
-                                <p className="text-xs text-gray-500">{account.type}</p>
-                            </article>
-                        ))}
+    const transactionsSectionClass = isTransactionsExpanded ? "flex-1" : "h-12 flex-none"
+    const detailsSectionClass = isDetailsExpanded ? "flex-1" : "h-12 flex-none"
+
+    return (
+        <section className="w-full h-full min-h-0 box-border p-4 overflow-hidden">
+            <div className="h-full min-h-0 flex flex-col gap-3">
+                <section className={`${transactionsSectionClass} min-h-0 rounded-lg border border-gray-200 bg-white ${isTransactionsExpanded ? "p-4" : "px-4 py-2"} flex flex-col overflow-hidden`}>
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-lg font-bold">Transactions</h2>
                     </div>
+                    {!isDetailsExpanded && (
+                        <div className="pt-4 min-h-0 flex-1">
+                            {transactions.length > 0 ? (
+                                <TransactionsTable
+                                    transactions={transactions}
+                                    categories={categoryList}
+                                />
+                            ) : (
+                                <h4 className="text-center text-gray-500">No transactions found. Please upload your transactions to get started.</h4>
+                            )}
+                        </div>
+                    )}
                 </section>
 
-                <section className="flex-1 min-h-0 p-3 flex flex-col gap-4 border-t border-gray-200">
+                <section className={`${detailsSectionClass} min-h-0 rounded-lg border border-gray-200 bg-white ${isDetailsExpanded ? "p-4" : "px-4 py-2"} flex flex-col overflow-hidden`}>
                     <div className="flex items-center justify-between">
-                        <h2 className="text-lg font-bold">Categories</h2>
+                        <h2 className="text-lg font-bold">Accounts & Categories</h2>
                         <button
-                            className="text-sm font-bold text-white bg-gray-400 rounded-md px-4 py-2"
-                            onClick={() => setShowCategoryForm(true)}
+                            type="button"
+                            className="rounded-md border border-gray-200 p-2 text-gray-600 hover:bg-gray-100"
+                            onClick={() => setViewMode(isDetailsExpanded ? "transactions" : "details")}
+                            title={isDetailsExpanded ? "Show transactions" : "Show accounts and categories"}
                         >
-                            New Category
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d={isDetailsExpanded ? "M6 9l6 6 6-6" : "M6 15l6-6 6 6"} />
+                            </svg>
                         </button>
                     </div>
-                    {categoryList.length > 0 ? (
-                    <div className="min-h-0 flex-1 overflow-y-auto flex flex-col gap-4">
-                        {categoryList.map((category) => (
-                            <AccordionCategory
-                                key={category.id}
-                                id={category.id}
-                                name={category.name}
-                                type={category.type}
-                                description={category.description}
-                            />
-                        ))}
-                    </div>
-                    ) : (
-                        <h4 className="text-center text-gray-500">No categories found. Please add categories.</h4>
+
+                    {!isTransactionsExpanded && (
+                        <div className="mt-4 grid h-full min-h-0 gap-4 md:grid-cols-2">
+                            <section className="min-h-0 rounded-lg border border-gray-100 p-3 flex flex-col gap-3">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-base font-bold">Accounts</h3>
+                                    <button
+                                        className="text-xs font-bold text-white bg-gray-700 rounded-md px-3 py-2"
+                                        onClick={() => setShowAccountForm(true)}
+                                    >
+                                        New Account
+                                    </button>
+                                </div>
+
+                                <div className="min-h-0 flex-1 overflow-y-auto flex flex-col gap-2">
+                                    {accounts.map((account) => (
+                                        <article key={account.id} className="border border-gray-100 rounded-md p-2">
+                                            <h3 className="text-sm font-semibold truncate">{account.name}</h3>
+                                            <p className="text-xs text-gray-500">{account.type}</p>
+                                        </article>
+                                    ))}
+                                </div>
+                            </section>
+
+                            <section className="min-h-0 rounded-lg border border-gray-100 p-3 flex flex-col gap-3">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-base font-bold">Categories</h3>
+                                    <button
+                                        className="text-xs font-bold text-white bg-gray-700 rounded-md px-3 py-2"
+                                        onClick={() => setShowCategoryForm(true)}
+                                    >
+                                        New Category
+                                    </button>
+                                </div>
+                                {categoryList.length > 0 ? (
+                                    <div className="min-h-0 flex-1 overflow-y-auto flex flex-col gap-3">
+                                        {categoryList.map((category) => (
+                                            <article key={category.id} className="border border-gray-100 rounded-md p-2">
+                                                <h3 className="text-sm font-semibold truncate">{category.name}</h3>
+                                                <p className="text-xs text-gray-500">{category.type}</p>
+                                                <p className="text-xs text-gray-400 truncate">{category.description}</p>
+                                            </article>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <h4 className="text-center text-gray-500">No categories found. Please add categories.</h4>
+                                )}
+                            </section>
+                        </div>
                     )}
                 </section>
             </div>
