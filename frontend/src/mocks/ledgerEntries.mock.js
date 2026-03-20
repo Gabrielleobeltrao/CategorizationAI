@@ -1,4 +1,4 @@
-const transactions = [
+const ledgerEntries = [
   {
     id: 1,
     clientId: "cli_1",
@@ -145,6 +145,6 @@ const transactions = [
   },
 ]
 
-export function getTransactionsByClientId(clientId) {
-  return transactions.filter((transaction) => transaction.clientId === clientId)
+export function getLedgerEntriesByClientId(clientId) {
+  return ledgerEntries.filter((entry) => entry.clientId === clientId)
 }

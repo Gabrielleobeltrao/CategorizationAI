@@ -4,7 +4,7 @@ import LandingPage from './pages/LandingPage.jsx'
 import Login from './pages/Login.jsx'
 import Register from './pages/Register.jsx'
 import Home from './pages/Home.jsx'
-import Transactions from './pages/Transactions.jsx'
+import LedgerPage from './pages/LedgerPage.jsx'
 import ClientsPage from './pages/ClientsPage.jsx'
 import EmployeesPage from './pages/EmployeesPage.jsx'
 import ProfitLossPage from './pages/ProfitLossPage.jsx'
@@ -40,8 +40,8 @@ function App() {
           <Route path="/home" element={<Home />} />
           <Route path="/clients" element={<ClientsPage />} />
           <Route path="/employees" element={<EmployeesPage />} />
-          <Route path="/transactions" element={<Transactions />} />
-          <Route path="/clients/:clientId/transactions" element={<Transactions />} />
+          <Route path="/ledger" element={<LedgerPage />} />
+          <Route path="/clients/:clientId/ledger" element={<LedgerPage />} />
           <Route path="/clients/:clientId/profit-loss" element={<ProfitLossPage />} />
         </Route>
 

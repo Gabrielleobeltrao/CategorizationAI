@@ -1,4 +1,4 @@
-function TransactionRow({ index, categories, id, date, description, account, category, amount }) {
+function LedgerEntryRow({ index, categories, id, date, description, account, category, amount }) {
     return (
         <div className={`grid grid-cols-[min-content_0.5fr_2fr_0.75fr_1.5fr_0.5fr] items-center gap-4 px-2 py-3 text-sm ${index % 2 === 0 ? 'bg-gray-100' : 'bg-white'}`}>
             <input className="self-center" type="checkbox" />
@@ -31,4 +31,4 @@ function TransactionRow({ index, categories, id, date, description, account, cat
     )
 }
 
-export default TransactionRow
+export default LedgerEntryRow

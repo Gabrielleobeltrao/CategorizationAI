@@ -1,6 +1,6 @@
-import TransactionRow from "./TransactionRow"
+import LedgerEntryRow from "./LedgerEntryRow"
 
-function TransactionsTable({ transactions, categories }) {
+function LedgerEntriesTable({ ledgerEntries, categories }) {
     return (
         <div className="flex flex-col h-full min-h-0">
             {/* <div className="pb-6">
@@ -86,17 +86,17 @@ function TransactionsTable({ transactions, categories }) {
                 <h4>Amount</h4>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto rounded-b-lg border-b-4 border-gray-100">
-                {transactions.map((transaction, index) => (
-                    <TransactionRow
-                        key={transaction.id}
+                {ledgerEntries.map((entry, index) => (
+                    <LedgerEntryRow
+                        key={entry.id}
                         index={index}
                         categories={categories}
-                        id={transaction.id}
-                        date={transaction.date}
-                        description={transaction.description}
-                        account={transaction.account}
-                        category={transaction.category}
-                        amount={transaction.amount}
+                        id={entry.id}
+                        date={entry.date}
+                        description={entry.description}
+                        account={entry.account}
+                        category={entry.category}
+                        amount={entry.amount}
                     />
                 ))}
             </div>
@@ -104,4 +104,4 @@ function TransactionsTable({ transactions, categories }) {
     )
 }
 
-export default TransactionsTable
+export default LedgerEntriesTable
