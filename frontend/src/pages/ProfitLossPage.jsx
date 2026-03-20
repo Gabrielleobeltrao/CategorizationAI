@@ -1,26 +1,330 @@
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import { useParams } from "react-router-dom"
 import { getClientById } from "../mocks/clients.mock"
+import { getProfitLossByClientIdAndPeriod } from "../mocks/profitLoss.mock"
+
+function formatCurrency(value) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(value)
+}
+
+function buildMonthOptions() {
+  const options = []
+  const year = 2026
+  for (let month = 12; month >= 1; month -= 1) {
+    const value = `${year}-${String(month).padStart(2, "0")}`
+    options.push({
+      value,
+      label: new Intl.DateTimeFormat("en-US", { month: "short" }).format(new Date(`${value}-01T00:00:00`)),
+    })
+  }
+  return options
+}
+
+function buildYearOptions() {
+  return ["2026", "2025", "2024", "2023", "2022"]
+}
+
+function formatPeriodLabel(value) {
+  const [prefix, raw] = String(value || "").split(":")
+  if (String(value || "").toUpperCase() === "ALL") return "All time"
+  if (!raw) return value
+  if (prefix === "RANGE") return raw.replace("->", " to ")
+  return raw
+}
 
 function ProfitLossPage() {
   const { clientId } = useParams()
+  const [period, setPeriod] = useState("MONTH")
+  const [isManual, setIsManual] = useState(false)
+  const [showPercentView, setShowPercentView] = useState(false)
+  const [fromDate, setFromDate] = useState("2026-03-01")
+  const [toDate, setToDate] = useState("2026-03-31")
+  const [month, setMonth] = useState("2026-03")
+  const [year, setYear] = useState("2026")
+
+  const monthOptions = useMemo(() => buildMonthOptions(), [])
+  const yearOptions = useMemo(() => buildYearOptions(), [])
 
   const client = useMemo(() => {
     if (!clientId) return null
     return getClientById(clientId)
   }, [clientId])
 
+  const profitLoss = useMemo(() => {
+    if (!clientId) return null
+    return getProfitLossByClientIdAndPeriod(clientId, {
+      period: isManual ? "RANGE" : period,
+      fromDate,
+      toDate,
+      month,
+      year,
+    })
+  }, [clientId, period, fromDate, toDate, month, year, isManual])
+
+  const revenueBase = useMemo(() => {
+    const revenueLine = profitLoss?.statement.find((line) => line.id === "revenue")
+    if (!revenueLine) return 1
+    return Math.max(1, Math.abs(revenueLine.amount))
+  }, [profitLoss])
+
+  const formula = useMemo(() => {
+    const income = profitLoss?.kpis.find((kpi) => kpi.id === "revenue")?.value ?? 0
+    const grossProfit = profitLoss?.kpis.find((kpi) => kpi.id === "gross_profit")?.value ?? 0
+    const operatingIncome = profitLoss?.kpis.find((kpi) => kpi.id === "operating_income")?.value ?? 0
+    const netIncome = profitLoss?.kpis.find((kpi) => kpi.id === "net_income")?.value ?? 0
+
+    return {
+      income,
+      costOfGoodsSold: Math.max(0, income - grossProfit),
+      operatingExpenses: Math.max(0, grossProfit - operatingIncome),
+      netIncome,
+    }
+  }, [profitLoss])
+
+  const getLineWeightClass = (lineType) => {
+    if (lineType === "total") return "font-bold"
+    if (lineType === "group") return "font-semibold"
+    return "font-normal"
+  }
+
+  if (!profitLoss) {
+    return (
+      <section className="w-full h-full min-h-0 p-8 overflow-auto">
+        <div className="max-w-5xl mx-auto rounded-lg border border-gray-200 p-4 text-sm text-gray-600">
+          Profit & Loss data not found for this client.
+        </div>
+      </section>
+    )
+  }
+
   return (
     <section className="w-full h-full min-h-0 p-8 overflow-auto">
-      <div className="max-w-5xl mx-auto flex flex-col gap-4">
-        <h1 className="text-3xl font-bold">Profit & Loss</h1>
-        <p className="text-sm text-gray-500">
-          Client: {client ? client.name : "Unknown client"}
-        </p>
+      <div className="w-full flex flex-col gap-3">
+        <header className="rounded-xl border border-gray-200 bg-white p-4">
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h1 className="text-3xl font-bold">Profit & Loss</h1>
+              <p className="text-sm text-gray-500 mt-1">
+                {client ? client.name : "Unknown client"}
+              </p>
+              <p className="text-sm text-gray-500 mt-1">
+                Period: {formatPeriodLabel(profitLoss.period)}
+              </p>
+            </div>
 
-        <div className="rounded-lg border border-gray-200 p-4 text-sm text-gray-600">
-          P&L screen placeholder. Here we will show revenue, expenses and net profit by period.
-        </div>
+            <div className="w-full md:w-1/2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
+              <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                Period Filter
+              </label>
+
+              <div className="flex flex-col gap-2">
+                <div className="grid grid-cols-4 gap-1 rounded-lg border border-gray-200 bg-white p-1">
+                    {[
+                      { value: "ALL", label: "All" },
+                      { value: "MONTH", label: "Month" },
+                      { value: "YEAR", label: "Year" },
+                    ].map((item) => (
+                      <button
+                        key={item.value}
+                        type="button"
+                        className={`rounded-md px-2 py-1.5 text-xs font-semibold ${
+                          !isManual && period === item.value
+                            ? "bg-gray-900 text-white"
+                            : "text-gray-600 hover:bg-gray-100"
+                        }`}
+                        onClick={() => {
+                          setPeriod(item.value)
+                          setIsManual(false)
+                        }}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      className={`rounded-md px-2 py-1.5 text-xs font-semibold ${
+                        isManual
+                          ? "bg-gray-900 text-white"
+                          : "text-gray-600 hover:bg-gray-100"
+                      }`}
+                      onClick={() => setIsManual((value) => !value)}
+                    >
+                      Manual
+                    </button>
+                </div>
+
+                {period === "MONTH" && !isManual && (
+                  <div className="w-full overflow-x-auto">
+                    <div className="flex h-8 min-w-max items-center gap-1.5">
+                      {monthOptions.map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          className={`rounded-md px-2 py-1.5 text-xs ${
+                            month === option.value
+                              ? "bg-gray-900 text-white"
+                              : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-100"
+                          }`}
+                          onClick={() => setMonth(option.value)}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {period === "YEAR" && !isManual && (
+                  <div className="w-full overflow-x-auto">
+                    <div className="flex h-8 min-w-max items-center gap-1.5">
+                    {yearOptions.map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        className={`rounded-md px-2 py-1.5 text-xs ${
+                          year === option
+                            ? "bg-gray-900 text-white"
+                            : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-100"
+                        }`}
+                        onClick={() => setYear(option)}
+                      >
+                        {option}
+                      </button>
+                    ))}
+                    </div>
+                  </div>
+                )}
+
+                {isManual && (
+                  <div className="w-full overflow-x-auto">
+                    <div className="flex h-8 min-w-max items-center gap-2">
+                    <span className="text-xs text-gray-500">From</span>
+                    <input
+                      type="date"
+                      aria-label="From date"
+                      className="h-8 rounded-md border border-gray-200 bg-white px-2 text-sm"
+                      value={fromDate}
+                      onChange={(e) => setFromDate(e.target.value)}
+                    />
+
+                    <span className="text-xs text-gray-500">To</span>
+                    <input
+                      type="date"
+                      aria-label="To date"
+                      className="h-8 rounded-md border border-gray-200 bg-white px-2 text-sm"
+                      value={toDate}
+                      onChange={(e) => setToDate(e.target.value)}
+                    />
+                    </div>
+                  </div>
+                )}
+                </div>
+            </div>
+          </div>
+        </header>
+
+        <section className="w-full">
+          <article className="rounded-xl border border-gray-200 bg-white p-4">
+            <div className="m-3 w-full overflow-x-auto">
+              <div className="grid min-w-[900px] grid-cols-[minmax(170px,1fr)_32px_minmax(220px,1fr)_32px_minmax(220px,1fr)_32px_minmax(180px,1fr)] items-end gap-x-2">
+                <div className="text-center">
+                  <p className="text-xs text-gray-500 uppercase tracking-wide">Income</p>
+                  <p className="text-xl font-semibold text-gray-900">{formatCurrency(formula.income)}</p>
+                </div>
+                <span className="flex h-10 w-8 items-end justify-center pb-1 text-lg text-gray-500">-</span>
+                <div className="text-center">
+                  <p className="text-xs text-gray-500 uppercase tracking-wide">Cost Of Goods Sold</p>
+                  <p className="text-xl font-semibold text-gray-900">{formatCurrency(formula.costOfGoodsSold)}</p>
+                </div>
+                <span className="flex h-10 w-8 items-end justify-center pb-1 text-lg text-gray-500">-</span>
+                <div className="text-center">
+                  <p className="text-xs text-gray-500 uppercase tracking-wide">Operating Expenses</p>
+                  <p className="text-xl font-semibold text-gray-900">{formatCurrency(formula.operatingExpenses)}</p>
+                </div>
+                <span className="flex h-10 w-8 items-end justify-center pb-1 text-lg text-gray-500">=</span>
+                <div className="text-center">
+                  <p className="text-xs text-emerald-700 uppercase tracking-wide">Net Income</p>
+                  <p className="text-xl font-bold text-emerald-700">{formatCurrency(formula.netIncome)}</p>
+                </div>
+              </div>
+            </div>
+          </article>
+        </section>
+
+        <section className="grid grid-cols-1 gap-4">
+          <article className="rounded-xl border border-gray-200 bg-white p-4">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold">Statement</h2>
+              <button
+                type="button"
+                className={`rounded-md border px-2.5 py-1 text-sm font-semibold ${
+                  showPercentView
+                    ? "border-gray-900 bg-gray-900 text-white"
+                    : "border-gray-200 bg-white text-gray-700 hover:bg-gray-100"
+                }`}
+                onClick={() => setShowPercentView((value) => !value)}
+              >
+                %
+              </button>
+            </div>
+            <p className="text-sm text-gray-500">Revenue, costs, expenses and net income</p>
+
+            <div className="mt-4 rounded-lg border border-gray-100 overflow-hidden">
+              {!showPercentView && (
+                <>
+                  <div className="grid grid-cols-[minmax(0,1fr)_180px] bg-gray-50 px-3 py-2 text-xs uppercase tracking-wide font-semibold text-gray-500">
+                    <span>Line item</span>
+                    <span className="text-right">Amount</span>
+                  </div>
+
+                  <div>
+                    {profitLoss.statement.map((line, index) => (
+                      <div
+                        key={line.id}
+                        className={`grid grid-cols-[minmax(0,1fr)_180px] items-center px-3 py-2 text-sm ${index % 2 === 0 ? "bg-gray-100" : "bg-white"}`}
+                      >
+                        <span className={`${line.level === 1 ? "pl-4" : ""} ${getLineWeightClass(line.type)} ${line.type === "item" ? "text-gray-700" : ""}`}>
+                          {line.label}
+                        </span>
+                        <span className={`text-right ${getLineWeightClass(line.type)} ${line.amount < 0 ? "text-rose-600" : "text-gray-900"}`}>
+                          {formatCurrency(line.amount)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {showPercentView && (
+                <div className="space-y-2 p-3">
+                  {profitLoss.statement.map((line) => {
+                    const percentage = Math.round((Math.abs(line.amount) / revenueBase) * 100)
+                    return (
+                      <div key={line.id} className="space-y-1">
+                        <div className="flex items-center justify-between gap-2 text-sm">
+                          <span className={`${line.level === 1 ? "pl-4" : ""} ${getLineWeightClass(line.type)} ${line.type === "item" ? "text-gray-700" : ""}`}>
+                            {line.label}
+                          </span>
+                          <span className={`${getLineWeightClass(line.type)} text-gray-900`}>{percentage}%</span>
+                        </div>
+                        <div className="h-2 w-full rounded-full bg-gray-100">
+                          <div
+                            className={`h-2 rounded-full ${line.amount < 0 ? "bg-rose-500" : "bg-emerald-500"}`}
+                            style={{ width: `${Math.min(100, percentage)}%` }}
+                          />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </article>
+        </section>
       </div>
     </section>
   )

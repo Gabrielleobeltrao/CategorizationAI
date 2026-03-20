@@ -16,7 +16,7 @@ function AppShell() {
             isCollapsed={isSidebarCollapsed}
             onToggleCollapse={() => setIsSidebarCollapsed((value) => !value)}
           />
-          <div className="flex-1 h-full min-h-0 overflow-hidden">
+          <div className="flex-1 min-w-0 h-full min-h-0 overflow-hidden">
             <Outlet />
           </div>
         </main>
