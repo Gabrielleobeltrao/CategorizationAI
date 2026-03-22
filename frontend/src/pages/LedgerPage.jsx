@@ -144,7 +144,7 @@ function LedgerPage() {
                     </div>
                 </header>
 
-                <section className="min-h-[460px] rounded-lg border border-gray-200 bg-white p-4 flex flex-col overflow-hidden">
+                <section className={`min-h-[460px] rounded-lg border border-gray-200 bg-white p-4 flex flex-col ${activeSection === "ledger" ? "overflow-visible" : "overflow-hidden"}`}>
                     {activeSection === "ledger" && (
                         <>
                             <h2 className="text-lg font-bold">Transactions</h2>

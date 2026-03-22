@@ -6,8 +6,10 @@ const navItems = [
     to: "/home",
     label: "Home",
     icon: (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M3 10.5 12 3l9 7.5V21H3z" />
+      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 10.5 12 3l9 7.5" />
+        <path d="M5 9.5V21h14V9.5" />
+        <path d="M10 21v-6h4v6" />
       </svg>
     ),
   },
@@ -15,9 +17,11 @@ const navItems = [
     to: "/clients",
     label: "Clients",
     icon: (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M4 19v-1a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v1" />
-        <circle cx="12" cy="7" r="3" />
+      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <path d="M8 8h8" />
+        <path d="M8 12h8" />
+        <path d="M8 16h5" />
       </svg>
     ),
   },
@@ -25,11 +29,11 @@ const navItems = [
     to: "/employees",
     label: "Employees",
     icon: (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-        <circle cx="9" cy="7" r="3" />
-        <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-        <path d="M16 3.13a3 3 0 0 1 0 5.74" />
+      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="8" cy="8" r="3" />
+        <circle cx="17" cy="9" r="2.5" />
+        <path d="M3 20v-1a5 5 0 0 1 5-5h1" />
+        <path d="M13 20v-1a4 4 0 0 1 4-4h1" />
       </svg>
     ),
   },
@@ -47,8 +51,11 @@ function Sidebar({ isCollapsed, onToggleCollapse }) {
           to: `/clients/${clientId}/ledger`,
           label: "Ledger",
           icon: (
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M3 5h18M3 12h18M3 19h18" />
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="4" y="3" width="16" height="18" rx="2" />
+              <path d="M8 8h8" />
+              <path d="M8 12h8" />
+              <path d="M8 16h5" />
             </svg>
           ),
         },
@@ -56,8 +63,11 @@ function Sidebar({ isCollapsed, onToggleCollapse }) {
           to: `/clients/${clientId}/profit-loss`,
           label: "Profit & Loss",
           icon: (
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M4 19V5M20 19H4M7 14l3-3 3 2 4-5" />
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 19h16" />
+              <path d="M6 16V9" />
+              <path d="M12 16V6" />
+              <path d="M18 16v-4" />
             </svg>
           ),
         },
