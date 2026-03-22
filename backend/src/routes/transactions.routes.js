@@ -11,12 +11,14 @@ import {
   validateTransactionsBatchIds,
 } from "../middlewares/validateObjectId.js"
 import { ensureResourceExists } from "../middlewares/authorizeScope.js"
+import { requirePermission } from "../middlewares/requirePermission.js"
 
 const router = Router()
 
 router.post(
   "/transactions/batch",
   requireAuth,
+  requirePermission("transactions:create"),
   validateTransactionsBatchIds,
   createTransactionsBatchController
 )
@@ -24,6 +26,7 @@ router.post(
 router.patch(
   "/transactions/:id",
   requireAuth,
+  requirePermission("transactions:update"),
   validateObjectIdParam("id"),
   ensureResourceExists({ collection: "transactions", from: "params", field: "id", assignKey: "transaction" }),
   updateTransactionByIdController
@@ -32,6 +35,7 @@ router.patch(
 router.get(
   "/transactions",
   requireAuth,
+  requirePermission("transactions:read"),
   validateObjectIdQuery("clientId"),
   ensureResourceExists({ collection: "clients", from: "query", field: "clientId", assignKey: "client" }),
   listTransactionsPaginatedController

@@ -7,6 +7,7 @@ import categoriesRoutes from "./categories.routes.js"
 import transactionsRoutes from "./transactions.routes.js"
 import userProfileRoutes from "./userProfile.routes.js"
 import profitLossRoutes from "./profitLoss.routes.js"
+import rolesRoutes from "./roles.routes.js"
 
 const router = Router()
 router.use(healthRoutes)
@@ -17,5 +18,6 @@ router.use(categoriesRoutes)
 router.use(transactionsRoutes)
 router.use(userProfileRoutes)
 router.use(profitLossRoutes)
+router.use(rolesRoutes)
 
 export default router
