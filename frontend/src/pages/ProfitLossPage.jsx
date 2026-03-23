@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useParams } from "react-router-dom"
-import { getClientById } from "../mocks/clients.mock"
-import { getProfitLossByClientIdAndPeriod } from "../mocks/profitLoss.mock"
+import { getClientById } from "../services/clients.service"
+import { getProfitLossByClientId } from "../services/profitLoss.service"
+import { useNotification } from "../contexts/notification.context"
 
 function formatCurrency(value) {
   return new Intl.NumberFormat("en-US", {
@@ -38,6 +39,7 @@ function formatPeriodLabel(value) {
 
 function ProfitLossPage() {
   const { clientId } = useParams()
+  const { error } = useNotification()
   const [period, setPeriod] = useState("MONTH")
   const [isManual, setIsManual] = useState(false)
   const [showPercentView, setShowPercentView] = useState(false)
@@ -45,25 +47,75 @@ function ProfitLossPage() {
   const [toDate, setToDate] = useState("2026-03-31")
   const [month, setMonth] = useState("2026-03")
   const [year, setYear] = useState("2026")
+  const [client, setClient] = useState(null)
+  const [profitLoss, setProfitLoss] = useState(null)
+  const [isLoadingProfitLoss, setIsLoadingProfitLoss] = useState(false)
 
   const monthOptions = useMemo(() => buildMonthOptions(), [])
   const yearOptions = useMemo(() => buildYearOptions(), [])
 
-  const client = useMemo(() => {
-    if (!clientId) return null
-    return getClientById(clientId)
+  useEffect(() => {
+    let active = true
+
+    if (!clientId) {
+      setClient(null)
+      return () => {
+        active = false
+      }
+    }
+
+    getClientById(clientId)
+      .then((clientData) => {
+        if (!active) return
+        setClient(clientData || null)
+      })
+      .catch(() => {
+        if (!active) return
+        setClient(null)
+      })
+
+    return () => {
+      active = false
+    }
   }, [clientId])
 
-  const profitLoss = useMemo(() => {
-    if (!clientId) return null
-    return getProfitLossByClientIdAndPeriod(clientId, {
+  useEffect(() => {
+    let active = true
+
+    if (!clientId) {
+      setProfitLoss(null)
+      return () => {
+        active = false
+      }
+    }
+
+    setIsLoadingProfitLoss(true)
+
+    getProfitLossByClientId(clientId, {
       period: isManual ? "RANGE" : period,
-      fromDate,
-      toDate,
       month,
       year,
+      fromDate,
+      toDate,
     })
-  }, [clientId, period, fromDate, toDate, month, year, isManual])
+      .then((payload) => {
+        if (!active) return
+        setProfitLoss(payload || null)
+      })
+      .catch((err) => {
+        if (!active) return
+        setProfitLoss(null)
+        error(err.message || "Failed to load profit and loss")
+      })
+      .finally(() => {
+        if (!active) return
+        setIsLoadingProfitLoss(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [clientId, period, month, year, fromDate, toDate, isManual])
 
   const revenueBase = useMemo(() => {
     const revenueLine = profitLoss?.statement.find((line) => line.id === "revenue")
@@ -91,16 +143,6 @@ function ProfitLossPage() {
     return "font-normal"
   }
 
-  if (!profitLoss) {
-    return (
-      <section className="w-full h-full min-h-0 p-8 overflow-auto">
-        <div className="max-w-5xl mx-auto rounded-lg border border-gray-200 p-4 text-sm text-gray-600">
-          Profit & Loss data not found for this client.
-        </div>
-      </section>
-    )
-  }
-
   return (
     <section className="w-full h-full min-h-0 p-8 overflow-auto">
       <div className="w-full flex flex-col gap-3">
@@ -112,7 +154,7 @@ function ProfitLossPage() {
                 {client ? client.name : "Unknown client"}
               </p>
               <p className="text-sm text-gray-500 mt-1">
-                Period: {formatPeriodLabel(profitLoss.period)}
+                Period: {profitLoss ? formatPeriodLabel(profitLoss.period) : (isLoadingProfitLoss ? "Loading..." : "-")}
               </p>
             </div>
 
@@ -227,104 +269,115 @@ function ProfitLossPage() {
           </div>
         </header>
 
-        <section className="w-full">
-          <article className="rounded-xl border border-gray-200 bg-white p-4">
-            <div className="m-3 w-full overflow-x-auto">
-              <div className="grid min-w-[900px] grid-cols-[minmax(170px,1fr)_32px_minmax(220px,1fr)_32px_minmax(220px,1fr)_32px_minmax(180px,1fr)] items-end gap-x-2">
-                <div className="text-center">
-                  <p className="text-xs text-gray-500 uppercase tracking-wide">Income</p>
-                  <p className="text-xl font-semibold text-gray-900">{formatCurrency(formula.income)}</p>
-                </div>
-                <span className="flex h-10 w-8 items-end justify-center pb-1 text-lg text-gray-500">-</span>
-                <div className="text-center">
-                  <p className="text-xs text-gray-500 uppercase tracking-wide">Cost Of Goods Sold</p>
-                  <p className="text-xl font-semibold text-gray-900">{formatCurrency(formula.costOfGoodsSold)}</p>
-                </div>
-                <span className="flex h-10 w-8 items-end justify-center pb-1 text-lg text-gray-500">-</span>
-                <div className="text-center">
-                  <p className="text-xs text-gray-500 uppercase tracking-wide">Operating Expenses</p>
-                  <p className="text-xl font-semibold text-gray-900">{formatCurrency(formula.operatingExpenses)}</p>
-                </div>
-                <span className="flex h-10 w-8 items-end justify-center pb-1 text-lg text-gray-500">=</span>
-                <div className="text-center">
-                  <p className="text-xs text-emerald-700 uppercase tracking-wide">Net Income</p>
-                  <p className="text-xl font-bold text-emerald-700">{formatCurrency(formula.netIncome)}</p>
-                </div>
-              </div>
-            </div>
-          </article>
-        </section>
+        {!profitLoss && !isLoadingProfitLoss && (
+          <div className="rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-600">
+            Profit & Loss data not found for this client.
+          </div>
+        )}
 
-        <section className="grid grid-cols-1 gap-4">
-          <article className="rounded-xl border border-gray-200 bg-white p-4">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-lg font-semibold">Statement</h2>
-              <button
-                type="button"
-                className={`rounded-md border px-2.5 py-1 text-sm font-semibold ${
-                  showPercentView
-                    ? "border-gray-900 bg-gray-900 text-white"
-                    : "border-gray-200 bg-white text-gray-700 hover:bg-gray-100"
-                }`}
-                onClick={() => setShowPercentView((value) => !value)}
-              >
-                %
-              </button>
-            </div>
-            <p className="text-sm text-gray-500">Revenue, costs, expenses and net income</p>
-
-            <div className="mt-4 rounded-lg border border-gray-100 overflow-hidden">
-              {!showPercentView && (
-                <>
-                  <div className="grid grid-cols-[minmax(0,1fr)_180px] bg-gray-50 px-3 py-2 text-xs uppercase tracking-wide font-semibold text-gray-500">
-                    <span>Line item</span>
-                    <span className="text-right">Amount</span>
+        {profitLoss && (
+          <div className="relative">
+            <section className="w-full">
+              <article className="rounded-xl border border-gray-200 bg-white p-4">
+                <div className="m-3 w-full overflow-x-auto">
+                  <div className="grid min-w-[900px] grid-cols-[minmax(170px,1fr)_32px_minmax(220px,1fr)_32px_minmax(220px,1fr)_32px_minmax(180px,1fr)] items-end gap-x-2">
+                    <div className="text-center">
+                      <p className="text-xs text-gray-500 uppercase tracking-wide">Income</p>
+                      <p className="text-xl font-semibold text-gray-900">{formatCurrency(formula.income)}</p>
+                    </div>
+                    <span className="flex h-10 w-8 items-end justify-center pb-1 text-lg text-gray-500">-</span>
+                    <div className="text-center">
+                      <p className="text-xs text-gray-500 uppercase tracking-wide">Cost Of Goods Sold</p>
+                      <p className="text-xl font-semibold text-gray-900">{formatCurrency(formula.costOfGoodsSold)}</p>
+                    </div>
+                    <span className="flex h-10 w-8 items-end justify-center pb-1 text-lg text-gray-500">-</span>
+                    <div className="text-center">
+                      <p className="text-xs text-gray-500 uppercase tracking-wide">Operating Expenses</p>
+                      <p className="text-xl font-semibold text-gray-900">{formatCurrency(formula.operatingExpenses)}</p>
+                    </div>
+                    <span className="flex h-10 w-8 items-end justify-center pb-1 text-lg text-gray-500">=</span>
+                    <div className="text-center">
+                      <p className="text-xs text-emerald-700 uppercase tracking-wide">Net Income</p>
+                      <p className="text-xl font-bold text-emerald-700">{formatCurrency(formula.netIncome)}</p>
+                    </div>
                   </div>
+                </div>
+              </article>
+            </section>
 
-                  <div>
-                    {profitLoss.statement.map((line, index) => (
-                      <div
-                        key={line.id}
-                        className={`grid grid-cols-[minmax(0,1fr)_180px] items-center px-3 py-2 text-sm ${index % 2 === 0 ? "bg-gray-100" : "bg-white"}`}
-                      >
-                        <span className={`${line.level === 1 ? "pl-4" : ""} ${getLineWeightClass(line.type)} ${line.type === "item" ? "text-gray-700" : ""}`}>
-                          {line.label}
-                        </span>
-                        <span className={`text-right ${getLineWeightClass(line.type)} ${line.amount < 0 ? "text-rose-600" : "text-gray-900"}`}>
-                          {formatCurrency(line.amount)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
+            <section className="grid grid-cols-1 gap-4">
+              <article className="rounded-xl border border-gray-200 bg-white p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="text-lg font-semibold">Statement</h2>
+                  <button
+                    type="button"
+                    className={`rounded-md border px-2.5 py-1 text-sm font-semibold ${
+                      showPercentView
+                        ? "border-gray-900 bg-gray-900 text-white"
+                        : "border-gray-200 bg-white text-gray-700 hover:bg-gray-100"
+                    }`}
+                    onClick={() => setShowPercentView((value) => !value)}
+                  >
+                    %
+                  </button>
+                </div>
+                <p className="text-sm text-gray-500">Revenue, costs, expenses and net income</p>
 
-              {showPercentView && (
-                <div className="space-y-2 p-3">
-                  {profitLoss.statement.map((line) => {
-                    const percentage = Math.round((Math.abs(line.amount) / revenueBase) * 100)
-                    return (
-                      <div key={line.id} className="space-y-1">
-                        <div className="flex items-center justify-between gap-2 text-sm">
+                <div className="mt-4 rounded-lg border border-gray-100 overflow-hidden">
+                  {!showPercentView && (
+                    <div>
+                      {profitLoss.statement.map((line, index) => (
+                        <div
+                          key={line.id}
+                          className={`grid grid-cols-[minmax(0,1fr)_180px] items-center px-3 py-2 text-sm ${index % 2 === 0 ? "bg-gray-100" : "bg-white"}`}
+                        >
                           <span className={`${line.level === 1 ? "pl-4" : ""} ${getLineWeightClass(line.type)} ${line.type === "item" ? "text-gray-700" : ""}`}>
                             {line.label}
                           </span>
-                          <span className={`${getLineWeightClass(line.type)} text-gray-900`}>{percentage}%</span>
+                          <span className={`text-right ${getLineWeightClass(line.type)} ${line.amount < 0 ? "text-rose-600" : "text-gray-900"}`}>
+                            {formatCurrency(line.amount)}
+                          </span>
                         </div>
-                        <div className="h-2 w-full rounded-full bg-gray-100">
-                          <div
-                            className={`h-2 rounded-full ${line.amount < 0 ? "bg-rose-500" : "bg-emerald-500"}`}
-                            style={{ width: `${Math.min(100, percentage)}%` }}
-                          />
-                        </div>
-                      </div>
-                    )
-                  })}
+                      ))}
+                    </div>
+                  )}
+
+                  {showPercentView && (
+                    <div className="space-y-2 p-3">
+                      {profitLoss.statement.map((line) => {
+                        const percentage = Math.round((Math.abs(line.amount) / revenueBase) * 100)
+                        return (
+                          <div key={line.id} className="space-y-1">
+                            <div className="flex items-center justify-between gap-2 text-sm">
+                              <span className={`${line.level === 1 ? "pl-4" : ""} ${getLineWeightClass(line.type)} ${line.type === "item" ? "text-gray-700" : ""}`}>
+                                {line.label}
+                              </span>
+                              <span className={`${getLineWeightClass(line.type)} text-gray-900`}>{percentage}%</span>
+                            </div>
+                            <div className="h-2 w-full rounded-full bg-gray-100">
+                              <div
+                                className={`h-2 rounded-full ${line.amount < 0 ? "bg-rose-500" : "bg-emerald-500"}`}
+                                style={{ width: `${Math.min(100, percentage)}%` }}
+                              />
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          </article>
-        </section>
+              </article>
+            </section>
+
+            {isLoadingProfitLoss && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-white/55 backdrop-blur-[1px]">
+                <div className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 shadow-sm">
+                  Updating report...
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </section>
   )
