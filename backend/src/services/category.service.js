@@ -3,6 +3,7 @@ import {
   updateCategoryById,
   listCategoriesByClientId,
   getCategoryById,
+  deleteCategoryById,
 } from "../repositories/category.repository.js"
 
 export async function createCategoryService(input) {
@@ -64,4 +65,9 @@ export async function listCategoriesByClientIdService(clientId) {
 export async function getCategoryByIdService(id) {
   if (!id) throw new Error("id is required")
   return getCategoryById(id)
+}
+
+export async function deleteCategoryByIdService(id) {
+  if (!id) throw new Error("id is required")
+  return deleteCategoryById(id)
 }

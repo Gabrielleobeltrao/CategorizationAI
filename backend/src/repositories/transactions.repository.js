@@ -3,6 +3,10 @@ import { getDB } from "../db.js"
 
 const BATCH_SIZE = 1000
 
+function escapeRegex(value = "") {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
 // cria índice uma vez (chame no startup ou antes do primeiro uso)
 export async function ensureTransactionsIndexes() {
   const db = getDB()
@@ -69,11 +73,17 @@ export async function updateTransactionById(id, patch) {
     )
 }
 
+export async function deleteTransactionById(id) {
+  const db = getDB()
+  return db.collection("transactions").deleteOne({ _id: new ObjectId(id) })
+}
+
 // busca paginada
 export async function listTransactionsPaginated({
   clientId,
   page = 1,
   limit = 50,
+  search = "",
 }) {
   const db = getDB()
   const collection = db.collection("transactions")
@@ -82,8 +92,17 @@ export async function listTransactionsPaginated({
   const safeLimit = Math.min(200, Math.max(1, Number(limit) || 50))
   const skip = (safePage - 1) * safeLimit
 
-  const filter = {
-    clientId,
+  const filter = { clientId }
+  const safeSearch = String(search || "").trim()
+
+  if (safeSearch) {
+    const regex = new RegExp(escapeRegex(safeSearch), "i")
+    filter.$or = [
+      { description: regex },
+      { accountName: regex },
+      { category: regex },
+      { date: regex },
+    ]
   }
 
   const [items, total] = await Promise.all([

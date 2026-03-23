@@ -3,6 +3,7 @@ import {
   createTransactionsBatchController,
   updateTransactionByIdController,
   listTransactionsPaginatedController,
+  deleteTransactionByIdController,
 } from "../controllers/transactions.controller.js"
 import { requireAuth } from "../middlewares/requireAuth.js"
 import {
@@ -39,6 +40,15 @@ router.get(
   validateObjectIdQuery("clientId"),
   ensureResourceExists({ collection: "clients", from: "query", field: "clientId", assignKey: "client" }),
   listTransactionsPaginatedController
+)
+
+router.delete(
+  "/transactions/:id",
+  requireAuth,
+  requirePermission("transactions:delete"),
+  validateObjectIdParam("id"),
+  ensureResourceExists({ collection: "transactions", from: "params", field: "id", assignKey: "transaction" }),
+  deleteTransactionByIdController
 )
 
 export default router

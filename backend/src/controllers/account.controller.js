@@ -3,6 +3,7 @@ import {
   updateAccountByIdService,
   listAccountsByClientIdService,
   getAccountByIdService,
+  deleteAccountByIdService,
 } from "../services/account.service.js"
 
 export async function createAccountController(req, res) {
@@ -52,6 +53,18 @@ export async function getAccountByIdController(req, res) {
     }
 
     return res.status(200).json(account)
+  } catch (error) {
+    return res.status(400).json({
+      message: error.message,
+    })
+  }
+}
+
+export async function deleteAccountByIdController(req, res) {
+  try {
+    const { id } = req.params
+    await deleteAccountByIdService(id)
+    return res.status(204).send()
   } catch (error) {
     return res.status(400).json({
       message: error.message,

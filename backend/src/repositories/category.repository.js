@@ -58,3 +58,8 @@ export async function getCategoryById(id) {
     const db = getDB()
     return db.collection("categories").findOne({_id: new ObjectId(id)})
 }
+
+export async function deleteCategoryById(id) {
+    const db = getDB()
+    return db.collection("categories").deleteOne({ _id: new ObjectId(id) })
+}

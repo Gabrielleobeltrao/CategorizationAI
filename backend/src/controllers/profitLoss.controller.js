@@ -3,14 +3,15 @@ import { getProfitLossByClientIdService } from "../services/profitLoss.service.j
 export async function getProfitLossByClientIdController(req, res) {
   try {
     const { clientId } = req.params
-    const { period, day, month, year } = req.query
+    const { period, month, year, fromDate, toDate } = req.query
 
     const result = await getProfitLossByClientIdService({
       clientId,
       period,
-      day,
       month,
       year,
+      fromDate,
+      toDate,
     })
 
     return res.status(200).json(result)

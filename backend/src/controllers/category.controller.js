@@ -3,6 +3,7 @@ import {
   updateCategoryByIdService,
   listCategoriesByClientIdService,
   getCategoryByIdService,
+  deleteCategoryByIdService,
 } from "../services/category.service.js"
 
 export async function createCategoryController(req, res) {
@@ -52,6 +53,18 @@ export async function getCategoryByIdController(req, res) {
     }
 
     return res.status(200).json(category)
+  } catch (error) {
+    return res.status(400).json({
+      message: error.message,
+    })
+  }
+}
+
+export async function deleteCategoryByIdController(req, res) {
+  try {
+    const { id } = req.params
+    await deleteCategoryByIdService(id)
+    return res.status(204).send()
   } catch (error) {
     return res.status(400).json({
       message: error.message,

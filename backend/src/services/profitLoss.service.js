@@ -4,12 +4,9 @@ function toDateString(date) {
   return date.toISOString().slice(0, 10)
 }
 
-function getRangeByPeriod({ period, day, month, year }) {
-  if (period === "DAY") {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(day || ""))) {
-      throw new Error("day must be in YYYY-MM-DD format")
-    }
-    return { startDate: day, endDate: day, periodLabel: `DAY:${day}` }
+function getRangeByPeriod({ period, month, year, fromDate, toDate }) {
+  if (period === "ALL") {
+    return { startDate: null, endDate: null, periodLabel: "ALL" }
   }
 
   if (period === "MONTH") {
@@ -42,29 +39,57 @@ function getRangeByPeriod({ period, day, month, year }) {
     }
   }
 
+  if (period === "RANGE") {
+    const safeFrom = String(fromDate || "").trim()
+    const safeTo = String(toDate || "").trim()
+    const validFormat = /^\d{4}-\d{2}-\d{2}$/
+
+    if (!validFormat.test(safeFrom) || !validFormat.test(safeTo)) {
+      throw new Error("fromDate and toDate must be in YYYY-MM-DD format")
+    }
+
+    if (safeFrom > safeTo) {
+      throw new Error("fromDate cannot be greater than toDate")
+    }
+
+    return {
+      startDate: safeFrom,
+      endDate: safeTo,
+      periodLabel: `RANGE:${safeFrom}->${safeTo}`,
+    }
+  }
+
   throw new Error("invalid period")
 }
 
-export async function getProfitLossByClientIdService({ clientId, period, day, month, year }) {
+export async function getProfitLossByClientIdService({
+  clientId,
+  period,
+  month,
+  year,
+  fromDate,
+  toDate,
+}) {
   if (!clientId) throw new Error("clientId is required")
 
   const normalizedPeriod = String(period || "MONTH").toUpperCase()
 
-  if (!["DAY", "MONTH", "YEAR"].includes(normalizedPeriod)) {
-    throw new Error("period must be one of: DAY, MONTH, YEAR")
+  if (!["ALL", "MONTH", "YEAR", "RANGE"].includes(normalizedPeriod)) {
+    throw new Error("period must be one of: ALL, MONTH, YEAR, RANGE")
   }
 
   const range = getRangeByPeriod({
     period: normalizedPeriod,
-    day,
     month,
     year,
+    fromDate,
+    toDate,
   })
 
   return getProfitLossByClientAndRange({
     clientId,
     startDate: range.startDate,
     endDate: range.endDate,
-    periodLabel: normalizedPeriod,
+    periodLabel: range.periodLabel,
   })
 }

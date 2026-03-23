@@ -3,6 +3,7 @@ import {
   updateAccountById,
   listAccountsByClientId,
   getAccountById,
+  deleteAccountById,
 } from "../repositories/account.repository.js"
 
 export async function createAccountService(input) {
@@ -56,4 +57,9 @@ export async function listAccountsByClientIdService(clientId) {
 export async function getAccountByIdService(id) {
   if (!id) throw new Error("id is required")
   return getAccountById(id)
+}
+
+export async function deleteAccountByIdService(id) {
+  if (!id) throw new Error("id is required")
+  return deleteAccountById(id)
 }

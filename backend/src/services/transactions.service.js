@@ -2,6 +2,7 @@ import {
   insertTransactionsInBatches,
   updateTransactionById,
   listTransactionsPaginated,
+  deleteTransactionById,
 } from "../repositories/transactions.repository.js"
 
 export async function createTransactionsBatchService(transactions) {
@@ -45,6 +46,7 @@ export async function listTransactionsPaginatedService(query) {
   const clientId = query?.clientId
   const page = query?.page
   const limit = query?.limit
+  const search = String(query?.search || "").trim().slice(0, 100)
 
   if (!clientId) throw new Error("clientId is required")
 
@@ -52,5 +54,11 @@ export async function listTransactionsPaginatedService(query) {
     clientId,
     page,
     limit,
+    search,
   })
+}
+
+export async function deleteTransactionByIdService(id) {
+  if (!id) throw new Error("id is required")
+  return deleteTransactionById(id)
 }

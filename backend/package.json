@@ -9,7 +9,8 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
-    "set:user-office": "node scripts/setUserProfileOffice.js"
+    "set:user-office": "node scripts/setUserProfileOffice.js",
+    "seed:client-ledger": "node scripts/seedClientLedgerData.js"
   },
   "keywords": [],
   "author": "",

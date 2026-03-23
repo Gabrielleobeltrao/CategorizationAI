@@ -4,6 +4,7 @@ import {
   updateAccountByIdController,
   listAccountsByClientIdController,
   getAccountByIdController,
+  deleteAccountByIdController,
 } from "../controllers/account.controller.js"
 import { requireAuth } from "../middlewares/requireAuth.js"
 import {
@@ -49,6 +50,15 @@ router.get(
   validateObjectIdParam("id"),
   ensureResourceExists({ collection: "account", from: "params", field: "id", assignKey: "account" }),
   getAccountByIdController
+)
+
+router.delete(
+  "/accounts/:id",
+  requireAuth,
+  requirePermission("accounts:delete"),
+  validateObjectIdParam("id"),
+  ensureResourceExists({ collection: "account", from: "params", field: "id", assignKey: "account" }),
+  deleteAccountByIdController
 )
 
 export default router

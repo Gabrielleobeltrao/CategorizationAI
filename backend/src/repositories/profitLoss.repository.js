@@ -6,15 +6,45 @@ function monthLabel(dateString) {
   return date.toLocaleString("en-US", { month: "short", timeZone: "UTC" })
 }
 
+function statementId(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+}
+
+function isCogsCategory(type) {
+  const normalized = String(type || "").toLowerCase()
+  return normalized.includes("cost") || normalized.includes("cogs")
+}
+
+function normalizeAmount(value) {
+  return Math.round(Number(value || 0))
+}
+
+function buildExpenseItems(mapByCategory) {
+  return Array.from(mapByCategory.entries())
+    .map(([label, amount]) => ({
+      id: statementId(label),
+      label,
+      amount: -normalizeAmount(amount),
+      level: 1,
+      type: "item",
+    }))
+    .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
+}
+
 export async function getProfitLossByClientAndRange({ clientId, startDate, endDate, periodLabel }) {
   const db = getDB()
 
+  const baseFilter = { clientId }
+  if (startDate && endDate) {
+    baseFilter.date = { $gte: startDate, $lte: endDate }
+  }
+
   const transactions = await db
     .collection("transactions")
-    .find({
-      clientId,
-      date: { $gte: startDate, $lte: endDate },
-    })
+    .find(baseFilter)
     .sort({ date: 1 })
     .toArray()
 
@@ -33,19 +63,29 @@ export async function getProfitLossByClientAndRange({ clientId, startDate, endDa
         .toArray()
     : []
 
-  const categoryTypeById = new Map(categories.map((c) => [String(c._id), c.type]))
+  const categoryMap = new Map(
+    categories.map((item) => [
+      String(item._id),
+      {
+        name: item.name || "Uncategorized",
+        type: item.type || "",
+      },
+    ])
+  )
 
   let revenue = 0
   let cogs = 0
   let operatingExpenses = 0
 
-  const expenseByCategory = new Map()
+  const cogsByCategory = new Map()
+  const operatingByCategory = new Map()
   const netByMonth = new Map()
 
   for (const tx of transactions) {
     const amount = Number(tx.amount) || 0
-    const categoryType = tx.categoryId ? categoryTypeById.get(String(tx.categoryId)) : undefined
-    const categoryName = tx.category || "Uncategorized"
+    const categoryRef = tx.categoryId ? categoryMap.get(String(tx.categoryId)) : null
+    const categoryName = tx.category || categoryRef?.name || "Uncategorized"
+    const categoryType = categoryRef?.type || ""
     const keyMonth = monthLabel(tx.date)
 
     if (amount < 0) {
@@ -56,15 +96,13 @@ export async function getProfitLossByClientAndRange({ clientId, startDate, endDa
     }
 
     const expense = Math.abs(amount)
-    const isCogs = typeof categoryType === "string" && categoryType.toLowerCase().includes("cost")
-
-    if (isCogs) {
+    if (isCogsCategory(categoryType)) {
       cogs += expense
+      cogsByCategory.set(categoryName, (cogsByCategory.get(categoryName) || 0) + expense)
     } else {
       operatingExpenses += expense
+      operatingByCategory.set(categoryName, (operatingByCategory.get(categoryName) || 0) + expense)
     }
-
-    expenseByCategory.set(categoryName, (expenseByCategory.get(categoryName) || 0) + expense)
     netByMonth.set(keyMonth, (netByMonth.get(keyMonth) || 0) - expense)
   }
 
@@ -72,38 +110,37 @@ export async function getProfitLossByClientAndRange({ clientId, startDate, endDa
   const operatingIncome = grossProfit - operatingExpenses
   const netIncome = operatingIncome
 
-  const expenseMixRaw = Array.from(expenseByCategory.entries())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 6)
+  const cogsItems = buildExpenseItems(cogsByCategory)
+  const operatingItems = buildExpenseItems(operatingByCategory)
 
-  const totalExpenses = cogs + operatingExpenses
+  const statement = [
+    { id: "revenue", label: "Revenue", amount: normalizeAmount(revenue), level: 0, type: "group" },
+    { id: "service_income", label: "Service Income", amount: normalizeAmount(revenue), level: 1, type: "item" },
+    { id: "cogs", label: "Cost of Goods Sold", amount: -normalizeAmount(cogs), level: 0, type: "group" },
+    ...cogsItems,
+    { id: "gross_total", label: "Gross Profit", amount: normalizeAmount(grossProfit), level: 0, type: "total" },
+    { id: "opex", label: "Operating Expenses", amount: -normalizeAmount(operatingExpenses), level: 0, type: "group" },
+    ...operatingItems,
+    { id: "op_total", label: "Operating Income", amount: normalizeAmount(operatingIncome), level: 0, type: "total" },
+    { id: "net_total", label: "Net Income", amount: normalizeAmount(netIncome), level: 0, type: "total" },
+  ]
 
-  const expenseMix = expenseMixRaw.map(([name, value]) => ({
-    name,
-    value: totalExpenses > 0 ? Math.round((value / totalExpenses) * 100) : 0,
+  const monthlyNet = Array.from(netByMonth.entries()).map(([month, amount]) => ({
+    month,
+    amount: normalizeAmount(amount),
   }))
-
-  const monthlyNet = Array.from(netByMonth.entries()).map(([month, amount]) => ({ month, amount }))
 
   return {
     period: periodLabel,
-    periodStart: startDate,
-    periodEnd: endDate,
+    periodStart: startDate || null,
+    periodEnd: endDate || null,
     kpis: [
-      { id: "revenue", label: "Revenue", value: Math.round(revenue) },
-      { id: "gross_profit", label: "Gross Profit", value: Math.round(grossProfit) },
-      { id: "operating_income", label: "Operating Income", value: Math.round(operatingIncome) },
-      { id: "net_income", label: "Net Income", value: Math.round(netIncome) },
+      { id: "revenue", label: "Revenue", value: normalizeAmount(revenue) },
+      { id: "gross_profit", label: "Gross Profit", value: normalizeAmount(grossProfit) },
+      { id: "operating_income", label: "Operating Income", value: normalizeAmount(operatingIncome) },
+      { id: "net_income", label: "Net Income", value: normalizeAmount(netIncome) },
     ],
-    statement: [
-      { id: "revenue", label: "Revenue", amount: Math.round(revenue), level: 0, type: "group" },
-      { id: "cogs", label: "Cost of Goods Sold", amount: -Math.round(cogs), level: 0, type: "group" },
-      { id: "gross_total", label: "Gross Profit", amount: Math.round(grossProfit), level: 0, type: "total" },
-      { id: "opex", label: "Operating Expenses", amount: -Math.round(operatingExpenses), level: 0, type: "group" },
-      { id: "op_total", label: "Operating Income", amount: Math.round(operatingIncome), level: 0, type: "total" },
-      { id: "net_total", label: "Net Income", amount: Math.round(netIncome), level: 0, type: "total" },
-    ],
+    statement,
     monthlyNet,
-    expenseMix,
   }
 }
