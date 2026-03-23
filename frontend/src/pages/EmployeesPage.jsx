@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from "react"
 import PopupModal from "../components/ui/PopupModal"
-import { getEmployeesByOfficeId } from "../mocks/employees.mock"
+import ConfirmModal from "../components/ui/ConfirmModal"
 import {
     createEmployeeAccount,
+    deleteEmployeeById,
     getMyUserProfile,
     listAvailableRoles,
     listEmployeesByOfficeId,
+    updateEmployeeById,
 } from "../services/employees.service"
+import { useNotification } from "../contexts/notification.context"
 
 const fallbackRoles = [
     { key: "viewer", label: "Viewer", description: "Can only view data. Cannot create, update or delete records." },
@@ -17,49 +20,70 @@ const fallbackRoles = [
 
 function EmployeesPage() {
     const [officeId, setOfficeId] = useState("")
+    const [currentUserProfile, setCurrentUserProfile] = useState(null)
 
     const [showEmployeeForm, setShowEmployeeForm] = useState(false)
+    const [showEditEmployeeForm, setShowEditEmployeeForm] = useState(false)
     const [newEmployeeName, setNewEmployeeName] = useState("")
     const [newEmployeeEmail, setNewEmployeeEmail] = useState("")
     const [newEmployeePassword, setNewEmployeePassword] = useState("")
     const [newEmployeeRole, setNewEmployeeRole] = useState("")
+    const [editingEmployeeId, setEditingEmployeeId] = useState("")
+    const [editingEmployeeName, setEditingEmployeeName] = useState("")
+    const [editingEmployeeEmail, setEditingEmployeeEmail] = useState("")
+    const [editingEmployeeRole, setEditingEmployeeRole] = useState("")
+    const [editingEmployeeStatus, setEditingEmployeeStatus] = useState("active")
+    const [employeeToDelete, setEmployeeToDelete] = useState(null)
     const [employees, setEmployees] = useState([])
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [isLoadingEmployees, setIsLoadingEmployees] = useState(false)
-    const [formError, setFormError] = useState("")
-    const [formSuccess, setFormSuccess] = useState("")
-    const [loadError, setLoadError] = useState("")
-    const [profileError, setProfileError] = useState("")
     const [isLoadingProfile, setIsLoadingProfile] = useState(true)
     const [roles, setRoles] = useState([])
-    const [rolesError, setRolesError] = useState("")
     const [isLoadingRoles, setIsLoadingRoles] = useState(false)
     const [refreshKey, setRefreshKey] = useState(0)
     const displayedRoles = roles.length > 0 ? roles : fallbackRoles
+    const { success, error } = useNotification()
+    const roleOrder = ["owner", "manager", "staff", "viewer"]
 
-    const employeesFromMocks = useMemo(() => {
-        if (!officeId) return []
-        return getEmployeesByOfficeId(officeId)
-    }, [officeId])
+    const groupedEmployees = useMemo(() => {
+        const groups = {}
 
-    useEffect(() => {
-        setEmployees(employeesFromMocks)
-    }, [employeesFromMocks])
+        displayedRoles.forEach((roleItem) => {
+            groups[roleItem.key] = []
+        })
+
+        employees.forEach((employee) => {
+            const roleKey = String(employee.role || "staff").toLowerCase()
+            if (!groups[roleKey]) groups[roleKey] = []
+            groups[roleKey].push(employee)
+        })
+
+        Object.keys(groups).forEach((roleKey) => {
+            groups[roleKey] = [...groups[roleKey]].sort((a, b) => {
+                const nameA = String(a.name || "").toLowerCase()
+                const nameB = String(b.name || "").toLowerCase()
+                return nameA.localeCompare(nameB)
+            })
+        })
+
+        return groups
+    }, [employees, displayedRoles])
 
     useEffect(() => {
         let active = true
         setIsLoadingProfile(true)
-        setProfileError("")
 
         getMyUserProfile()
             .then((profile) => {
                 if (!active) return
                 setOfficeId(profile?.officeId || "")
+                setCurrentUserProfile(profile || null)
             })
-            .catch((error) => {
+            .catch((err) => {
                 if (!active) return
-                setProfileError(error.message || "Failed to load current profile")
+                error(err.message || "Failed to load current profile")
                 setOfficeId("")
+                setCurrentUserProfile(null)
             })
             .finally(() => {
                 if (!active) return
@@ -74,7 +98,6 @@ function EmployeesPage() {
     useEffect(() => {
         let active = true
         setIsLoadingRoles(true)
-        setRolesError("")
 
         listAvailableRoles()
             .then((items) => {
@@ -85,9 +108,9 @@ function EmployeesPage() {
                 const defaultRole = safeItems.find((item) => item.key === "staff")?.key || safeItems[0]?.key || "staff"
                 setNewEmployeeRole(defaultRole)
             })
-            .catch((error) => {
+            .catch((err) => {
                 if (!active) return
-                setRolesError(error.message || "Failed to load roles")
+                error(err.message || "Failed to load roles")
                 setNewEmployeeRole("staff")
             })
             .finally(() => {
@@ -104,14 +127,12 @@ function EmployeesPage() {
         let active = true
 
         if (!officeId) {
-            setLoadError("")
             return () => {
                 active = false
             }
         }
 
         setIsLoadingEmployees(true)
-        setLoadError("")
 
         listEmployeesByOfficeId(officeId)
             .then((profiles) => {
@@ -124,16 +145,16 @@ function EmployeesPage() {
                         name: profile?.name || "",
                         email: profile?.email || "Email not available",
                         role: profile?.role || "staff",
-                        status: "active",
+                        status: profile?.status || "active",
                     }))
                     : []
 
                 setEmployees(mapped)
             })
-            .catch((error) => {
+            .catch((err) => {
                 if (!active) return
-                setLoadError(error.message || "Failed to load employees")
-                setEmployees(employeesFromMocks)
+                error(err.message || "Failed to load employees")
+                setEmployees([])
             })
             .finally(() => {
                 if (!active) return
@@ -143,12 +164,10 @@ function EmployeesPage() {
         return () => {
             active = false
         }
-    }, [officeId, employeesFromMocks, refreshKey])
+    }, [officeId, refreshKey])
 
     const handleCreateEmployee = async (e) => {
         e.preventDefault()
-        setFormError("")
-        setFormSuccess("")
 
         try {
             setIsSubmitting(true)
@@ -173,17 +192,101 @@ function EmployeesPage() {
                 },
             ])
 
-            setFormSuccess("Employee created successfully")
+            success("Employee created successfully")
             setNewEmployeeName("")
             setNewEmployeeEmail("")
             setNewEmployeePassword("")
             setNewEmployeeRole("staff")
             setShowEmployeeForm(false)
             setRefreshKey((current) => current + 1)
-        } catch (error) {
-            setFormError(error.message || "Failed to create employee")
+        } catch (err) {
+            error(err.message || "Failed to create employee")
         } finally {
             setIsSubmitting(false)
+        }
+    }
+
+    const startEditEmployee = (employeeItem) => {
+        setEditingEmployeeId(employeeItem.id)
+        setEditingEmployeeName(employeeItem.name || "")
+        setEditingEmployeeEmail(employeeItem.email || "")
+        setEditingEmployeeRole(employeeItem.role || "staff")
+        setEditingEmployeeStatus(employeeItem.status || "active")
+        setShowEditEmployeeForm(true)
+    }
+
+    const handleUpdateEmployee = async (e) => {
+        e.preventDefault()
+
+        try {
+            setIsSubmitting(true)
+
+            const updated = await updateEmployeeById(editingEmployeeId, {
+                name: editingEmployeeName,
+                email: editingEmployeeEmail,
+                role: editingEmployeeRole || "staff",
+                status: editingEmployeeStatus || "active",
+            })
+
+            setEmployees((current) =>
+                current.map((item) =>
+                    item.id === editingEmployeeId
+                        ? {
+                            ...item,
+                            name: updated?.name || editingEmployeeName,
+                            email: updated?.email || editingEmployeeEmail,
+                            role: updated?.role || editingEmployeeRole,
+                            status: updated?.status || editingEmployeeStatus,
+                        }
+                        : item
+                )
+            )
+
+            success("Employee updated successfully")
+            setShowEditEmployeeForm(false)
+            setEditingEmployeeId("")
+            setRefreshKey((current) => current + 1)
+        } catch (err) {
+            error(err.message || "Failed to update employee")
+        } finally {
+            setIsSubmitting(false)
+        }
+    }
+
+    const handleDeleteEmployee = async () => {
+        if (!employeeToDelete?.id) return
+        try {
+            setIsSubmitting(true)
+            await deleteEmployeeById(employeeToDelete.id)
+            setEmployees((current) => current.filter((item) => item.id !== employeeToDelete.id))
+            success("Employee deleted successfully")
+            setEmployeeToDelete(null)
+        } catch (err) {
+            error(err.message || "Failed to delete employee")
+        } finally {
+            setIsSubmitting(false)
+        }
+    }
+
+    const handleToggleEmployeeStatus = async (employeeItem) => {
+        const nextStatus = employeeItem.status === "inactive" ? "active" : "inactive"
+
+        try {
+            const updated = await updateEmployeeById(employeeItem.id, {
+                status: nextStatus,
+            })
+
+            setEmployees((current) =>
+                current.map((item) =>
+                    item.id === employeeItem.id
+                        ? { ...item, status: updated?.status || nextStatus }
+                        : item
+                )
+            )
+
+            success(`Employee ${nextStatus === "active" ? "activated" : "deactivated"} successfully`)
+        } catch (err) {
+            error(err.message || "Failed to update employee status")
         }
     }
 
@@ -193,9 +296,6 @@ function EmployeesPage() {
                 <header className="flex items-start justify-between gap-3">
                     <div>
                         <h1 className="text-3xl font-bold">Employees</h1>
-                        <p className="text-sm text-gray-500">
-                            Office: {officeId || "not defined"}
-                        </p>
                     </div>
                     <button
                         className="bg-gray-100 rounded-full px-4 py-2 text-sm font-medium"
@@ -205,20 +305,81 @@ function EmployeesPage() {
                     </button>
                 </header>
 
-                <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {employees.map((employeeItem) => (
-                        <article
-                            key={employeeItem.id}
-                        className="border border-gray-200 rounded-lg p-4"
-                    >
-                        <h2 className="text-lg font-semibold">{employeeItem.name}</h2>
-                        <p className="text-sm text-gray-600">{employeeItem.email}</p>
-                        <p className="text-sm text-gray-500">Role: {employeeItem.role}</p>
-                            <p className="text-xs uppercase tracking-wide text-gray-400">
-                                Status: {employeeItem.status}
-                            </p>
-                        </article>
-                    ))}
+                <section className="flex flex-col gap-6">
+                    {roleOrder.map((roleKey) => {
+                        const roleMeta = displayedRoles.find((item) => item.key === roleKey)
+                        const roleLabel = roleMeta?.label || roleKey
+                        const roleEmployees = groupedEmployees[roleKey] || []
+
+                        if (roleEmployees.length === 0) return null
+
+                        return (
+                            <section key={roleKey} className="flex flex-col gap-3">
+                                <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                                    <h3 className="text-base font-semibold">{roleLabel}</h3>
+                                    <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600">
+                                        {roleEmployees.length}
+                                    </span>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {roleEmployees.map((employeeItem) => {
+                                        const currentEmail = String(currentUserProfile?.email || "").toLowerCase()
+                                        const itemEmail = String(employeeItem.email || "").toLowerCase()
+                                        const currentId = String(currentUserProfile?._id || "")
+                                        const itemId = String(employeeItem.id || "")
+                                        const isCurrentUser = (currentEmail && currentEmail === itemEmail) || (currentId && currentId === itemId)
+
+                                        return (
+                                            <article
+                                                key={employeeItem.id}
+                                                className="border border-gray-200 rounded-lg p-4"
+                                            >
+                                                <h2 className="text-lg font-semibold">{employeeItem.name}</h2>
+                                                <p className="text-sm text-gray-600">{employeeItem.email}</p>
+                                                <p className="text-sm text-gray-500">Role: {employeeItem.role}</p>
+                                                <p className="text-xs uppercase tracking-wide text-gray-400">
+                                                    Status: {employeeItem.status}
+                                                </p>
+                                                {!isCurrentUser && (
+                                                    <div className="mt-3 flex items-center gap-2">
+                                                        <button
+                                                            type="button"
+                                                            className={`relative inline-flex h-6 w-12 items-center rounded-full transition ${
+                                                                employeeItem.status === "active" ? "bg-emerald-500" : "bg-gray-300"
+                                                            }`}
+                                                            onClick={() => handleToggleEmployeeStatus(employeeItem)}
+                                                            title={employeeItem.status === "active" ? "Deactivate employee" : "Activate employee"}
+                                                            aria-label={employeeItem.status === "active" ? "Deactivate employee" : "Activate employee"}
+                                                        >
+                                                            <span
+                                                                className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${
+                                                                    employeeItem.status === "active" ? "translate-x-6" : "translate-x-1"
+                                                                }`}
+                                                            />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="rounded-md border border-gray-200 px-3 py-1.5 text-xs font-medium hover:bg-gray-50"
+                                                            onClick={() => startEditEmployee(employeeItem)}
+                                                        >
+                                                            Edit
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="rounded-md border border-rose-200 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50"
+                                                            onClick={() => setEmployeeToDelete(employeeItem)}
+                                                        >
+                                                            Delete
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </article>
+                                        )
+                                    })}
+                                </div>
+                            </section>
+                        )
+                    })}
                 </section>
 
                 {isLoadingEmployees && (
@@ -231,18 +392,6 @@ function EmployeesPage() {
                     <p className="text-sm text-gray-500">
                         No employees found for this office
                     </p>
-                )}
-
-                {loadError && (
-                    <p className="text-sm text-amber-700">{loadError}</p>
-                )}
-
-                {profileError && (
-                    <p className="text-sm text-amber-700">{profileError}</p>
-                )}
-
-                {formSuccess && (
-                    <p className="text-sm text-emerald-700">{formSuccess}</p>
                 )}
 
                 <PopupModal
@@ -284,18 +433,72 @@ function EmployeesPage() {
                                 </option>
                             ))}
                         </select>
-                        {rolesError && <p className="text-sm text-amber-700">{rolesError}</p>}
                         {displayedRoles.length > 0 && (
                             <div className="rounded-md border border-gray-100 bg-gray-50 px-3 py-2 text-xs text-gray-700">
                                 {displayedRoles.find((role) => role.key === newEmployeeRole)?.description || "Select a role"}
                             </div>
                         )}
-                        {formError && <p className="text-sm text-red-600">{formError}</p>}
                         <button className="bg-gray-100 rounded-full p-2" type="submit" disabled={isSubmitting || isLoadingProfile || !officeId}>
                             {isSubmitting ? "Saving..." : "Save Employee"}
                         </button>
                     </form>
                 </PopupModal>
+
+                <PopupModal
+                    isOpen={showEditEmployeeForm}
+                    title="Edit Employee"
+                    onClose={() => setShowEditEmployeeForm(false)}
+                >
+                    <form className="flex flex-col gap-3" onSubmit={handleUpdateEmployee}>
+                        <input
+                            className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
+                            type="text"
+                            placeholder="Employee name"
+                            value={editingEmployeeName}
+                            onChange={(e) => setEditingEmployeeName(e.target.value)}
+                        />
+                        <input
+                            className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
+                            type="email"
+                            placeholder="Employee email"
+                            value={editingEmployeeEmail}
+                            onChange={(e) => setEditingEmployeeEmail(e.target.value)}
+                        />
+                        <select
+                            className="border-2 border-gray-100 rounded-full px-3 py-2 bg-white"
+                            value={editingEmployeeRole}
+                            onChange={(e) => setEditingEmployeeRole(e.target.value)}
+                            disabled={isLoadingRoles}
+                        >
+                            {displayedRoles.map((role) => (
+                                <option key={role.key} value={role.key}>
+                                    {role.label}
+                                </option>
+                            ))}
+                        </select>
+                        <select
+                            className="border-2 border-gray-100 rounded-full px-3 py-2 bg-white"
+                            value={editingEmployeeStatus}
+                            onChange={(e) => setEditingEmployeeStatus(e.target.value)}
+                        >
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                        </select>
+                        <button className="bg-gray-100 rounded-full p-2" type="submit" disabled={isSubmitting}>
+                            {isSubmitting ? "Saving..." : "Save Changes"}
+                        </button>
+                    </form>
+                </PopupModal>
+
+                <ConfirmModal
+                    isOpen={Boolean(employeeToDelete)}
+                    title="Delete Employee"
+                    message={`This action will permanently delete ${employeeToDelete?.name || "this employee"}.`}
+                    confirmLabel="Delete Employee"
+                    onConfirm={handleDeleteEmployee}
+                    onClose={() => setEmployeeToDelete(null)}
+                    isLoading={isSubmitting}
+                />
             </div>
         </section>
     )

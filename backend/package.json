@@ -8,7 +8,8 @@
   },
   "scripts": {
     "dev": "nodemon src/server.js",
-    "start": "node src/server.js"
+    "start": "node src/server.js",
+    "set:user-office": "node scripts/setUserProfileOffice.js"
   },
   "keywords": [],
   "author": "",

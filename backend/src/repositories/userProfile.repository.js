@@ -11,6 +11,7 @@ export async function createUserProfile(input) {
         officeId: input.officeId,
         role: input.role,
         email: input.email,
+        status: input.status,
         createdAt: new Date(),
         updatedAt: new Date(),
     }
@@ -46,4 +47,9 @@ export async function listUserProfilesByOfficeId(officeId) {
 export async function getUserProfileByEmail(email) {
     const db = getDB()
     return db.collection("user_profile").findOne({ email: String(email).toLowerCase() })
+}
+
+export async function deleteUserProfileById(id) {
+    const db = getDB()
+    return db.collection("user_profile").findOneAndDelete({ _id: new ObjectId(id) })
 }

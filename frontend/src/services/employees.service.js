@@ -30,6 +30,7 @@ export async function createEmployeeAccount(input) {
       officeId,
       role,
       email,
+      status: "active",
     }),
   })
 
@@ -52,4 +53,23 @@ export async function listAvailableRoles() {
 
 export async function getMyUserProfile() {
   return api("/api/user-profiles/me")
+}
+
+export async function updateEmployeeById(employeeId, patch) {
+  const id = String(employeeId || "").trim()
+  if (!id) throw new Error("employeeId is required")
+
+  return api(`/api/user-profiles/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  })
+}
+
+export async function deleteEmployeeById(employeeId) {
+  const id = String(employeeId || "").trim()
+  if (!id) throw new Error("employeeId is required")
+
+  return api(`/api/user-profiles/${id}`, {
+    method: "DELETE",
+  })
 }

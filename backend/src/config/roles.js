@@ -50,6 +50,7 @@ export const ROLE_DEFINITIONS = [
       "userProfiles:read",
       "userProfiles:create",
       "userProfiles:update",
+      "userProfiles:delete",
     ],
   },
   {
@@ -63,4 +64,3 @@ export const ROLE_DEFINITIONS = [
 export const ROLE_PERMISSIONS = Object.fromEntries(
   ROLE_DEFINITIONS.map((role) => [role.key, role.permissions])
 )
-

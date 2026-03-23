@@ -1,5 +1,7 @@
-import { NavLink, matchPath, useLocation } from "react-router-dom"
+import { NavLink, matchPath, useLocation, useNavigate } from "react-router-dom"
 import { getClientById } from "../../mocks/clients.mock"
+import { signOut } from "../../services/auth.service"
+import { useNotification } from "../../contexts/notification.context"
 
 const navItems = [
   {
@@ -41,6 +43,8 @@ const navItems = [
 
 function Sidebar({ isCollapsed, onToggleCollapse }) {
   const location = useLocation()
+  const navigate = useNavigate()
+  const { success, error } = useNotification()
   const clientScopeMatch = matchPath("/clients/:clientId/*", location.pathname)
   const clientId = clientScopeMatch?.params?.clientId
   const selectedClient = clientId ? getClientById(clientId) : null
@@ -74,9 +78,19 @@ function Sidebar({ isCollapsed, onToggleCollapse }) {
       ]
     : []
 
+  const handleLogout = async () => {
+    try {
+      await signOut()
+      success("Logged out successfully")
+      navigate("/login", { replace: true })
+    } catch (err) {
+      error(err.message || "Failed to logout")
+    }
+  }
+
   return (
     <aside
-      className={`h-full border-r border-gray-200 bg-white p-3 transition-all duration-200 ${
+      className={`flex h-full flex-col border-r border-gray-200 bg-white p-3 transition-all duration-200 ${
         isCollapsed ? "w-16" : "w-60"
       }`}
     >
@@ -99,55 +113,75 @@ function Sidebar({ isCollapsed, onToggleCollapse }) {
         </button>
       </div>
 
-      <nav className="flex flex-col gap-2">
-        {navItems.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            className={({ isActive }) =>
-              `flex items-center rounded-lg py-2 text-sm font-medium transition-colors ${
-                isCollapsed ? "justify-center px-2" : "gap-3 px-3"
-              } ${
-                isActive ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
-              }`
-            }
-            title={isCollapsed ? item.label : undefined}
-          >
-            <span>{item.icon}</span>
-            {!isCollapsed && <span>{item.label}</span>}
-          </NavLink>
-        ))}
-      </nav>
+      <div className="min-h-0 flex-1">
+        <nav className="flex flex-col gap-2">
+          {navItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              className={({ isActive }) =>
+                `flex items-center rounded-lg py-2 text-sm font-medium transition-colors ${
+                  isCollapsed ? "justify-center px-2" : "gap-3 px-3"
+                } ${
+                  isActive ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
+                }`
+              }
+              title={isCollapsed ? item.label : undefined}
+            >
+              <span>{item.icon}</span>
+              {!isCollapsed && <span>{item.label}</span>}
+            </NavLink>
+          ))}
+        </nav>
 
-      {clientMenuItems.length > 0 && (
-        <div className="mt-4 border-t border-gray-100 pt-4">
-          {!isCollapsed && (
-            <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
-              {selectedClient ? selectedClient.name : "Client"}
-            </p>
-          )}
+        {clientMenuItems.length > 0 && (
+          <div className="mt-4 border-t border-gray-100 pt-4">
+            {!isCollapsed && (
+              <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                {selectedClient ? selectedClient.name : "Client"}
+              </p>
+            )}
 
-          <nav className="flex flex-col gap-2">
-            {clientMenuItems.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                className={({ isActive }) =>
-                  `flex items-center rounded-lg py-2 text-sm font-medium transition-colors ${
-                    isCollapsed ? "justify-center px-2" : "gap-2 px-3"
-                  } ${
-                    isActive ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
-                  }`
-                }
-                title={isCollapsed ? item.label : undefined}
-              >
-                <span>{item.icon}</span>
-                {!isCollapsed && <span>{item.label}</span>}
-              </NavLink>
-            ))}
-          </nav>
-        </div>
-      )}
+            <nav className="flex flex-col gap-2">
+              {clientMenuItems.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  className={({ isActive }) =>
+                    `flex items-center rounded-lg py-2 text-sm font-medium transition-colors ${
+                      isCollapsed ? "justify-center px-2" : "gap-2 px-3"
+                    } ${
+                      isActive ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
+                    }`
+                  }
+                  title={isCollapsed ? item.label : undefined}
+                >
+                  <span>{item.icon}</span>
+                  {!isCollapsed && <span>{item.label}</span>}
+                </NavLink>
+              ))}
+            </nav>
+          </div>
+        )}
+      </div>
+
+      <div className="mt-4 border-t border-gray-100 pt-3">
+        <button
+          type="button"
+          onClick={handleLogout}
+          className={`flex w-full items-center rounded-lg py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 ${
+            isCollapsed ? "justify-center px-2" : "gap-3 px-3"
+          }`}
+          title={isCollapsed ? "Logout" : undefined}
+        >
+          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <path d="M16 17l5-5-5-5" />
+            <path d="M21 12H9" />
+          </svg>
+          {!isCollapsed && <span>Logout</span>}
+        </button>
+      </div>
     </aside>
   )
 }

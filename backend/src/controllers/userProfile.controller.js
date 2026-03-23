@@ -4,6 +4,7 @@ import {
   getUserProfileByIdService,
   listUserProfilesByOfficeIdService,
   getCurrentUserProfileService,
+  deleteUserProfileByIdService,
 } from "../services/userProfile.service.js"
 
 export async function createUserProfileController(req, res) {
@@ -20,7 +21,10 @@ export async function createUserProfileController(req, res) {
 export async function updateUserProfileByIdController(req, res) {
   try {
     const { id } = req.params
-    const updatedProfile = await updateUserProfileByIdService(id, req.body)
+    const updatedProfile = await updateUserProfileByIdService(id, {
+      ...req.body,
+      actorEmail: req.user?.email,
+    })
     return res.status(200).json(updatedProfile)
   } catch (error) {
     return res.status(400).json({
@@ -71,6 +75,18 @@ export async function getMyUserProfileController(req, res) {
     }
 
     return res.status(200).json(profile)
+  } catch (error) {
+    return res.status(400).json({
+      message: error.message,
+    })
+  }
+}
+
+export async function deleteUserProfileByIdController(req, res) {
+  try {
+    const { id } = req.params
+    const deletedProfile = await deleteUserProfileByIdService(id, req.user?.email)
+    return res.status(200).json(deletedProfile)
   } catch (error) {
     return res.status(400).json({
       message: error.message,

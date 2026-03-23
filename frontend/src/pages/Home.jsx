@@ -23,7 +23,7 @@ function Home() {
         <header className="flex flex-col gap-1">
           <h1 className="text-3xl font-bold">Office Dashboard</h1>
           <p className="text-sm text-gray-500">
-            {employee.name} ({employee.role}) · workspace {employee.officeId}
+            {employee.name} ({employee.role})
           </p>
         </header>
 

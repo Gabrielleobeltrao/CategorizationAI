@@ -17,3 +17,9 @@ export function signUp(name, email, password) {
     body: JSON.stringify({ name, email, password }),
   })
 }
+
+export function signOut() {
+  return api("/api/auth/sign-out", {
+    method: "POST",
+  })
+}

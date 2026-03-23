@@ -5,6 +5,7 @@ import {
   getUserProfileByIdController,
   listUserProfilesByOfficeIdController,
   getMyUserProfileController,
+  deleteUserProfileByIdController,
 } from "../controllers/userProfile.controller.js"
 import { requireAuth } from "../middlewares/requireAuth.js"
 import {
@@ -57,6 +58,15 @@ router.get(
   validateObjectIdParam("id"),
   ensureResourceExists({ collection: "user_profile", from: "params", field: "id", assignKey: "userProfile" }),
   getUserProfileByIdController
+)
+
+router.delete(
+  "/user-profiles/:id",
+  requireAuth,
+  requirePermission("userProfiles:delete"),
+  validateObjectIdParam("id"),
+  ensureResourceExists({ collection: "user_profile", from: "params", field: "id", assignKey: "userProfile" }),
+  deleteUserProfileByIdController
 )
 
 export default router
