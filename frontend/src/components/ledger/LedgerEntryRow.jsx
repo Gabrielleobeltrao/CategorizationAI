@@ -13,6 +13,7 @@ function LedgerEntryRow({
     onCancelEdit,
     onSaveEdit,
     onChangeDraft,
+    onDelete,
 }) {
     const currentDate = isEditing ? editingDraft?.date ?? date : date
     const currentDescription = isEditing ? editingDraft?.description ?? description : description
@@ -102,7 +103,7 @@ function LedgerEntryRow({
                         className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-rose-600"
                         title="Delete transaction"
                         aria-label="Delete transaction"
-                        onClick={() => console.log("Delete transaction", id)}
+                        onClick={() => onDelete?.(id)}
                     >
                         <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M3 6h18" />

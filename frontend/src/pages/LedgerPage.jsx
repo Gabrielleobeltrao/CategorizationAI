@@ -1,220 +1,440 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { useParams, useSearchParams } from "react-router-dom"
 import LedgerEntriesTable from "../components/ledger/LedgerEntriesTable"
+import LedgerHeader from "../components/ledger/LedgerHeader"
+import AccountsSection from "../components/ledger/AccountsSection"
+import CategoriesSection from "../components/ledger/CategoriesSection"
 import PopupModal from "../components/ui/PopupModal"
-import { getCategoriesByClientId } from "../mocks/categories.mock"
-import { getLedgerEntriesByClientId } from "../mocks/ledgerEntries.mock"
-import { getAccountsByClientId } from "../mocks/accounts.mock"
-import { getClientById } from "../mocks/clients.mock"
+import ConfirmModal from "../components/ui/ConfirmModal"
+import { getClientById } from "../services/clients.service"
+import {
+    createAccount,
+    deleteAccountById,
+    listAccountsByClientId,
+    updateAccountById,
+} from "../services/accounts.service"
+import {
+    createCategory,
+    deleteCategoryById,
+    listCategoriesByClientId,
+    updateCategoryById,
+} from "../services/categories.service"
+import {
+    listTransactionsByClientId,
+    updateTransactionById,
+    deleteTransactionById,
+} from "../services/transactions.service"
+import { useNotification } from "../contexts/notification.context"
+
+function mapAccount(item = {}) {
+    return {
+        id: item?._id || item?.id || "",
+        clientId: item?.clientId || "",
+        name: item?.name || "",
+        type: item?.type || "",
+    }
+}
+
+function mapCategory(item = {}) {
+    return {
+        id: item?._id || item?.id || "",
+        clientId: item?.clientId || "",
+        name: item?.name || "",
+        type: item?.type || "",
+        description: item?.description || "",
+    }
+}
+
+function mapTransaction(item = {}) {
+    return {
+        id: item?._id || item?.id || "",
+        date: item?.date || "",
+        description: item?.description || "",
+        account: item?.accountName || item?.account || "",
+        category: item?.category || "",
+        amount: Number(item?.amount || 0),
+    }
+}
 
 function LedgerPage() {
     const { clientId: routeClientId } = useParams()
     const [searchParams] = useSearchParams()
     const clientId = routeClientId || searchParams.get("clientId")
+    const { success, error } = useNotification()
+
     const [activeSection, setActiveSection] = useState("ledger")
+    const [client, setClient] = useState(null)
+    const [accounts, setAccounts] = useState([])
+    const [categoryList, setCategoryList] = useState([])
+    const [ledgerEntries, setLedgerEntries] = useState([])
+    const [isSubmitting, setIsSubmitting] = useState(false)
+    const [transactionsPage, setTransactionsPage] = useState(1)
+    const [transactionsHasMore, setTransactionsHasMore] = useState(false)
+    const [isLoadingTransactions, setIsLoadingTransactions] = useState(false)
+    const [isLoadingMoreTransactions, setIsLoadingMoreTransactions] = useState(false)
+    const [transactionsSearchTerm, setTransactionsSearchTerm] = useState("")
+
     const [showAccountForm, setShowAccountForm] = useState(false)
     const [showCategoryForm, setShowCategoryForm] = useState(false)
+    const [showEditAccountForm, setShowEditAccountForm] = useState(false)
+    const [showEditCategoryForm, setShowEditCategoryForm] = useState(false)
+
     const [newAccountName, setNewAccountName] = useState("")
     const [newAccountType, setNewAccountType] = useState("")
+
     const [newCategoryName, setNewCategoryName] = useState("")
     const [newCategoryType, setNewCategoryType] = useState("")
     const [newCategoryDescription, setNewCategoryDescription] = useState("")
-    const [accounts, setAccounts] = useState([])
-    const [categoryList, setCategoryList] = useState([])
 
-    const categoriesFromMocks = useMemo(() => {
-        if (!clientId) return []
-        return getCategoriesByClientId(clientId)
-    }, [clientId])
+    const [editingAccountId, setEditingAccountId] = useState("")
+    const [editingAccountName, setEditingAccountName] = useState("")
+    const [editingAccountType, setEditingAccountType] = useState("")
 
-    const ledgerEntries = useMemo(() => {
-        if (!clientId) return []
-        return getLedgerEntriesByClientId(clientId)
-    }, [clientId])
+    const [editingCategoryId, setEditingCategoryId] = useState("")
+    const [editingCategoryName, setEditingCategoryName] = useState("")
+    const [editingCategoryType, setEditingCategoryType] = useState("")
+    const [editingCategoryDescription, setEditingCategoryDescription] = useState("")
 
-    const accountsFromMocks = useMemo(() => {
-        if (!clientId) return []
-        return getAccountsByClientId(clientId)
-    }, [clientId])
-
-    const client = useMemo(() => {
-        if (!clientId) return null
-        return getClientById(clientId)
-    }, [clientId])
+    const [accountToDelete, setAccountToDelete] = useState(null)
+    const [categoryToDelete, setCategoryToDelete] = useState(null)
 
     useEffect(() => {
-        setAccounts(accountsFromMocks)
-    }, [accountsFromMocks])
+        let active = true
 
-    useEffect(() => {
-        setCategoryList(categoriesFromMocks)
-    }, [categoriesFromMocks])
-
-    const handleCreateAccount = (e) => {
-        e.preventDefault()
-
-        const payload = {
-            clientId,
-            name: newAccountName,
-            type: newAccountType,
+        if (!clientId) {
+            setClient(null)
+            setAccounts([])
+            setCategoryList([])
+            setLedgerEntries([])
+            return () => {
+                active = false
+            }
         }
 
-        console.log(payload)
-
-        setAccounts((current) => [
-            ...current,
-            {
-                id: `${Date.now()}`,
-                name: newAccountName,
-                type: newAccountType,
-            },
+        Promise.all([
+            getClientById(clientId),
+            listAccountsByClientId(clientId),
+            listCategoriesByClientId(clientId),
         ])
+            .then(([clientData, accountsData, categoriesData]) => {
+                if (!active) return
 
-        setNewAccountName("")
-        setNewAccountType("")
-        setShowAccountForm(false)
+                setClient(clientData || null)
+                setAccounts(Array.isArray(accountsData) ? accountsData.map(mapAccount) : [])
+                setCategoryList(Array.isArray(categoriesData) ? categoriesData.map(mapCategory) : [])
+            })
+            .catch((err) => {
+                if (!active) return
+                error(err.message || "Failed to load ledger data")
+                setClient(null)
+                setAccounts([])
+                setCategoryList([])
+            })
+
+        return () => {
+            active = false
+        }
+    }, [clientId])
+
+    useEffect(() => {
+        let active = true
+
+        if (!clientId) {
+            setLedgerEntries([])
+            setTransactionsPage(1)
+            setTransactionsHasMore(false)
+            return () => {
+                active = false
+            }
+        }
+
+        setIsLoadingTransactions(true)
+
+        listTransactionsByClientId(clientId, {
+            page: 1,
+            limit: 30,
+            search: transactionsSearchTerm,
+        })
+            .then((payload) => {
+                if (!active) return
+                const items = Array.isArray(payload?.items) ? payload.items : []
+                const mapped = items.map(mapTransaction)
+                const page = Number(payload?.page || 1)
+                const totalPages = Number(payload?.totalPages || 1)
+
+                setLedgerEntries(mapped)
+                setTransactionsPage(page)
+                setTransactionsHasMore(page < totalPages)
+            })
+            .catch((err) => {
+                if (!active) return
+                error(err.message || "Failed to load transactions")
+                setLedgerEntries([])
+                setTransactionsPage(1)
+                setTransactionsHasMore(false)
+            })
+            .finally(() => {
+                if (!active) return
+                setIsLoadingTransactions(false)
+            })
+
+        return () => {
+            active = false
+        }
+    }, [clientId, transactionsSearchTerm])
+
+    const loadMoreTransactions = async () => {
+        if (!clientId || !transactionsHasMore || isLoadingMoreTransactions || isLoadingTransactions) return
+
+        try {
+            setIsLoadingMoreTransactions(true)
+            const nextPage = transactionsPage + 1
+            const payload = await listTransactionsByClientId(clientId, {
+                page: nextPage,
+                limit: 30,
+                search: transactionsSearchTerm,
+            })
+
+            const items = Array.isArray(payload?.items) ? payload.items : []
+            const mapped = items.map(mapTransaction)
+            const page = Number(payload?.page || nextPage)
+            const totalPages = Number(payload?.totalPages || page)
+
+            setLedgerEntries((current) => [...current, ...mapped])
+            setTransactionsPage(page)
+            setTransactionsHasMore(page < totalPages)
+        } catch (err) {
+            error(err.message || "Failed to load more transactions")
+        } finally {
+            setIsLoadingMoreTransactions(false)
+        }
     }
 
-    const handleCreateCategory = (e) => {
+    const handleUpdateTransaction = async (id, patch) => {
+        try {
+            const updated = await updateTransactionById(id, patch)
+            const normalized = mapTransaction(updated)
+            setLedgerEntries((current) =>
+                current.map((item) => (item.id === id ? normalized : item))
+            )
+            success("Transaction updated successfully")
+            return updated
+        } catch (err) {
+            error(err.message || "Failed to update transaction")
+            throw err
+        }
+    }
+
+    const handleDeleteTransaction = async (id) => {
+        try {
+            await deleteTransactionById(id)
+            setLedgerEntries((current) => current.filter((item) => item.id !== id))
+            success("Transaction deleted successfully")
+        } catch (err) {
+            error(err.message || "Failed to delete transaction")
+            throw err
+        }
+    }
+
+    const handleCreateAccount = async (e) => {
         e.preventDefault()
 
-        const payload = {
-            clientId,
-            name: newCategoryName,
-            type: newCategoryType,
-            description: newCategoryDescription,
+        try {
+            setIsSubmitting(true)
+
+            const created = await createAccount({
+                clientId,
+                name: newAccountName,
+                type: newAccountType,
+            })
+
+            setAccounts((current) => [mapAccount(created), ...current])
+            setNewAccountName("")
+            setNewAccountType("")
+            setShowAccountForm(false)
+            success("Account created successfully")
+        } catch (err) {
+            error(err.message || "Failed to create account")
+        } finally {
+            setIsSubmitting(false)
         }
+    }
 
-        console.log(payload)
+    const handleCreateCategory = async (e) => {
+        e.preventDefault()
 
-        setCategoryList((current) => [
-            ...current,
-            {
-                id: `${Date.now()}`,
+        try {
+            setIsSubmitting(true)
+
+            const created = await createCategory({
                 clientId,
                 name: newCategoryName,
                 type: newCategoryType,
                 description: newCategoryDescription,
-            },
-        ])
+            })
 
-        setNewCategoryName("")
-        setNewCategoryType("")
-        setNewCategoryDescription("")
-        setShowCategoryForm(false)
+            setCategoryList((current) => [mapCategory(created), ...current])
+            setNewCategoryName("")
+            setNewCategoryType("")
+            setNewCategoryDescription("")
+            setShowCategoryForm(false)
+            success("Category created successfully")
+        } catch (err) {
+            error(err.message || "Failed to create category")
+        } finally {
+            setIsSubmitting(false)
+        }
+    }
+
+    const startEditAccount = (account) => {
+        setEditingAccountId(account.id)
+        setEditingAccountName(account.name || "")
+        setEditingAccountType(account.type || "")
+        setShowEditAccountForm(true)
+    }
+
+    const handleEditAccount = async (e) => {
+        e.preventDefault()
+
+        try {
+            setIsSubmitting(true)
+
+            const updated = await updateAccountById(editingAccountId, {
+                name: editingAccountName,
+                type: editingAccountType,
+            })
+
+            setAccounts((current) =>
+                current.map((item) => (item.id === editingAccountId ? mapAccount(updated) : item))
+            )
+            setShowEditAccountForm(false)
+            setEditingAccountId("")
+            success("Account updated successfully")
+        } catch (err) {
+            error(err.message || "Failed to update account")
+        } finally {
+            setIsSubmitting(false)
+        }
+    }
+
+    const startEditCategory = (category) => {
+        setEditingCategoryId(category.id)
+        setEditingCategoryName(category.name || "")
+        setEditingCategoryType(category.type || "")
+        setEditingCategoryDescription(category.description || "")
+        setShowEditCategoryForm(true)
+    }
+
+    const handleEditCategory = async (e) => {
+        e.preventDefault()
+
+        try {
+            setIsSubmitting(true)
+
+            const updated = await updateCategoryById(editingCategoryId, {
+                name: editingCategoryName,
+                type: editingCategoryType,
+                description: editingCategoryDescription,
+            })
+
+            setCategoryList((current) =>
+                current.map((item) => (item.id === editingCategoryId ? mapCategory(updated) : item))
+            )
+            setShowEditCategoryForm(false)
+            setEditingCategoryId("")
+            success("Category updated successfully")
+        } catch (err) {
+            error(err.message || "Failed to update category")
+        } finally {
+            setIsSubmitting(false)
+        }
+    }
+
+    const handleDeleteAccount = async () => {
+        if (!accountToDelete?.id) return
+
+        try {
+            setIsSubmitting(true)
+            await deleteAccountById(accountToDelete.id)
+            setAccounts((current) => current.filter((item) => item.id !== accountToDelete.id))
+            setAccountToDelete(null)
+            success("Account deleted successfully")
+        } catch (err) {
+            error(err.message || "Failed to delete account")
+        } finally {
+            setIsSubmitting(false)
+        }
+    }
+
+    const handleDeleteCategory = async () => {
+        if (!categoryToDelete?.id) return
+
+        try {
+            setIsSubmitting(true)
+            await deleteCategoryById(categoryToDelete.id)
+            setCategoryList((current) => current.filter((item) => item.id !== categoryToDelete.id))
+            setCategoryToDelete(null)
+            success("Category deleted successfully")
+        } catch (err) {
+            error(err.message || "Failed to delete category")
+        } finally {
+            setIsSubmitting(false)
+        }
     }
 
     return (
         <section className="w-full h-full min-h-0 box-border p-4 overflow-y-auto">
             <div className="min-h-full flex flex-col gap-4 pb-4">
-                <header className="rounded-xl border border-gray-200 bg-white p-4">
-                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                        <div>
-                            <h1 className="text-3xl font-bold">Ledger</h1>
-                            <p className="text-sm text-gray-500 mt-1">
-                                {client ? client.name : "Unknown client"}
-                            </p>
-                        </div>
-
-                        <div className="w-full md:w-1/2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
-                            <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                                View Filter
-                            </label>
-                            <div className="grid grid-cols-3 gap-1 rounded-lg border border-gray-200 bg-white p-1">
-                                {[
-                                    { value: "ledger", label: "Transactions" },
-                                    { value: "accounts", label: "Accounts" },
-                                    { value: "categories", label: "Categories" },
-                                ].map((item) => (
-                                    <button
-                                        key={item.value}
-                                        type="button"
-                                        className={`rounded-md px-2 py-1.5 text-xs font-semibold ${
-                                            activeSection === item.value
-                                                ? "bg-gray-900 text-white"
-                                                : "text-gray-600 hover:bg-gray-100"
-                                        }`}
-                                        onClick={() => setActiveSection(item.value)}
-                                    >
-                                        {item.label}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                </header>
+                <LedgerHeader
+                    clientName={client?.name || ""}
+                    activeSection={activeSection}
+                    onChangeSection={setActiveSection}
+                />
 
                 <section className={`min-h-[460px] rounded-lg border border-gray-200 bg-white p-4 flex flex-col ${activeSection === "ledger" ? "overflow-visible" : "overflow-hidden"}`}>
                     {activeSection === "ledger" && (
-                        <>
-                            <h2 className="text-lg font-bold">Transactions</h2>
-                            <div className="pt-4 min-h-0 flex-1">
+                        <section className="min-h-0 h-full p-1 flex flex-col gap-3">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-base font-bold">Transactions</h3>
+                            </div>
+                            <div className="min-h-0 flex-1">
                                 {ledgerEntries.length > 0 ? (
                                     <LedgerEntriesTable
                                         ledgerEntries={ledgerEntries}
                                         categories={categoryList}
+                                        searchTerm={transactionsSearchTerm}
+                                        onSearchTermChange={setTransactionsSearchTerm}
+                                        onUpdateEntry={handleUpdateTransaction}
+                                        onDeleteEntry={handleDeleteTransaction}
+                                        hasMore={transactionsHasMore}
+                                        isLoadingMore={isLoadingMoreTransactions}
+                                        onLoadMore={loadMoreTransactions}
                                     />
                                 ) : (
-                                    <h4 className="text-center text-gray-500">No transactions found.</h4>
+                                    <h4 className="text-center text-gray-500">
+                                        {isLoadingTransactions ? "Loading transactions..." : "No transactions found."}
+                                    </h4>
                                 )}
                             </div>
-                        </>
+                        </section>
                     )}
 
                     {activeSection === "accounts" && (
-                        <section className="min-h-0 h-full p-1 flex flex-col gap-3">
-                            <div className="flex items-center justify-between">
-                                <h3 className="text-base font-bold">Accounts</h3>
-                                <button
-                                    className="text-xs font-bold text-white bg-gray-700 rounded-md px-3 py-2"
-                                    onClick={() => setShowAccountForm(true)}
-                                >
-                                    New Account
-                                </button>
-                            </div>
-
-                            <div className="min-h-0 flex-1 overflow-y-auto flex flex-col gap-2">
-                                {accounts.map((account, index) => (
-                                    <article
-                                        key={account.id}
-                                        className={`border border-gray-100 rounded-md p-2 ${index % 2 === 0 ? "bg-gray-100" : "bg-white"}`}
-                                    >
-                                        <h3 className="text-sm font-semibold truncate">{account.name}</h3>
-                                        <p className="text-xs text-gray-500">{account.type}</p>
-                                    </article>
-                                ))}
-                            </div>
-                        </section>
+                        <AccountsSection
+                            accounts={accounts}
+                            onCreate={() => setShowAccountForm(true)}
+                            onEdit={startEditAccount}
+                            onDelete={setAccountToDelete}
+                        />
                     )}
 
                     {activeSection === "categories" && (
-                        <section className="min-h-0 h-full p-1 flex flex-col gap-3">
-                            <div className="flex items-center justify-between">
-                                <h3 className="text-base font-bold">Categories</h3>
-                                <button
-                                    className="text-xs font-bold text-white bg-gray-700 rounded-md px-3 py-2"
-                                    onClick={() => setShowCategoryForm(true)}
-                                >
-                                    New Category
-                                </button>
-                            </div>
-                            {categoryList.length > 0 ? (
-                                <div className="min-h-0 flex-1 overflow-y-auto flex flex-col gap-3">
-                                    {categoryList.map((category, index) => (
-                                        <article
-                                            key={category.id}
-                                            className={`border border-gray-100 rounded-md p-2 ${index % 2 === 0 ? "bg-gray-100" : "bg-white"}`}
-                                        >
-                                            <h3 className="text-sm font-semibold truncate">{category.name}</h3>
-                                            <p className="text-xs text-gray-500">{category.type}</p>
-                                            <p className="text-xs text-gray-400 truncate">{category.description}</p>
-                                        </article>
-                                    ))}
-                                </div>
-                            ) : (
-                                <h4 className="text-center text-gray-500">No categories found. Please add categories.</h4>
-                            )}
-                        </section>
+                        <CategoriesSection
+                            categories={categoryList}
+                            onCreate={() => setShowCategoryForm(true)}
+                            onEdit={startEditCategory}
+                            onDelete={setCategoryToDelete}
+                        />
                     )}
                 </section>
             </div>
@@ -239,8 +459,34 @@ function LedgerPage() {
                         value={newAccountType}
                         onChange={(e) => setNewAccountType(e.target.value)}
                     />
-                    <button className="bg-gray-100 rounded-md p-2" type="submit">
-                        Save
+                    <button className="bg-gray-100 rounded-md p-2" type="submit" disabled={isSubmitting}>
+                        {isSubmitting ? "Saving..." : "Save"}
+                    </button>
+                </form>
+            </PopupModal>
+
+            <PopupModal
+                isOpen={showEditAccountForm}
+                title="Edit Account"
+                onClose={() => setShowEditAccountForm(false)}
+            >
+                <form className="flex flex-col gap-2" onSubmit={handleEditAccount}>
+                    <input
+                        className="border-2 border-gray-100 rounded-md px-3 py-2 placeholder:text-black"
+                        type="text"
+                        placeholder="Account name"
+                        value={editingAccountName}
+                        onChange={(e) => setEditingAccountName(e.target.value)}
+                    />
+                    <input
+                        className="border-2 border-gray-100 rounded-md px-3 py-2 placeholder:text-black"
+                        type="text"
+                        placeholder="Type"
+                        value={editingAccountType}
+                        onChange={(e) => setEditingAccountType(e.target.value)}
+                    />
+                    <button className="bg-gray-100 rounded-md p-2" type="submit" disabled={isSubmitting}>
+                        {isSubmitting ? "Saving..." : "Save"}
                     </button>
                 </form>
             </PopupModal>
@@ -272,11 +518,64 @@ function LedgerPage() {
                         value={newCategoryDescription}
                         onChange={(e) => setNewCategoryDescription(e.target.value)}
                     />
-                    <button className="bg-gray-100 rounded-md p-2" type="submit">
-                        Save
+                    <button className="bg-gray-100 rounded-md p-2" type="submit" disabled={isSubmitting}>
+                        {isSubmitting ? "Saving..." : "Save"}
                     </button>
                 </form>
             </PopupModal>
+
+            <PopupModal
+                isOpen={showEditCategoryForm}
+                title="Edit Category"
+                onClose={() => setShowEditCategoryForm(false)}
+            >
+                <form className="flex flex-col gap-2" onSubmit={handleEditCategory}>
+                    <input
+                        className="border-2 border-gray-100 rounded-md px-3 py-2 placeholder:text-black"
+                        type="text"
+                        placeholder="Category name"
+                        value={editingCategoryName}
+                        onChange={(e) => setEditingCategoryName(e.target.value)}
+                    />
+                    <input
+                        className="border-2 border-gray-100 rounded-md px-3 py-2 placeholder:text-black"
+                        type="text"
+                        placeholder="Type"
+                        value={editingCategoryType}
+                        onChange={(e) => setEditingCategoryType(e.target.value)}
+                    />
+                    <input
+                        className="border-2 border-gray-100 rounded-md px-3 py-2 placeholder:text-black"
+                        type="text"
+                        placeholder="Description"
+                        value={editingCategoryDescription}
+                        onChange={(e) => setEditingCategoryDescription(e.target.value)}
+                    />
+                    <button className="bg-gray-100 rounded-md p-2" type="submit" disabled={isSubmitting}>
+                        {isSubmitting ? "Saving..." : "Save"}
+                    </button>
+                </form>
+            </PopupModal>
+
+            <ConfirmModal
+                isOpen={Boolean(accountToDelete)}
+                title="Delete Account"
+                message={`This action will permanently delete ${accountToDelete?.name || "this account"}.`}
+                confirmLabel="Delete Account"
+                onConfirm={handleDeleteAccount}
+                onClose={() => setAccountToDelete(null)}
+                isLoading={isSubmitting}
+            />
+
+            <ConfirmModal
+                isOpen={Boolean(categoryToDelete)}
+                title="Delete Category"
+                message={`This action will permanently delete ${categoryToDelete?.name || "this category"}.`}
+                confirmLabel="Delete Category"
+                onConfirm={handleDeleteCategory}
+                onClose={() => setCategoryToDelete(null)}
+                isLoading={isSubmitting}
+            />
         </section>
     )
 }

@@ -1,5 +1,6 @@
+import { useEffect, useState } from "react"
 import { NavLink, matchPath, useLocation, useNavigate } from "react-router-dom"
-import { getClientById } from "../../mocks/clients.mock"
+import { getClientById } from "../../services/clients.service"
 import { signOut } from "../../services/auth.service"
 import { useNotification } from "../../contexts/notification.context"
 
@@ -47,7 +48,7 @@ function Sidebar({ isCollapsed, onToggleCollapse }) {
   const { success, error } = useNotification()
   const clientScopeMatch = matchPath("/clients/:clientId/*", location.pathname)
   const clientId = clientScopeMatch?.params?.clientId
-  const selectedClient = clientId ? getClientById(clientId) : null
+  const [selectedClient, setSelectedClient] = useState(null)
 
   const clientMenuItems = clientId
     ? [
@@ -87,6 +88,31 @@ function Sidebar({ isCollapsed, onToggleCollapse }) {
       error(err.message || "Failed to logout")
     }
   }
+
+  useEffect(() => {
+    let active = true
+
+    if (!clientId) {
+      setSelectedClient(null)
+      return () => {
+        active = false
+      }
+    }
+
+    getClientById(clientId)
+      .then((clientData) => {
+        if (!active) return
+        setSelectedClient(clientData || null)
+      })
+      .catch(() => {
+        if (!active) return
+        setSelectedClient(null)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [clientId])
 
   return (
     <aside
