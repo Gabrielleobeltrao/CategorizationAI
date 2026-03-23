@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { registerWithOffice } from "../services/register.service"
+import { useNotification } from "../contexts/notification.context"
 
 function Register() {
     const navigate = useNavigate()
@@ -10,21 +11,20 @@ function Register() {
     const [password, setPassword] = useState("")
     const [confirmPassword, setConfirmPassword] = useState("")
     const [officeName, setOfficeName] = useState("")
-    const [error, setError] = useState("")
     const [isSubmitting, setIsSubmitting] = useState(false)
+    const { success, error } = useNotification()
 
     const handleSubmit = async (e) => {
         e.preventDefault()
-        setError("")
 
         if (step === 1) {
             if (!name.trim() || !email.trim() || !password) {
-                setError("Please fill name, email and password")
+                error("Please fill name, email and password")
                 return
             }
 
             if (password !== confirmPassword) {
-                setError("Passwords do not match")
+                error("Passwords do not match")
                 return
             }
 
@@ -33,7 +33,7 @@ function Register() {
         }
 
         if (!officeName.trim()) {
-            setError("Please fill office name")
+            error("Please fill office name")
             return
         }
 
@@ -45,9 +45,10 @@ function Register() {
                 password,
                 officeName,
             })
+            success("Account created successfully")
             navigate("/home")
         } catch (err) {
-            setError(err.message || "Failed to create account")
+            error(err.message || "Failed to create account")
         } finally {
             setIsSubmitting(false)
         }
@@ -107,8 +108,6 @@ function Register() {
                         </p>
                     </>
                 )}
-
-                {error && <p className="text-sm text-red-600">{error}</p>}
 
                 <div className="flex items-center gap-2">
                     {step === 2 && (

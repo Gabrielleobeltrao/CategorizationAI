@@ -9,44 +9,49 @@ import ClientsPage from './pages/ClientsPage.jsx'
 import EmployeesPage from './pages/EmployeesPage.jsx'
 import ProfitLossPage from './pages/ProfitLossPage.jsx'
 import AppShell from './components/layout/AppShell.jsx'
+import { NotificationProvider } from './contexts/notification.context.jsx'
+import GlobalLoadingOverlay from './components/ui/GlobalLoadingOverlay.jsx'
 
 function App() {
   return (
-    <BrowserRouter>
-      <Routes>
+    <NotificationProvider>
+      <GlobalLoadingOverlay />
+      <BrowserRouter>
+        <Routes>
 
-        <Route
-          path="/"
-          element={<LandingPage />}
-        />
+          <Route
+            path="/"
+            element={<LandingPage />}
+          />
 
-        <Route
-          path="/login"
-          element={<Login />}
-        />
+          <Route
+            path="/login"
+            element={<Login />}
+          />
 
-        <Route
-          path="/register"
-          element={<Register />}
-        />
+          <Route
+            path="/register"
+            element={<Register />}
+          />
 
-        <Route
-          element={
-            <ProtectedRoute>
-              <AppShell />
-            </ProtectedRoute>
-          }
-        >
-          <Route path="/home" element={<Home />} />
-          <Route path="/clients" element={<ClientsPage />} />
-          <Route path="/employees" element={<EmployeesPage />} />
-          <Route path="/ledger" element={<LedgerPage />} />
-          <Route path="/clients/:clientId/ledger" element={<LedgerPage />} />
-          <Route path="/clients/:clientId/profit-loss" element={<ProfitLossPage />} />
-        </Route>
+          <Route
+            element={
+              <ProtectedRoute>
+                <AppShell />
+              </ProtectedRoute>
+            }
+          >
+            <Route path="/home" element={<Home />} />
+            <Route path="/clients" element={<ClientsPage />} />
+            <Route path="/employees" element={<EmployeesPage />} />
+            <Route path="/ledger" element={<LedgerPage />} />
+            <Route path="/clients/:clientId/ledger" element={<LedgerPage />} />
+            <Route path="/clients/:clientId/profit-loss" element={<ProfitLossPage />} />
+          </Route>
 
-      </Routes>
-    </BrowserRouter>
+        </Routes>
+      </BrowserRouter>
+    </NotificationProvider>
   )
 }
 
