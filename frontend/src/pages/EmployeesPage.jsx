@@ -298,10 +298,10 @@ function EmployeesPage() {
                         <h1 className="text-3xl font-bold">Employees</h1>
                     </div>
                     <button
-                        className="bg-gray-100 rounded-full px-4 py-2 text-sm font-medium"
+                        className="border border-gray-200 rounded-lg px-4 py-2 text-sm font-medium text-left"
                         onClick={() => setShowEmployeeForm(true)}
                     >
-                        New Employee
+                        + New Employee
                     </button>
                 </header>
 
