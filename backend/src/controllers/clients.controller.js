@@ -2,7 +2,8 @@ import {
     createClientService,
     updateClientByIdService,
     listClientsByOfficeIdService,
-    getClientByIdService
+    getClientByIdService,
+    deleteClientByIdService,
 } from "../services/clients.service.js"
 
 export async function createClientController(req, res) {
@@ -31,7 +32,7 @@ export async function updateClientByIdController(req, res) {
 export async function listClientsByOfficeIdController(req, res) {
     try {
         const { officeId } = req.params
-        const clients = await listClientsByOfficeIdService(officeId)
+        const clients = await listClientsByOfficeIdService(officeId, req.query)
         return res.status(200).json(clients)
     } catch (error) {
         return res.status(400).json({
@@ -52,6 +53,18 @@ export async function getClientByIdController(req, res) {
         }
 
         return res.status(200).json(client)
+    } catch (error) {
+        return res.status(400).json({
+            message: error.message,
+        })
+    }
+}
+
+export async function deleteClientByIdController(req, res) {
+    try {
+        const { id } = req.params
+        await deleteClientByIdService(id)
+        return res.status(204).send()
     } catch (error) {
         return res.status(400).json({
             message: error.message,

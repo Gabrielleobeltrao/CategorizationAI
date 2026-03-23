@@ -3,6 +3,7 @@ import {
   updateClientById,
   listClientsByOfficeId,
   getClientById,
+  deleteClientById,
 } from "../repositories/clients.repository.js"
 
 export async function createClientService(input) {
@@ -66,12 +67,26 @@ export async function updateClientByIdService(id, patch) {
   return updateClientById(id, safePatch)
 }
 
-export async function listClientsByOfficeIdService(officeId) {
+export async function listClientsByOfficeIdService(officeId, query = {}) {
   if (!officeId) throw new Error("officeId is required")
-  return listClientsByOfficeId(officeId)
+
+  const rawPage = Number(query.page ?? 1)
+  const rawLimit = Number(query.limit ?? 10)
+  const search = String(query.search ?? "").trim().slice(0, 100)
+
+  const page = Number.isFinite(rawPage) && rawPage > 0 ? Math.floor(rawPage) : 1
+  const safeLimit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.floor(rawLimit) : 10
+  const limit = Math.min(safeLimit, 100)
+
+  return listClientsByOfficeId(officeId, { page, limit, search })
 }
 
 export async function getClientByIdService(id) {
   if (!id) throw new Error("id is required")
   return getClientById(id)
+}
+
+export async function deleteClientByIdService(id) {
+  if (!id) throw new Error("id is required")
+  return deleteClientById(id)
 }

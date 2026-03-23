@@ -1,6 +1,10 @@
 import { ObjectId } from "mongodb"
 import { getDB } from "../db.js"
 
+function escapeRegex(value = "") {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
 // criar
 
 export async function createClient(input) {
@@ -50,9 +54,46 @@ export async function updateClientById(id, patch) {
 
 // buscar lista
 
-export async function listClientsByOfficeId(officeId) {
+export async function listClientsByOfficeId(officeId, options = {}) {
     const db = getDB()
-    return db.collection("clients").find({ officeId }).sort({ createdAt: -1}).toArray()
+    const page = options.page || 1
+    const limit = options.limit || 10
+    const skip = (page - 1) * limit
+    const search = String(options.search || "").trim()
+    const filter = { officeId }
+
+    if (search) {
+        const safeSearch = escapeRegex(search)
+        const searchRegex = new RegExp(safeSearch, "i")
+
+        filter.$or = [
+            { name: searchRegex },
+            { businessType: searchRegex },
+            { description: searchRegex },
+            { mainActivity: searchRegex },
+            { state: searchRegex },
+        ]
+    }
+
+    const [items, total] = await Promise.all([
+        db.collection("clients")
+            .find(filter)
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit)
+            .toArray(),
+        db.collection("clients").countDocuments(filter),
+    ])
+
+    const totalPages = Math.max(1, Math.ceil(total / limit))
+
+    return {
+        items,
+        page,
+        limit,
+        total,
+        totalPages,
+    }
 }
 
 // buscar cliente
@@ -60,4 +101,11 @@ export async function listClientsByOfficeId(officeId) {
 export async function getClientById(id) {
     const db = getDB()
     return db.collection("clients").findOne({ _id: new ObjectId(id) })
+}
+
+// deletar cliente
+
+export async function deleteClientById(id) {
+    const db = getDB()
+    return db.collection("clients").deleteOne({ _id: new ObjectId(id) })
 }
