@@ -5,7 +5,7 @@ import Footer from "./Footer"
 import Sidebar from "./Sidebar"
 
 function AppShell() {
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true)
 
   return (
     <div className="bg-white">
