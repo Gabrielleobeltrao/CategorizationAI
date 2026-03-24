@@ -23,16 +23,22 @@ function stopLoading() {
 }
 
 export async function api(path, options = {}) {
-  startLoading()
+  const { silentLoading = false, ...fetchOptions } = options
+  const method = String(fetchOptions.method || "GET").toUpperCase()
+  const useGlobalLoading = !silentLoading && method !== "GET"
+
+  if (useGlobalLoading) {
+    startLoading()
+  }
 
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, {
       credentials: "include",
       headers: {
         "Content-Type": "application/json",
-        ...(options.headers || {}),
+        ...(fetchOptions.headers || {}),
       },
-      ...options,
+      ...fetchOptions,
     })
 
     const contentType = response.headers.get("content-type") || ""
@@ -49,6 +55,8 @@ export async function api(path, options = {}) {
 
     return data
   } finally {
-    stopLoading()
+    if (useGlobalLoading) {
+      stopLoading()
+    }
   }
 }
