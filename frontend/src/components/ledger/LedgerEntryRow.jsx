@@ -140,44 +140,6 @@ function LedgerEntryRow({
                 <h4 className="text-right">${Number(currentAmount).toFixed(2)}</h4>
             )}
             <div className="flex items-center justify-end gap-1">
-                {!isEditing && (
-                    <button
-                        type="button"
-                        className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-rose-600"
-                        title="Delete transaction"
-                        aria-label="Delete transaction"
-                        onClick={() => onDelete?.(id)}
-                    >
-                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M3 6h18" />
-                            <path d="M8 6V4h8v2" />
-                            <path d="M19 6l-1 14H6L5 6" />
-                            <path d="M10 11v6M14 11v6" />
-                        </svg>
-                    </button>
-                )}
-
-                {!isEditing && (
-                    <button
-                        type="button"
-                        className={`rounded-md p-1 ${isMultiSelectionMode ? "cursor-not-allowed text-gray-300" : "text-gray-500 hover:bg-gray-200 hover:text-gray-800"}`}
-                        title="Split transaction"
-                        aria-label="Split transaction"
-                        disabled={isMultiSelectionMode}
-                        onClick={() => {
-                            if (isMultiSelectionMode) return
-                            console.log("Split transaction", id)
-                        }}
-                    >
-                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M4 7h9" />
-                            <path d="M13 7l-2-2m2 2-2 2" />
-                            <path d="M20 17h-9" />
-                            <path d="M11 17l2-2m-2 2 2 2" />
-                        </svg>
-                    </button>
-                )}
-
                 <button
                     type="button"
                     className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-sky-700"
@@ -202,6 +164,44 @@ function LedgerEntryRow({
                         </svg>
                     )}
                 </button>
+
+                {!isEditing && (
+                    <button
+                        type="button"
+                        className={`rounded-md p-1 ${isMultiSelectionMode ? "cursor-not-allowed text-gray-300" : "text-gray-500 hover:bg-gray-200 hover:text-gray-800"}`}
+                        title="Split transaction"
+                        aria-label="Split transaction"
+                        disabled={isMultiSelectionMode}
+                        onClick={() => {
+                            if (isMultiSelectionMode) return
+                            console.log("Split transaction", id)
+                        }}
+                    >
+                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M4 7h9" />
+                            <path d="M13 7l-2-2m2 2-2 2" />
+                            <path d="M20 17h-9" />
+                            <path d="M11 17l2-2m-2 2 2 2" />
+                        </svg>
+                    </button>
+                )}
+
+                {!isEditing && (
+                    <button
+                        type="button"
+                        className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-rose-600"
+                        title="Delete transaction"
+                        aria-label="Delete transaction"
+                        onClick={() => onDelete?.(id)}
+                    >
+                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M3 6h18" />
+                            <path d="M8 6V4h8v2" />
+                            <path d="M19 6l-1 14H6L5 6" />
+                            <path d="M10 11v6M14 11v6" />
+                        </svg>
+                    </button>
+                )}
 
                 {isEditing && (
                     <button

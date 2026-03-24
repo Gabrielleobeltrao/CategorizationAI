@@ -25,17 +25,29 @@ function AccountsSection({ accounts, onCreate, onEdit, onDelete }) {
                             <div className="flex items-center gap-2">
                                 <button
                                     type="button"
-                                    className="rounded-md border border-gray-200 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+                                    className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-sky-700"
                                     onClick={() => onEdit(account)}
+                                    title="Edit account"
+                                    aria-label="Edit account"
                                 >
-                                    Edit
+                                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M12 20h9" />
+                                        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5z" />
+                                    </svg>
                                 </button>
                                 <button
                                     type="button"
-                                    className="rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
+                                    className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-rose-600"
                                     onClick={() => onDelete(account)}
+                                    title="Delete account"
+                                    aria-label="Delete account"
                                 >
-                                    Delete
+                                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M3 6h18" />
+                                        <path d="M8 6V4h8v2" />
+                                        <path d="M19 6l-1 14H6L5 6" />
+                                        <path d="M10 11v6M14 11v6" />
+                                    </svg>
                                 </button>
                             </div>
                         </div>
