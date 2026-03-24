@@ -138,6 +138,12 @@ function ProfitLossPage() {
     }
   }, [profitLoss])
 
+  const netIncomeColorClass = useMemo(() => {
+    if (formula.netIncome > 0) return "text-emerald-700"
+    if (formula.netIncome < 0) return "text-rose-700"
+    return "text-gray-900"
+  }, [formula.netIncome])
+
   const getLineWeightClass = (lineType) => {
     if (lineType === "total") return "font-bold"
     if (lineType === "group") return "font-semibold"
@@ -298,8 +304,8 @@ function ProfitLossPage() {
                     </div>
                     <span className="flex h-10 w-8 items-end justify-center pb-1 text-lg text-gray-500">=</span>
                     <div className="text-center">
-                      <p className="text-xs text-emerald-700 uppercase tracking-wide">Net Income</p>
-                      <p className="text-xl font-bold text-emerald-700">{formatCurrency(formula.netIncome)}</p>
+                      <p className={`text-xs uppercase tracking-wide ${netIncomeColorClass}`}>Net Income</p>
+                      <p className={`text-xl font-bold ${netIncomeColorClass}`}>{formatCurrency(formula.netIncome)}</p>
                     </div>
                   </div>
                 </div>

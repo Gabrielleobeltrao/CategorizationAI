@@ -26,6 +26,16 @@ import {
 } from "../services/transactions.service"
 import { useNotification } from "../contexts/notification.context"
 
+const DEFAULT_TRANSACTIONS_FILTERS = {
+    accountIds: [],
+    categoryIds: [],
+    includeUncategorized: false,
+    fromDate: "",
+    toDate: "",
+    minAmount: "",
+    maxAmount: "",
+}
+
 function mapAccount(item = {}) {
     return {
         id: item?._id || item?.id || "",
@@ -48,6 +58,7 @@ function mapCategory(item = {}) {
 function mapTransaction(item = {}) {
     return {
         id: item?._id || item?.id || "",
+        accountId: item?.accountId || "",
         date: item?.date || "",
         description: item?.description || "",
         account: item?.accountName || item?.account || "",
@@ -72,6 +83,7 @@ function LedgerPage() {
     const [isLoadingTransactions, setIsLoadingTransactions] = useState(false)
     const [isLoadingMoreTransactions, setIsLoadingMoreTransactions] = useState(false)
     const [transactionsSearchTerm, setTransactionsSearchTerm] = useState("")
+    const [transactionsFilters, setTransactionsFilters] = useState(DEFAULT_TRANSACTIONS_FILTERS)
 
     const [showAccountForm, setShowAccountForm] = useState(false)
     const [showCategoryForm, setShowCategoryForm] = useState(false)
@@ -147,6 +159,7 @@ function LedgerPage() {
             setTransactionsHasMore(false)
             pageRef.current = 1
             lastScrollTopRef.current = 0
+            setTransactionsFilters(DEFAULT_TRANSACTIONS_FILTERS)
             return () => {
                 active = false
             }
@@ -158,6 +171,7 @@ function LedgerPage() {
             page: 1,
             limit: 30,
             search: transactionsSearchTerm,
+            ...transactionsFilters,
         })
             .then((payload) => {
                 if (!active) return
@@ -186,7 +200,7 @@ function LedgerPage() {
         return () => {
             active = false
         }
-    }, [clientId, transactionsSearchTerm, error])
+    }, [clientId, transactionsSearchTerm, transactionsFilters, error])
 
     const loadMoreTransactions = async () => {
         if (!clientId || !transactionsHasMore || isLoadingTransactions) return
@@ -200,6 +214,7 @@ function LedgerPage() {
                 page: nextPage,
                 limit: 30,
                 search: transactionsSearchTerm,
+                ...transactionsFilters,
                 silentLoading: true,
             })
 
@@ -240,6 +255,19 @@ function LedgerPage() {
         if (distanceToBottom <= 100) {
             loadMoreTransactions()
         }
+    }
+
+    const handleApplyTransactionsFilters = (nextFilters = DEFAULT_TRANSACTIONS_FILTERS) => {
+        setTransactionsFilters({
+            accountIds: Array.isArray(nextFilters.accountIds) ? nextFilters.accountIds : [],
+            categoryIds: Array.isArray(nextFilters.categoryIds) ? nextFilters.categoryIds : [],
+            includeUncategorized: Boolean(nextFilters.includeUncategorized),
+            fromDate: String(nextFilters.fromDate || ""),
+            toDate: String(nextFilters.toDate || ""),
+            minAmount: String(nextFilters.minAmount || ""),
+            maxAmount: String(nextFilters.maxAmount || ""),
+        })
+        pageRef.current = 1
     }
 
     const handleUpdateTransaction = async (id, patch) => {
@@ -436,8 +464,11 @@ function LedgerPage() {
                             <div className="min-h-0 flex-1">
                                 <LedgerEntriesTable
                                     ledgerEntries={ledgerEntries}
+                                    accounts={accounts}
                                     categories={categoryList}
                                     searchTerm={transactionsSearchTerm}
+                                    filters={transactionsFilters}
+                                    onApplyFilters={handleApplyTransactionsFilters}
                                     onSearchTermChange={setTransactionsSearchTerm}
                                     onUpdateEntry={handleUpdateTransaction}
                                     onDeleteEntry={handleDeleteTransaction}
