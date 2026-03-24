@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useParams, useSearchParams } from "react-router-dom"
 import LedgerEntriesTable from "../components/ledger/LedgerEntriesTable"
 import LedgerHeader from "../components/ledger/LedgerHeader"
@@ -97,6 +97,10 @@ function LedgerPage() {
 
     const [accountToDelete, setAccountToDelete] = useState(null)
     const [categoryToDelete, setCategoryToDelete] = useState(null)
+    const pageScrollRef = useRef(null)
+    const loadingMoreRef = useRef(false)
+    const pageRef = useRef(1)
+    const lastScrollTopRef = useRef(0)
 
     useEffect(() => {
         let active = true
@@ -143,6 +147,8 @@ function LedgerPage() {
             setLedgerEntries([])
             setTransactionsPage(1)
             setTransactionsHasMore(false)
+            pageRef.current = 1
+            lastScrollTopRef.current = 0
             return () => {
                 active = false
             }
@@ -165,6 +171,8 @@ function LedgerPage() {
                 setLedgerEntries(mapped)
                 setTransactionsPage(page)
                 setTransactionsHasMore(page < totalPages)
+                pageRef.current = page
+                lastScrollTopRef.current = 0
             })
             .catch((err) => {
                 if (!active) return
@@ -172,6 +180,7 @@ function LedgerPage() {
                 setLedgerEntries([])
                 setTransactionsPage(1)
                 setTransactionsHasMore(false)
+                pageRef.current = 1
             })
             .finally(() => {
                 if (!active) return
@@ -184,15 +193,18 @@ function LedgerPage() {
     }, [clientId, transactionsSearchTerm])
 
     const loadMoreTransactions = async () => {
-        if (!clientId || !transactionsHasMore || isLoadingMoreTransactions || isLoadingTransactions) return
+        if (!clientId || !transactionsHasMore || isLoadingTransactions) return
+        if (loadingMoreRef.current) return
 
         try {
+            loadingMoreRef.current = true
             setIsLoadingMoreTransactions(true)
-            const nextPage = transactionsPage + 1
+            const nextPage = pageRef.current + 1
             const payload = await listTransactionsByClientId(clientId, {
                 page: nextPage,
                 limit: 30,
                 search: transactionsSearchTerm,
+                silentLoading: true,
             })
 
             const items = Array.isArray(payload?.items) ? payload.items : []
@@ -200,13 +212,38 @@ function LedgerPage() {
             const page = Number(payload?.page || nextPage)
             const totalPages = Number(payload?.totalPages || page)
 
+            if (items.length === 0 || page <= pageRef.current) {
+                setTransactionsHasMore(false)
+                return
+            }
+
             setLedgerEntries((current) => [...current, ...mapped])
             setTransactionsPage(page)
             setTransactionsHasMore(page < totalPages)
+            pageRef.current = page
         } catch (err) {
             error(err.message || "Failed to load more transactions")
         } finally {
+            loadingMoreRef.current = false
             setIsLoadingMoreTransactions(false)
+        }
+    }
+
+    const handlePageScroll = () => {
+        if (activeSection !== "ledger") return
+        const container = pageScrollRef.current
+        if (!container) return
+        if (!transactionsHasMore || isLoadingTransactions) return
+
+        const currentScrollTop = container.scrollTop
+        const scrollingDown = currentScrollTop > lastScrollTopRef.current
+        lastScrollTopRef.current = currentScrollTop
+        if (!scrollingDown) return
+        if (loadingMoreRef.current) return
+
+        const distanceToBottom = container.scrollHeight - (container.scrollTop + container.clientHeight)
+        if (distanceToBottom <= 100) {
+            loadMoreTransactions()
         }
     }
 
@@ -383,7 +420,11 @@ function LedgerPage() {
     }
 
     return (
-        <section className="w-full h-full min-h-0 box-border p-4 overflow-y-auto">
+        <section
+            ref={pageScrollRef}
+            onScroll={handlePageScroll}
+            className="w-full h-full min-h-0 box-border p-4 overflow-y-auto"
+        >
             <div className="min-h-full flex flex-col gap-4 pb-4">
                 <LedgerHeader
                     clientName={client?.name || ""}
@@ -398,23 +439,16 @@ function LedgerPage() {
                                 <h3 className="text-base font-bold">Transactions</h3>
                             </div>
                             <div className="min-h-0 flex-1">
-                                {ledgerEntries.length > 0 ? (
-                                    <LedgerEntriesTable
-                                        ledgerEntries={ledgerEntries}
-                                        categories={categoryList}
-                                        searchTerm={transactionsSearchTerm}
-                                        onSearchTermChange={setTransactionsSearchTerm}
-                                        onUpdateEntry={handleUpdateTransaction}
-                                        onDeleteEntry={handleDeleteTransaction}
-                                        hasMore={transactionsHasMore}
-                                        isLoadingMore={isLoadingMoreTransactions}
-                                        onLoadMore={loadMoreTransactions}
-                                    />
-                                ) : (
-                                    <h4 className="text-center text-gray-500">
-                                        {isLoadingTransactions ? "Loading transactions..." : "No transactions found."}
-                                    </h4>
-                                )}
+                                <LedgerEntriesTable
+                                    ledgerEntries={ledgerEntries}
+                                    categories={categoryList}
+                                    searchTerm={transactionsSearchTerm}
+                                    onSearchTermChange={setTransactionsSearchTerm}
+                                    onUpdateEntry={handleUpdateTransaction}
+                                    onDeleteEntry={handleDeleteTransaction}
+                                    isLoading={isLoadingTransactions}
+                                    isLoadingMore={isLoadingMoreTransactions}
+                                />
                             </div>
                         </section>
                     )}

@@ -7,6 +7,7 @@ export async function listTransactionsByClientId(clientId, options = {}) {
   const page = Number(options.page || 1)
   const limit = Number(options.limit || 200)
   const search = String(options.search || "").trim()
+  const silentLoading = Boolean(options.silentLoading)
 
   const params = new URLSearchParams({
     clientId: cleanClientId,
@@ -18,7 +19,7 @@ export async function listTransactionsByClientId(clientId, options = {}) {
     params.set("search", search)
   }
 
-  return api(`/api/transactions?${params.toString()}`)
+  return api(`/api/transactions?${params.toString()}`, { silentLoading })
 }
 
 export async function updateTransactionById(transactionId, patch) {

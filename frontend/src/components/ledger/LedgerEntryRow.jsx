@@ -14,6 +14,7 @@ function LedgerEntryRow({
     onSaveEdit,
     onChangeDraft,
     onDelete,
+    onCategoryChange,
 }) {
     const currentDate = isEditing ? editingDraft?.date ?? date : date
     const currentDescription = isEditing ? editingDraft?.description ?? description : description
@@ -56,35 +57,38 @@ function LedgerEntryRow({
             ) : (
                 <h4>{currentAccount}</h4>
             )}
-            {isEditing ? (
-                <div className="relative w-full">
-                    <select
-                        className="w-full rounded-full border-3 border-gray-100 bg-white p-2 pl-3 appearance-none"
-                        value={currentCategory}
-                        onChange={(e) => onChangeDraft({ category: e.target.value })}
-                    >
-                        <option value="">Uncategorized</option>
-                        {categories.map((c) => (
-                            <option key={c.id} value={c.name}>
-                                {c.name}
-                            </option>
-                        ))}
-                    </select>
-                    <svg
-                        className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                    >
-                        <path d="M6 9l6 6 6-6" />
-                    </svg>
-                </div>
-            ) : (
-                <h4>{currentCategory || "Uncategorized"}</h4>
-            )}
+            <div className="relative w-full">
+                <select
+                    className="w-full rounded-full border-3 border-gray-100 bg-white p-2 pl-3 appearance-none"
+                    value={currentCategory || ""}
+                    onChange={(e) => {
+                        const nextCategory = e.target.value
+                        if (isEditing) {
+                            onChangeDraft({ category: nextCategory })
+                            return
+                        }
+                        onCategoryChange?.(id, nextCategory)
+                    }}
+                >
+                    <option value="">Uncategorized</option>
+                    {categories.map((c) => (
+                        <option key={c.id} value={c.name}>
+                            {c.name}
+                        </option>
+                    ))}
+                </select>
+                <svg
+                    className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                >
+                    <path d="M6 9l6 6 6-6" />
+                </svg>
+            </div>
             {isEditing ? (
                 <input
                     type="number"

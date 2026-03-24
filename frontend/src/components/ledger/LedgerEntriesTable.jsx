@@ -8,9 +8,8 @@ function LedgerEntriesTable({
     onSearchTermChange,
     onUpdateEntry,
     onDeleteEntry,
-    hasMore,
+    isLoading = false,
     isLoadingMore,
-    onLoadMore,
 }) {
     const [editingId, setEditingId] = useState(null)
     const [editingDraft, setEditingDraft] = useState(null)
@@ -28,7 +27,6 @@ function LedgerEntriesTable({
     const [draftFilters, setDraftFilters] = useState(appliedFilters)
     const filterPanelRef = useRef(null)
     const scrollContainerRef = useRef(null)
-    const loadMoreTriggerRef = useRef(null)
 
     useEffect(() => {
         setSearchInput(searchTerm || "")
@@ -36,11 +34,14 @@ function LedgerEntriesTable({
 
     useEffect(() => {
         const timeoutId = setTimeout(() => {
-            onSearchTermChange?.(searchInput.trim())
+            const nextValue = searchInput.trim()
+            const currentValue = String(searchTerm || "").trim()
+            if (nextValue === currentValue) return
+            onSearchTermChange?.(nextValue)
         }, 300)
 
         return () => clearTimeout(timeoutId)
-    }, [searchInput, onSearchTermChange])
+    }, [searchInput, searchTerm, onSearchTermChange])
 
     useEffect(() => {
         setEditingId(null)
@@ -97,30 +98,6 @@ function LedgerEntriesTable({
         return () => document.removeEventListener("mousedown", onPointerDown)
     }, [showFilterModal])
 
-    useEffect(() => {
-        const root = scrollContainerRef.current
-        const target = loadMoreTriggerRef.current
-
-        if (!root || !target) return
-
-        const observer = new IntersectionObserver(
-            (entries) => {
-                const first = entries[0]
-                if (!first?.isIntersecting) return
-                if (!hasMore || isLoadingMore) return
-                onLoadMore?.()
-            },
-            {
-                root,
-                rootMargin: "0px 0px 120px 0px",
-                threshold: 0.1,
-            }
-        )
-
-        observer.observe(target)
-        return () => observer.disconnect()
-    }, [hasMore, isLoadingMore, onLoadMore])
-
     const startEditEntry = (entry) => {
         setEditingId(entry.id)
         setEditingDraft({
@@ -165,11 +142,23 @@ function LedgerEntriesTable({
         }
     }
 
+    const changeEntryCategory = async (id, categoryName) => {
+        try {
+            const selectedCategory = categories.find((item) => item.name === categoryName)
+            await onUpdateEntry?.(id, {
+                category: categoryName || null,
+                categoryId: categoryName ? selectedCategory?.id || null : null,
+            })
+        } catch (err) {
+            console.error(err)
+        }
+    }
+
     return (
         <div className="flex h-full min-h-0 gap-3">
             <div className="flex min-w-0 flex-1 flex-col">
                 <div>
-                    <div className="grid grid-cols-[minmax(140px,max-content)_1fr] items-center gap-4 rounded-t-lg border border-gray-200 bg-gray-100 px-3 py-2.5">
+                    <div className="grid grid-cols-[minmax(140px,max-content)_1fr] items-center gap-4 rounded-t-lg bg-gray-100 px-3 py-2.5">
                         <div className="flex items-center gap-2 text-sm">
                             <input type="checkbox" className="h-4 w-4" />
                             <h4 className="font-medium text-gray-700">Select All</h4>
@@ -397,7 +386,7 @@ function LedgerEntriesTable({
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-[24px_minmax(110px,0.7fr)_minmax(180px,2fr)_minmax(120px,1fr)_minmax(160px,1.3fr)_100px_96px] items-center gap-4 border-x border-gray-200 bg-white px-2 py-3 text-sm font-semibold">
+                    <div className="grid grid-cols-[24px_minmax(110px,0.7fr)_minmax(180px,2fr)_minmax(120px,1fr)_minmax(160px,1.3fr)_100px_96px] items-center gap-4 bg-white px-2 py-3 text-sm font-semibold">
                         <span className="block h-4 w-4" aria-hidden="true" />
                         <h4>Date</h4>
                         <h4>Description</h4>
@@ -412,43 +401,55 @@ function LedgerEntriesTable({
                     </div>
                 </div>
 
-                <div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto rounded-b-lg border-b-4 border-gray-100">
+                <div
+                    ref={scrollContainerRef}
+                    className="min-h-0 flex-1 overflow-y-auto rounded-b-lg border-b-4 border-gray-100"
+                >
                     {filteredEntries.map((entry, index) => (
-                        <LedgerEntryRow
-                            key={entry.id}
-                            index={index}
-                            categories={categories}
-                            id={entry.id}
-                            date={entry.date}
-                            description={entry.description}
-                            account={entry.account}
-                            category={entry.category}
-                            amount={entry.amount}
-                            isEditing={editingId === entry.id}
-                            editingDraft={editingDraft}
-                            onStartEdit={() => startEditEntry(entry)}
-                            onCancelEdit={cancelEditEntry}
-                            onSaveEdit={() => saveEditEntry(entry.id)}
-                            onChangeDraft={(patch) =>
-                                setEditingDraft((current) => ({ ...current, ...patch }))
-                            }
-                            onDelete={deleteEntry}
-                        />
+                        <div key={entry.id}>
+                            <LedgerEntryRow
+                                index={index}
+                                categories={categories}
+                                id={entry.id}
+                                date={entry.date}
+                                description={entry.description}
+                                account={entry.account}
+                                category={entry.category}
+                                amount={entry.amount}
+                                isEditing={editingId === entry.id}
+                                editingDraft={editingDraft}
+                                onStartEdit={() => startEditEntry(entry)}
+                                onCancelEdit={cancelEditEntry}
+                                onSaveEdit={() => saveEditEntry(entry.id)}
+                                onChangeDraft={(patch) =>
+                                    setEditingDraft((current) => ({ ...current, ...patch }))
+                                }
+                                onDelete={deleteEntry}
+                                onCategoryChange={changeEntryCategory}
+                            />
+                        </div>
                     ))}
 
-                    {filteredEntries.length === 0 && (
+                    {isLoading && (
                         <div className="px-3 py-8 text-center text-sm text-gray-500">
-                            No entries match the current filters.
+                            Loading transactions...
                         </div>
                     )}
 
-                    <div ref={loadMoreTriggerRef} className="h-2 w-full" />
+                    {!isLoading && filteredEntries.length === 0 && (
+                        <div className="px-3 py-8 text-center text-sm text-gray-500">
+                            {searchInput.trim()
+                                ? "No transactions found for this search."
+                                : "No transactions found."}
+                        </div>
+                    )}
 
                     {isLoadingMore && (
                         <div className="px-3 py-4 text-center text-xs text-gray-500">
                             Loading more transactions...
                         </div>
                     )}
+
                 </div>
             </div>
         </div>
