@@ -9,11 +9,14 @@ function ConfirmModal({
     onConfirm,
     onClose,
     isLoading = false,
+    children,
+    maxWidthClass = "max-w-2xl",
 }) {
     return (
-        <PopupModal isOpen={isOpen} title={title} onClose={onClose}>
+        <PopupModal isOpen={isOpen} title={title} onClose={onClose} maxWidthClass={maxWidthClass}>
             <div className="flex flex-col gap-4">
-                <p className="text-sm text-gray-700">{message}</p>
+                {message ? <p className="text-sm text-gray-700">{message}</p> : null}
+                {children}
                 <div className="flex items-center justify-end gap-2">
                     <button
                         type="button"

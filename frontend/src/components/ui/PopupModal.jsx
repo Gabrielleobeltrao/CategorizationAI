@@ -1,4 +1,4 @@
-function PopupModal({ isOpen, title, onClose, children }) {
+function PopupModal({ isOpen, title, onClose, children, maxWidthClass = "max-w-md" }) {
     if (!isOpen) return null
 
     return (
@@ -7,7 +7,7 @@ function PopupModal({ isOpen, title, onClose, children }) {
             onClick={onClose}
         >
             <section
-                className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl"
+                className={`w-full ${maxWidthClass} rounded-xl bg-white p-5 shadow-xl`}
                 onClick={(e) => e.stopPropagation()}
             >
                 <header className="mb-4 flex items-center justify-between">
