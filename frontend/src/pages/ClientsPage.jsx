@@ -60,7 +60,7 @@ function ClientsPage() {
         return () => {
             active = false
         }
-    }, [])
+    }, [error])
 
     useEffect(() => {
         const timeoutId = setTimeout(() => {
@@ -122,7 +122,7 @@ function ClientsPage() {
         return () => {
             active = false
         }
-    }, [officeId, refreshKey, page, limit, debouncedSearchTerm])
+    }, [officeId, refreshKey, page, limit, debouncedSearchTerm, error])
 
     const handleCreateClient = async (e) => {
         e.preventDefault()

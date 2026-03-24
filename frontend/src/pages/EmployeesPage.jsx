@@ -93,7 +93,7 @@ function EmployeesPage() {
         return () => {
             active = false
         }
-    }, [])
+    }, [error])
 
     useEffect(() => {
         let active = true
@@ -121,7 +121,7 @@ function EmployeesPage() {
         return () => {
             active = false
         }
-    }, [])
+    }, [error])
 
     useEffect(() => {
         let active = true
@@ -164,7 +164,7 @@ function EmployeesPage() {
         return () => {
             active = false
         }
-    }, [officeId, refreshKey])
+    }, [officeId, refreshKey, error])
 
     const handleCreateEmployee = async (e) => {
         e.preventDefault()

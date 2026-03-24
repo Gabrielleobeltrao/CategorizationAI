@@ -58,7 +58,6 @@ function ProfitLossPage() {
     let active = true
 
     if (!clientId) {
-      setClient(null)
       return () => {
         active = false
       }
@@ -83,39 +82,41 @@ function ProfitLossPage() {
     let active = true
 
     if (!clientId) {
-      setProfitLoss(null)
       return () => {
         active = false
       }
     }
 
-    setIsLoadingProfitLoss(true)
+    const run = async () => {
+      setIsLoadingProfitLoss(true)
 
-    getProfitLossByClientId(clientId, {
-      period: isManual ? "RANGE" : period,
-      month,
-      year,
-      fromDate,
-      toDate,
-    })
-      .then((payload) => {
+      try {
+        const payload = await getProfitLossByClientId(clientId, {
+          period: isManual ? "RANGE" : period,
+          month,
+          year,
+          fromDate,
+          toDate,
+        })
         if (!active) return
         setProfitLoss(payload || null)
-      })
-      .catch((err) => {
+      } catch (err) {
         if (!active) return
         setProfitLoss(null)
         error(err.message || "Failed to load profit and loss")
-      })
-      .finally(() => {
-        if (!active) return
-        setIsLoadingProfitLoss(false)
-      })
+      } finally {
+        if (active) {
+          setIsLoadingProfitLoss(false)
+        }
+      }
+    }
+
+    run()
 
     return () => {
       active = false
     }
-  }, [clientId, period, month, year, fromDate, toDate, isManual])
+  }, [clientId, period, month, year, fromDate, toDate, isManual, error])
 
   const revenueBase = useMemo(() => {
     const revenueLine = profitLoss?.statement.find((line) => line.id === "revenue")
@@ -277,7 +278,7 @@ function ProfitLossPage() {
 
         {profitLoss && (
           <div className="relative">
-            <section className="w-full">
+            <section className="w-full pb-3">
               <article className="rounded-xl border border-gray-200 bg-white p-4">
                 <div className="m-3 w-full overflow-x-auto">
                   <div className="grid min-w-[900px] grid-cols-[minmax(170px,1fr)_32px_minmax(220px,1fr)_32px_minmax(220px,1fr)_32px_minmax(180px,1fr)] items-end gap-x-2">

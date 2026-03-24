@@ -93,7 +93,6 @@ function Sidebar({ isCollapsed, onToggleCollapse }) {
     let active = true
 
     if (!clientId) {
-      setSelectedClient(null)
       return () => {
         active = false
       }

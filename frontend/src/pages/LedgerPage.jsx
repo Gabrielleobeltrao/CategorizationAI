@@ -68,7 +68,6 @@ function LedgerPage() {
     const [categoryList, setCategoryList] = useState([])
     const [ledgerEntries, setLedgerEntries] = useState([])
     const [isSubmitting, setIsSubmitting] = useState(false)
-    const [transactionsPage, setTransactionsPage] = useState(1)
     const [transactionsHasMore, setTransactionsHasMore] = useState(false)
     const [isLoadingTransactions, setIsLoadingTransactions] = useState(false)
     const [isLoadingMoreTransactions, setIsLoadingMoreTransactions] = useState(false)
@@ -138,14 +137,13 @@ function LedgerPage() {
         return () => {
             active = false
         }
-    }, [clientId])
+    }, [clientId, error])
 
     useEffect(() => {
         let active = true
 
         if (!clientId) {
             setLedgerEntries([])
-            setTransactionsPage(1)
             setTransactionsHasMore(false)
             pageRef.current = 1
             lastScrollTopRef.current = 0
@@ -169,7 +167,6 @@ function LedgerPage() {
                 const totalPages = Number(payload?.totalPages || 1)
 
                 setLedgerEntries(mapped)
-                setTransactionsPage(page)
                 setTransactionsHasMore(page < totalPages)
                 pageRef.current = page
                 lastScrollTopRef.current = 0
@@ -178,7 +175,6 @@ function LedgerPage() {
                 if (!active) return
                 error(err.message || "Failed to load transactions")
                 setLedgerEntries([])
-                setTransactionsPage(1)
                 setTransactionsHasMore(false)
                 pageRef.current = 1
             })
@@ -190,7 +186,7 @@ function LedgerPage() {
         return () => {
             active = false
         }
-    }, [clientId, transactionsSearchTerm])
+    }, [clientId, transactionsSearchTerm, error])
 
     const loadMoreTransactions = async () => {
         if (!clientId || !transactionsHasMore || isLoadingTransactions) return
@@ -218,7 +214,6 @@ function LedgerPage() {
             }
 
             setLedgerEntries((current) => [...current, ...mapped])
-            setTransactionsPage(page)
             setTransactionsHasMore(page < totalPages)
             pageRef.current = page
         } catch (err) {

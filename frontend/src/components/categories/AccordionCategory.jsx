@@ -1,6 +1,6 @@
 import { useState } from "react"
 
-function AccordionCategory({ id, name, type, description }) {
+function AccordionCategory({ name, type, description }) {
 
     const [edit, setEdit] = useState(false)
 

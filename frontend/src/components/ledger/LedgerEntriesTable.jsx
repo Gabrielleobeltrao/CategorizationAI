@@ -13,7 +13,7 @@ function LedgerEntriesTable({
 }) {
     const [editingId, setEditingId] = useState(null)
     const [editingDraft, setEditingDraft] = useState(null)
-    const [searchInput, setSearchInput] = useState(searchTerm || "")
+    const [searchInput, setSearchInput] = useState(() => searchTerm || "")
     const [onlyUncategorized, setOnlyUncategorized] = useState(false)
     const [showFilterModal, setShowFilterModal] = useState(false)
     const [appliedFilters, setAppliedFilters] = useState({
@@ -29,10 +29,6 @@ function LedgerEntriesTable({
     const scrollContainerRef = useRef(null)
 
     useEffect(() => {
-        setSearchInput(searchTerm || "")
-    }, [searchTerm])
-
-    useEffect(() => {
         const timeoutId = setTimeout(() => {
             const nextValue = searchInput.trim()
             const currentValue = String(searchTerm || "").trim()
@@ -42,11 +38,6 @@ function LedgerEntriesTable({
 
         return () => clearTimeout(timeoutId)
     }, [searchInput, searchTerm, onSearchTermChange])
-
-    useEffect(() => {
-        setEditingId(null)
-        setEditingDraft(null)
-    }, [ledgerEntries])
 
     const accountOptions = useMemo(() => {
         const unique = [...new Set(ledgerEntries.map((entry) => entry.account).filter(Boolean))]
