@@ -53,6 +53,7 @@ export async function updateTransactionById(id, patch) {
 
     // atualiza somente campos enviados no patch
     const allowed = {
+      accountId: patch.accountId,
       accountName: patch.accountName,
       date: patch.date,
       description: patch.description,
@@ -84,6 +85,13 @@ export async function listTransactionsPaginated({
   page = 1,
   limit = 50,
   search = "",
+  accountIds = [],
+  categoryIds = [],
+  includeUncategorized = false,
+  fromDate = "",
+  toDate = "",
+  minAmount = null,
+  maxAmount = null,
 }) {
   const db = getDB()
   const collection = db.collection("transactions")
@@ -92,18 +100,67 @@ export async function listTransactionsPaginated({
   const safeLimit = Math.min(200, Math.max(1, Number(limit) || 50))
   const skip = (safePage - 1) * safeLimit
 
-  const filter = { clientId }
+  const conditions = [{ clientId }]
   const safeSearch = String(search || "").trim()
 
   if (safeSearch) {
     const regex = new RegExp(escapeRegex(safeSearch), "i")
-    filter.$or = [
+    conditions.push({
+      $or: [
       { description: regex },
       { accountName: regex },
       { category: regex },
       { date: regex },
-    ]
+      ],
+    })
   }
+
+  const safeAccountIds = Array.isArray(accountIds) ? accountIds.filter(Boolean) : []
+  if (safeAccountIds.length > 0) {
+    conditions.push({ accountId: { $in: safeAccountIds } })
+  }
+
+  const safeCategoryIds = Array.isArray(categoryIds) ? categoryIds.filter(Boolean) : []
+  if (safeCategoryIds.length > 0 || includeUncategorized) {
+    const categoryConditions = []
+
+    if (safeCategoryIds.length > 0) {
+      categoryConditions.push({ categoryId: { $in: safeCategoryIds } })
+    }
+
+    if (includeUncategorized) {
+      categoryConditions.push({
+        $or: [
+          { categoryId: null },
+          { categoryId: "" },
+          { category: null },
+          { category: "" },
+        ],
+      })
+    }
+
+    if (categoryConditions.length === 1) {
+      conditions.push(categoryConditions[0])
+    } else {
+      conditions.push({ $or: categoryConditions })
+    }
+  }
+
+  if (fromDate || toDate) {
+    const dateQuery = {}
+    if (fromDate) dateQuery.$gte = fromDate
+    if (toDate) dateQuery.$lte = toDate
+    conditions.push({ date: dateQuery })
+  }
+
+  if (typeof minAmount === "number" || typeof maxAmount === "number") {
+    const amountQuery = {}
+    if (typeof minAmount === "number") amountQuery.$gte = minAmount
+    if (typeof maxAmount === "number") amountQuery.$lte = maxAmount
+    conditions.push({ amount: amountQuery })
+  }
+
+  const filter = conditions.length === 1 ? conditions[0] : { $and: conditions }
 
   const [items, total] = await Promise.all([
     collection
