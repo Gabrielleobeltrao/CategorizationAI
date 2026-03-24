@@ -1,7 +1,9 @@
 function LedgerEntryRow({
     index,
+    accounts,
     categories,
     id,
+    accountId,
     date,
     description,
     account,
@@ -15,16 +17,33 @@ function LedgerEntryRow({
     onChangeDraft,
     onDelete,
     onCategoryChange,
+    isSelected = false,
+    onToggleSelect,
+    isMultiSelectionMode = false,
+    isBatchEditing = false,
+    editingTouched = {},
+    isApplyingCategoryBulk = false,
 }) {
-    const currentDate = isEditing ? editingDraft?.date ?? date : date
-    const currentDescription = isEditing ? editingDraft?.description ?? description : description
-    const currentAccount = isEditing ? editingDraft?.account ?? account : account
-    const currentCategory = isEditing ? editingDraft?.category ?? category : category
-    const currentAmount = isEditing ? editingDraft?.amount ?? String(amount) : amount
+    const shouldUseDraftDate = isEditing && (!isBatchEditing || editingTouched?.date)
+    const shouldUseDraftAccount = isEditing && (!isBatchEditing || editingTouched?.accountId)
+    const shouldUseDraftCategory = isEditing && (!isBatchEditing || editingTouched?.category)
+
+    const currentDate = shouldUseDraftDate ? editingDraft?.date ?? date : date
+    const currentDescription = isEditing && !isBatchEditing ? editingDraft?.description ?? description : description
+    const currentAccountId = shouldUseDraftAccount ? editingDraft?.accountId ?? accountId : accountId
+    const fallbackAccount = accounts.find((item) => item.name === account)
+    const selectedAccountId = currentAccountId || fallbackAccount?.id || ""
+    const currentCategory = shouldUseDraftCategory ? editingDraft?.category ?? category : category
+    const currentAmount = isEditing && !isBatchEditing ? editingDraft?.amount ?? String(amount) : amount
 
     return (
         <div className={`grid grid-cols-[24px_minmax(110px,0.7fr)_minmax(180px,2fr)_minmax(120px,1fr)_minmax(160px,1.3fr)_100px_96px] items-center gap-4 px-2 py-3 text-sm ${index % 2 === 0 ? 'bg-gray-100' : 'bg-white'}`}>
-            <input className="h-4 w-4 self-center m-0" type="checkbox" />
+            <input
+                className="h-4 w-4 self-center m-0"
+                type="checkbox"
+                checked={Boolean(isSelected)}
+                onChange={(e) => onToggleSelect?.(e.target.checked)}
+            />
             {isEditing ? (
                 <input
                     type="date"
@@ -36,7 +55,7 @@ function LedgerEntryRow({
                 <h4 className="whitespace-nowrap">{String(currentDate).split("-").reverse().join("/")}</h4>
             )}
 
-            {isEditing ? (
+            {isEditing && !isBatchEditing ? (
                 <input
                     type="text"
                     className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm"
@@ -48,19 +67,39 @@ function LedgerEntryRow({
             )}
 
             {isEditing ? (
-                <input
-                    type="text"
-                    className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm"
-                    value={currentAccount}
-                    onChange={(e) => onChangeDraft({ account: e.target.value })}
-                />
+                <div className="relative w-full">
+                    <select
+                        className="w-full rounded-full border-3 border-gray-100 bg-white p-2 pl-3 appearance-none"
+                        value={selectedAccountId}
+                        onChange={(e) => onChangeDraft({ accountId: e.target.value })}
+                    >
+                        <option value="">Select account</option>
+                        {accounts.map((item) => (
+                            <option key={item.id} value={item.id}>
+                                {item.name}
+                            </option>
+                        ))}
+                    </select>
+                    <svg
+                        className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                    >
+                        <path d="M6 9l6 6 6-6" />
+                    </svg>
+                </div>
             ) : (
-                <h4>{currentAccount}</h4>
+                <h4>{account || "No account"}</h4>
             )}
             <div className="relative w-full">
                 <select
                     className="w-full rounded-full border-3 border-gray-100 bg-white p-2 pl-3 appearance-none"
                     value={currentCategory || ""}
+                    disabled={isApplyingCategoryBulk}
                     onChange={(e) => {
                         const nextCategory = e.target.value
                         if (isEditing) {
@@ -89,7 +128,7 @@ function LedgerEntryRow({
                     <path d="M6 9l6 6 6-6" />
                 </svg>
             </div>
-            {isEditing ? (
+            {isEditing && !isBatchEditing ? (
                 <input
                     type="number"
                     step="0.01"
@@ -121,10 +160,14 @@ function LedgerEntryRow({
                 {!isEditing && (
                     <button
                         type="button"
-                        className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-gray-800"
+                        className={`rounded-md p-1 ${isMultiSelectionMode ? "cursor-not-allowed text-gray-300" : "text-gray-500 hover:bg-gray-200 hover:text-gray-800"}`}
                         title="Split transaction"
                         aria-label="Split transaction"
-                        onClick={() => console.log("Split transaction", id)}
+                        disabled={isMultiSelectionMode}
+                        onClick={() => {
+                            if (isMultiSelectionMode) return
+                            console.log("Split transaction", id)
+                        }}
                     >
                         <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M4 7h9" />
@@ -138,9 +181,15 @@ function LedgerEntryRow({
                 <button
                     type="button"
                     className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-sky-700"
-                    title="Edit transaction"
+                    title={isMultiSelectionMode ? "Edit selected: date/account/category only" : "Edit transaction"}
                     aria-label="Edit transaction"
-                    onClick={isEditing ? onSaveEdit : onStartEdit}
+                    onClick={() => {
+                        if (isEditing) {
+                            onSaveEdit?.()
+                            return
+                        }
+                        onStartEdit?.()
+                    }}
                 >
                     {isEditing ? (
                         <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
