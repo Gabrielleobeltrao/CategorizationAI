@@ -1,8 +1,215 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import LedgerEntryRow from "./LedgerEntryRow"
 import ConfirmModal from "../ui/ConfirmModal"
+import PopupModal from "../ui/PopupModal"
 
 const UNCATEGORIZED_FILTER_VALUE = "__uncategorized__"
+const CSV_TARGET_FIELDS = [
+    { value: "date", label: "Date" },
+    { value: "description", label: "Description" },
+    { value: "amount", label: "Amount" },
+    { value: "ignore", label: "Ignore" },
+]
+const REQUIRED_UPLOAD_FIELDS = ["date", "description", "amount"]
+
+function formatPreviewDate(value = "") {
+    const safeValue = String(value || "")
+    if (safeValue.includes("-")) {
+        return safeValue.split("-").reverse().join("/")
+    }
+    const slashParts = safeValue.split("/")
+    if (slashParts.length === 3) {
+        return `${slashParts[1]}/${slashParts[0]}/${slashParts[2]}`
+    }
+    return safeValue
+}
+
+function formatPreviewAmount(value = "") {
+    const normalized = String(value || "").replace(/[^0-9.-]/g, "")
+    const amount = Number(normalized)
+    if (Number.isNaN(amount)) return String(value || "")
+    return `$${amount.toFixed(2)}`
+}
+
+function getTargetFieldLabel(value = "") {
+    const matched = CSV_TARGET_FIELDS.find((field) => field.value === value)
+    return matched?.label || "Ignore"
+}
+
+function isMeaningfulPreviewValue(value = "") {
+    const normalized = String(value || "").trim()
+    if (normalized === "") return false
+    const numeric = Number(normalized.replace(/[$,\s]/g, ""))
+    if (!Number.isNaN(numeric) && numeric === 0) return false
+    return true
+}
+
+function detectDelimiter(headerLine = "") {
+    const commaCount = (headerLine.match(/,/g) || []).length
+    const semicolonCount = (headerLine.match(/;/g) || []).length
+    const tabCount = (headerLine.match(/\t/g) || []).length
+    if (semicolonCount > commaCount && semicolonCount >= tabCount) return ";"
+    if (tabCount > commaCount && tabCount > semicolonCount) return "\t"
+    return ","
+}
+
+function parseCsvLine(line = "", delimiter = ",") {
+    const values = []
+    let current = ""
+    let inQuotes = false
+
+    for (let i = 0; i < line.length; i += 1) {
+        const char = line[i]
+        const nextChar = line[i + 1]
+
+        if (char === "\"") {
+            if (inQuotes && nextChar === "\"") {
+                current += "\""
+                i += 1
+                continue
+            }
+            inQuotes = !inQuotes
+            continue
+        }
+
+        if (char === delimiter && !inQuotes) {
+            values.push(current)
+            current = ""
+            continue
+        }
+
+        current += char
+    }
+
+    values.push(current)
+    return values
+}
+
+function parseCsvText(csvText = "") {
+    const normalized = String(csvText || "")
+        .replace(/^\uFEFF/, "")
+        .replace(/\r\n/g, "\n")
+        .replace(/\r/g, "\n")
+
+    const lines = normalized
+        .split("\n")
+        .map((line) => line.trimEnd())
+        .filter((line) => line.trim() !== "")
+
+    if (lines.length === 0) {
+        return { columns: [], previewRows: [] }
+    }
+
+    const headerLine = lines[0]
+    const delimiter = detectDelimiter(headerLine)
+    const rawHeaders = parseCsvLine(headerLine, delimiter)
+    const columns = rawHeaders.map((header, index) => {
+        const safeHeader = String(header || "").trim()
+        return safeHeader || `Column ${index + 1}`
+    })
+
+    const columnHasContent = {}
+    columns.forEach((column) => {
+        columnHasContent[column] = false
+    })
+
+    const allRows = []
+    for (let lineIndex = 1; lineIndex < lines.length; lineIndex += 1) {
+        const values = parseCsvLine(lines[lineIndex], delimiter)
+
+        const row = {}
+        columns.forEach((column, columnIndex) => {
+            row[column] = values[columnIndex] ?? ""
+        })
+        allRows.push(row)
+
+        columns.forEach((column, columnIndex) => {
+            const value = values[columnIndex] ?? ""
+            if (isMeaningfulPreviewValue(value)) {
+                columnHasContent[column] = true
+            }
+        })
+    }
+
+    const cleanedColumns = columns.filter((column) => columnHasContent[column])
+    const cleanedRows = allRows
+        .map((row) => {
+            const cleanedRow = {}
+            cleanedColumns.forEach((column) => {
+                cleanedRow[column] = row[column] ?? ""
+            })
+            return cleanedRow
+        })
+        .filter((row) =>
+            cleanedColumns.some((column) => isMeaningfulPreviewValue(row[column]))
+        )
+
+    const firstRowIndexByColumn = {}
+    cleanedColumns.forEach((column) => {
+        firstRowIndexByColumn[column] = cleanedRows.findIndex(
+            (row) => isMeaningfulPreviewValue(row[column])
+        )
+    })
+
+    const representativeIndexes = Array.from(
+        new Set(
+            Object.values(firstRowIndexByColumn)
+                .filter((index) => index >= 0)
+                .map((index) => Number(index))
+        )
+    ).sort((a, b) => a - b)
+
+    const previewIndexes = [...representativeIndexes]
+    for (let index = 0; index < cleanedRows.length && previewIndexes.length < 4; index += 1) {
+        if (!previewIndexes.includes(index)) {
+            previewIndexes.push(index)
+        }
+    }
+
+    const finalPreviewIndexes = previewIndexes
+        .sort((a, b) => a - b)
+        .slice(0, Math.max(4, Math.min(8, previewIndexes.length)))
+
+    const previewRows = finalPreviewIndexes.map((index) => cleanedRows[index]).filter(Boolean)
+
+    return { columns: cleanedColumns, previewRows }
+}
+
+function guessTargetFieldFromHeader(header = "") {
+    const normalized = String(header || "").trim().toLowerCase()
+    if (!normalized) return "ignore"
+    if (normalized === "date" || normalized.includes("transaction date")) return "date"
+    if (normalized.includes("description") || normalized.includes("memo") || normalized.includes("payee") || normalized === "name") return "description"
+    if (normalized === "amount" || normalized.includes("amount usd") || normalized.includes("debit") || normalized.includes("credit")) return "amount"
+    return "ignore"
+}
+
+function buildDefaultColumnRoles(columns = []) {
+    const usedTargets = new Set()
+    const roles = {}
+
+    columns.forEach((column) => {
+        const guessed = guessTargetFieldFromHeader(column)
+        if (guessed === "ignore") {
+            roles[column] = "ignore"
+            return
+        }
+        if (usedTargets.has(guessed)) {
+            roles[column] = "ignore"
+            return
+        }
+        usedTargets.add(guessed)
+        roles[column] = guessed
+    })
+
+    return roles
+}
+
+function formatPreviewCell(value = "", mappedTarget = "ignore") {
+    if (mappedTarget === "date") return formatPreviewDate(value)
+    if (mappedTarget === "amount") return formatPreviewAmount(value)
+    return String(value || "")
+}
 
 function LedgerEntriesTable({
     ledgerEntries,
@@ -16,6 +223,8 @@ function LedgerEntriesTable({
     onDeleteEntry,
     isLoading = false,
     isLoadingMore,
+    showUploadModal = false,
+    onCloseUploadModal,
 }) {
     const [editingTargetIds, setEditingTargetIds] = useState([])
     const [editingDraft, setEditingDraft] = useState(null)
@@ -26,6 +235,8 @@ function LedgerEntriesTable({
     const [isDeletingEntries, setIsDeletingEntries] = useState(false)
     const [searchInput, setSearchInput] = useState(() => searchTerm || "")
     const [showFilterModal, setShowFilterModal] = useState(false)
+    const [uploadedCsvFiles, setUploadedCsvFiles] = useState([])
+    const [uploadAccountId, setUploadAccountId] = useState("")
     const appliedFilters = useMemo(() => ({
         accountIds: [],
         categoryIds: [],
@@ -40,6 +251,7 @@ function LedgerEntriesTable({
     const filterPanelRef = useRef(null)
     const scrollContainerRef = useRef(null)
     const selectAllRef = useRef(null)
+    const csvFileInputRef = useRef(null)
 
     const visibleEntryIds = useMemo(
         () => ledgerEntries.map((entry) => entry.id),
@@ -112,6 +324,30 @@ function LedgerEntriesTable({
         const safeAccounts = Array.isArray(accounts) ? accounts : []
         return [...safeAccounts].sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")))
     }, [accounts])
+    const hasDuplicateMappingInAnyFile = useMemo(
+        () =>
+            uploadedCsvFiles.some((uploadedFile) => {
+                const counts = {}
+                Object.values(uploadedFile.columnRoles || {}).forEach((target) => {
+                    if (!target || target === "ignore") return
+                    counts[target] = (counts[target] || 0) + 1
+                })
+                return Object.values(counts).some((count) => count > 1)
+            }),
+        [uploadedCsvFiles]
+    )
+    const hasMissingRequiredMappingInAnyFile = useMemo(
+        () =>
+            uploadedCsvFiles.some((uploadedFile) => {
+                const assignedTargets = new Set(
+                    Object.values(uploadedFile.columnRoles || {}).filter(
+                        (target) => target && target !== "ignore"
+                    )
+                )
+                return REQUIRED_UPLOAD_FIELDS.some((requiredTarget) => !assignedTargets.has(requiredTarget))
+            }),
+        [uploadedCsvFiles]
+    )
 
     const activeFiltersCount = useMemo(() => {
         const selectedAccounts = Array.isArray(appliedFilters.accountIds) ? appliedFilters.accountIds : []
@@ -268,6 +504,68 @@ function LedgerEntriesTable({
             console.error(err)
         } finally {
             setIsApplyingCategoryBulk(false)
+        }
+    }
+
+    const openCsvFilePicker = () => {
+        csvFileInputRef.current?.click()
+    }
+
+    const handleCsvFilesSelected = async (event) => {
+        const files = Array.from(event.target.files || [])
+        if (files.length === 0) return
+
+        const parsedFiles = await Promise.all(
+            files.map(async (file, index) => {
+                const fileContent = await file.text()
+                const parsedCsv = parseCsvText(fileContent)
+                return {
+                    id: `${file.name}-${file.size}-${file.lastModified}-${index}`,
+                    fileName: file.name,
+                    isEditingMapping: false,
+                    columns: parsedCsv.columns,
+                    previewRows: parsedCsv.previewRows,
+                    columnRoles: buildDefaultColumnRoles(parsedCsv.columns),
+                }
+            })
+        )
+
+        setUploadedCsvFiles((current) => [...current, ...parsedFiles])
+        event.target.value = ""
+    }
+
+    const toggleFileMappingEdit = (fileId) => {
+        setUploadedCsvFiles((current) =>
+            current.map((uploadedFile) =>
+                uploadedFile.id === fileId
+                    ? { ...uploadedFile, isEditingMapping: !uploadedFile.isEditingMapping }
+                    : uploadedFile
+            )
+        )
+    }
+
+    const updateFileColumnRole = (fileId, columnKey, nextRole) => {
+        setUploadedCsvFiles((current) =>
+            current.map((uploadedFile) =>
+                uploadedFile.id === fileId
+                    ? {
+                        ...uploadedFile,
+                        columnRoles: {
+                            ...uploadedFile.columnRoles,
+                            [columnKey]: nextRole,
+                        },
+                    }
+                    : uploadedFile
+            )
+        )
+    }
+
+    const closeUploadModal = () => {
+        onCloseUploadModal?.()
+        setUploadedCsvFiles([])
+        setUploadAccountId("")
+        if (csvFileInputRef.current) {
+            csvFileInputRef.current.value = ""
         }
     }
 
@@ -641,6 +939,232 @@ function LedgerEntriesTable({
                     )}
                 </div>
             </ConfirmModal>
+
+            <PopupModal
+                isOpen={showUploadModal}
+                title="Upload Transactions CSV"
+                onClose={closeUploadModal}
+                maxWidthClass="max-w-5xl"
+            >
+                <div className="flex flex-col gap-4">
+                    <p className="text-sm text-gray-600">
+                        Upload a CSV and confirm if the columns are mapped correctly before importing.
+                    </p>
+
+                    <div className="max-w-sm">
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                            Account for all files
+                        </label>
+                        <div className="relative">
+                            <select
+                                className="w-full rounded-full border-3 border-gray-100 bg-white p-2 pl-3 pr-8 text-sm text-gray-700 appearance-none outline-none"
+                                value={uploadAccountId}
+                                onChange={(e) => setUploadAccountId(e.target.value)}
+                            >
+                                <option value="">Select account</option>
+                                {accountOptions.map((account) => (
+                                    <option key={account.id} value={account.id}>
+                                        {account.name}
+                                    </option>
+                                ))}
+                            </select>
+                            <svg
+                                className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            >
+                                <path d="M6 9l6 6 6-6" />
+                            </svg>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        <input
+                            ref={csvFileInputRef}
+                            type="file"
+                            accept=".csv,text/csv"
+                            multiple
+                            className="hidden"
+                            onChange={handleCsvFilesSelected}
+                        />
+                        <button
+                            type="button"
+                            className="rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black"
+                            onClick={openCsvFilePicker}
+                        >
+                            Upload CSV Files
+                        </button>
+                        <span className="text-xs text-gray-500">You can upload one or more CSV files</span>
+                    </div>
+
+                    {uploadedCsvFiles.length === 0 && (
+                        <p className="rounded-md border border-dashed border-gray-300 bg-gray-50 px-3 py-5 text-center text-sm text-gray-500">
+                            No files selected yet.
+                        </p>
+                    )}
+
+                    {uploadedCsvFiles.length > 0 && (
+                        <div className="max-h-[56vh] space-y-4 overflow-y-auto pr-1">
+                            {uploadedCsvFiles.map((uploadedFile) => {
+                                const counts = {}
+                                Object.values(uploadedFile.columnRoles || {}).forEach((target) => {
+                                    if (!target || target === "ignore") return
+                                    counts[target] = (counts[target] || 0) + 1
+                                })
+                                const duplicatedTargets = Object.keys(counts).filter((target) => counts[target] > 1)
+                                const hasDuplicateInFile = duplicatedTargets.length > 0
+                                const assignedTargets = new Set(
+                                    Object.values(uploadedFile.columnRoles || {}).filter(
+                                        (target) => target && target !== "ignore"
+                                    )
+                                )
+                                const missingRequiredTargets = REQUIRED_UPLOAD_FIELDS.filter(
+                                    (requiredTarget) => !assignedTargets.has(requiredTarget)
+                                )
+
+                                return (
+                                    <div key={uploadedFile.id} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                                        <div className="mb-3 flex items-center justify-between">
+                                            <div>
+                                                <h3 className="text-sm font-semibold text-gray-700">{uploadedFile.fileName}</h3>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                className={`rounded-md p-1 ${
+                                                    uploadedFile.isEditingMapping
+                                                        ? "bg-gray-900 text-white"
+                                                        : "text-gray-500 hover:bg-gray-200 hover:text-sky-700"
+                                                }`}
+                                                onClick={() => toggleFileMappingEdit(uploadedFile.id)}
+                                                title={uploadedFile.isEditingMapping ? "Finish column edit" : "Edit columns"}
+                                                aria-label={uploadedFile.isEditingMapping ? "Finish column edit" : "Edit columns"}
+                                            >
+                                                {uploadedFile.isEditingMapping ? (
+                                                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                        <path d="M20 6 9 17l-5-5" />
+                                                    </svg>
+                                                ) : (
+                                                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                        <path d="M12 20h9" />
+                                                        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5z" />
+                                                    </svg>
+                                                )}
+                                            </button>
+                                        </div>
+
+                                        <div className="mt-4 overflow-x-auto rounded-md border border-gray-200 bg-white">
+                                            <table className="min-w-[760px] w-max border-collapse">
+                                                <thead>
+                                                    <tr className="border-b border-gray-200 bg-gray-100">
+                                                        {uploadedFile.columns.map((column) => (
+                                                            <th key={column} className="min-w-[150px] px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-600">
+                                                            {uploadedFile.isEditingMapping ? (
+                                                                <>
+                                                                    <select
+                                                                        className={`w-full rounded-full border-3 bg-white p-2 pl-3 pr-8 text-xs font-medium appearance-none outline-none ${
+                                                                            hasDuplicateInFile &&
+                                                                            uploadedFile.columnRoles[column] !== "ignore" &&
+                                                                            duplicatedTargets.includes(uploadedFile.columnRoles[column])
+                                                                                ? "border-rose-300 text-rose-700"
+                                                                                : "border-gray-100 text-gray-700"
+                                                                        }`}
+                                                                        value={uploadedFile.columnRoles[column] || "ignore"}
+                                                                        onChange={(e) =>
+                                                                            updateFileColumnRole(uploadedFile.id, column, e.target.value)
+                                                                        }
+                                                                    >
+                                                                        {CSV_TARGET_FIELDS.map((targetField) => (
+                                                                            <option key={targetField.value} value={targetField.value}>
+                                                                                {targetField.label}
+                                                                            </option>
+                                                                        ))}
+                                                                    </select>
+                                                                    <svg
+                                                                        className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
+                                                                        viewBox="0 0 24 24"
+                                                                        fill="none"
+                                                                        stroke="currentColor"
+                                                                        strokeWidth="2.5"
+                                                                        strokeLinecap="round"
+                                                                        strokeLinejoin="round"
+                                                                    >
+                                                                        <path d="M6 9l6 6 6-6" />
+                                                                    </svg>
+                                                                </>
+                                                            ) : (
+                                                                <span>{getTargetFieldLabel(uploadedFile.columnRoles[column])}</span>
+                                                            )}
+                                                            </th>
+                                                        ))}
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {uploadedFile.previewRows.map((row, index) => (
+                                                        <tr
+                                                            key={`${uploadedFile.id}-row-${index}`}
+                                                            className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}
+                                                        >
+                                                            {uploadedFile.columns.map((column) => (
+                                                                <td
+                                                                    key={`${uploadedFile.id}-row-${index}-${column}`}
+                                                                    className="max-w-[260px] px-3 py-2 text-sm text-gray-700"
+                                                                    title={String(row[column] || "")}
+                                                                >
+                                                                    <span className="block truncate">
+                                                                        {formatPreviewCell(row[column], uploadedFile.columnRoles[column])}
+                                                                    </span>
+                                                                </td>
+                                                            ))}
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+
+                                        {hasDuplicateInFile && (
+                                            <p className="mt-2 text-xs font-medium text-rose-600">
+                                                You cannot map two columns to the same field.
+                                            </p>
+                                        )}
+                                        {missingRequiredTargets.length > 0 && (
+                                            <p className="mt-2 text-xs font-medium text-amber-700">
+                                                Missing required mapping: {missingRequiredTargets.map(getTargetFieldLabel).join(", ")}.
+                                            </p>
+                                        )}
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    )}
+
+                    <div className="mt-1 flex items-center justify-end gap-2">
+                        <button
+                            type="button"
+                            className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                            onClick={closeUploadModal}
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            className="rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={
+                                uploadedCsvFiles.length === 0 ||
+                                hasDuplicateMappingInAnyFile ||
+                                hasMissingRequiredMappingInAnyFile ||
+                                !uploadAccountId
+                            }
+                            onClick={closeUploadModal}
+                        >
+                            Confirm mapping
+                        </button>
+                    </div>
+                </div>
+            </PopupModal>
         </div>
     )
 }

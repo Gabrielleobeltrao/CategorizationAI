@@ -84,6 +84,7 @@ function LedgerPage() {
     const [isLoadingMoreTransactions, setIsLoadingMoreTransactions] = useState(false)
     const [transactionsSearchTerm, setTransactionsSearchTerm] = useState("")
     const [transactionsFilters, setTransactionsFilters] = useState(DEFAULT_TRANSACTIONS_FILTERS)
+    const [showUploadModal, setShowUploadModal] = useState(false)
 
     const [showAccountForm, setShowAccountForm] = useState(false)
     const [showCategoryForm, setShowCategoryForm] = useState(false)
@@ -460,6 +461,18 @@ function LedgerPage() {
                         <section className="min-h-0 h-full p-1 flex flex-col gap-3">
                             <div className="flex items-center justify-between">
                                 <h3 className="text-base font-bold">Transactions</h3>
+                                <button
+                                    type="button"
+                                    className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                                    onClick={() => setShowUploadModal(true)}
+                                >
+                                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M12 16V4" />
+                                        <path d="m7 9 5-5 5 5" />
+                                        <path d="M20 16v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-3" />
+                                    </svg>
+                                    <span>Upload CSV</span>
+                                </button>
                             </div>
                             <div className="min-h-0 flex-1">
                                 <LedgerEntriesTable
@@ -474,6 +487,8 @@ function LedgerPage() {
                                     onDeleteEntry={handleDeleteTransaction}
                                     isLoading={isLoadingTransactions}
                                     isLoadingMore={isLoadingMoreTransactions}
+                                    showUploadModal={showUploadModal}
+                                    onCloseUploadModal={() => setShowUploadModal(false)}
                                 />
                             </div>
                         </section>
