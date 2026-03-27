@@ -11,8 +11,11 @@ export async function listTransactionsByClientId(clientId, options = {}) {
   const accountIds = Array.isArray(options.accountIds) ? options.accountIds : []
   const categoryIds = Array.isArray(options.categoryIds) ? options.categoryIds : []
   const includeUncategorized = Boolean(options.includeUncategorized)
+  const splitMode = String(options.splitMode || "all").trim().toLowerCase()
   const fromDate = String(options.fromDate || "").trim()
   const toDate = String(options.toDate || "").trim()
+  const years = Array.isArray(options.years) ? options.years : []
+  const months = Array.isArray(options.months) ? options.months : []
   const minAmount = options.minAmount !== undefined ? String(options.minAmount).trim() : ""
   const maxAmount = options.maxAmount !== undefined ? String(options.maxAmount).trim() : ""
 
@@ -34,11 +37,20 @@ export async function listTransactionsByClientId(clientId, options = {}) {
   if (includeUncategorized) {
     params.set("includeUncategorized", "true")
   }
+  if (splitMode && splitMode !== "all") {
+    params.set("splitMode", splitMode)
+  }
   if (fromDate) {
     params.set("fromDate", fromDate)
   }
   if (toDate) {
     params.set("toDate", toDate)
+  }
+  if (years.length > 0) {
+    params.set("years", years.join(","))
+  }
+  if (months.length > 0) {
+    params.set("months", months.join(","))
   }
   if (minAmount !== "") {
     params.set("minAmount", minAmount)
@@ -48,6 +60,18 @@ export async function listTransactionsByClientId(clientId, options = {}) {
   }
 
   return api(`/api/transactions?${params.toString()}`, { silentLoading })
+}
+
+export async function listTransactionPeriodOptions(clientId, options = {}) {
+  const cleanClientId = String(clientId || "").trim()
+  if (!cleanClientId) throw new Error("clientId is required")
+  const silentLoading = Boolean(options.silentLoading)
+
+  const params = new URLSearchParams({
+    clientId: cleanClientId,
+  })
+
+  return api(`/api/transactions/filter-options?${params.toString()}`, { silentLoading })
 }
 
 export async function updateTransactionById(transactionId, patch) {
@@ -67,5 +91,16 @@ export async function deleteTransactionById(transactionId) {
 
   return api(`/api/transactions/${id}`, {
     method: "DELETE",
+  })
+}
+
+export async function createTransactionsBatch(transactions) {
+  if (!Array.isArray(transactions) || transactions.length === 0) {
+    throw new Error("transactions must be a non-empty array")
+  }
+
+  return api("/api/transactions/batch", {
+    method: "POST",
+    body: JSON.stringify({ transactions }),
   })
 }

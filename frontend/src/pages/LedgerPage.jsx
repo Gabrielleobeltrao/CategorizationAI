@@ -21,8 +21,10 @@ import {
 } from "../services/categories.service"
 import {
     listTransactionsByClientId,
+    listTransactionPeriodOptions,
     updateTransactionById,
     deleteTransactionById,
+    createTransactionsBatch,
 } from "../services/transactions.service"
 import { useNotification } from "../contexts/notification.context"
 
@@ -30,6 +32,9 @@ const DEFAULT_TRANSACTIONS_FILTERS = {
     accountIds: [],
     categoryIds: [],
     includeUncategorized: false,
+    splitMode: "all",
+    years: [],
+    months: [],
     fromDate: "",
     toDate: "",
     minAmount: "",
@@ -59,11 +64,21 @@ function mapTransaction(item = {}) {
     return {
         id: item?._id || item?.id || "",
         accountId: item?.accountId || "",
+        categoryId: item?.categoryId || "",
         date: item?.date || "",
         description: item?.description || "",
         account: item?.accountName || item?.account || "",
         category: item?.category || "",
         amount: Number(item?.amount || 0),
+        isSplit: Boolean(item?.isSplit),
+        splits: Array.isArray(item?.splits)
+            ? item.splits.map((split, index) => ({
+                id: split?.id || `${item?._id || item?.id || "tx"}-split-${index}`,
+                categoryId: split?.categoryId || null,
+                category: split?.category || null,
+                amount: Number(split?.amount || 0),
+            }))
+            : [],
     }
 }
 
@@ -71,6 +86,7 @@ function LedgerPage() {
     const { clientId: routeClientId } = useParams()
     const [searchParams] = useSearchParams()
     const clientId = routeClientId || searchParams.get("clientId")
+    const preselectedCategoryName = String(searchParams.get("category") || "").trim()
     const { success, error } = useNotification()
 
     const [activeSection, setActiveSection] = useState("ledger")
@@ -84,12 +100,16 @@ function LedgerPage() {
     const [isLoadingMoreTransactions, setIsLoadingMoreTransactions] = useState(false)
     const [transactionsSearchTerm, setTransactionsSearchTerm] = useState("")
     const [transactionsFilters, setTransactionsFilters] = useState(DEFAULT_TRANSACTIONS_FILTERS)
+    const [transactionsPeriodOptions, setTransactionsPeriodOptions] = useState({
+        years: [],
+        months: [],
+    })
     const [showUploadModal, setShowUploadModal] = useState(false)
+    const [isBaseDataLoaded, setIsBaseDataLoaded] = useState(false)
+    const [hasAppliedPreselectedCategory, setHasAppliedPreselectedCategory] = useState(false)
 
     const [showAccountForm, setShowAccountForm] = useState(false)
     const [showCategoryForm, setShowCategoryForm] = useState(false)
-    const [showEditAccountForm, setShowEditAccountForm] = useState(false)
-    const [showEditCategoryForm, setShowEditCategoryForm] = useState(false)
 
     const [newAccountName, setNewAccountName] = useState("")
     const [newAccountType, setNewAccountType] = useState("")
@@ -97,15 +117,6 @@ function LedgerPage() {
     const [newCategoryName, setNewCategoryName] = useState("")
     const [newCategoryType, setNewCategoryType] = useState("")
     const [newCategoryDescription, setNewCategoryDescription] = useState("")
-
-    const [editingAccountId, setEditingAccountId] = useState("")
-    const [editingAccountName, setEditingAccountName] = useState("")
-    const [editingAccountType, setEditingAccountType] = useState("")
-
-    const [editingCategoryId, setEditingCategoryId] = useState("")
-    const [editingCategoryName, setEditingCategoryName] = useState("")
-    const [editingCategoryType, setEditingCategoryType] = useState("")
-    const [editingCategoryDescription, setEditingCategoryDescription] = useState("")
 
     const [accountToDelete, setAccountToDelete] = useState(null)
     const [categoryToDelete, setCategoryToDelete] = useState(null)
@@ -116,12 +127,14 @@ function LedgerPage() {
 
     useEffect(() => {
         let active = true
+        setIsBaseDataLoaded(false)
 
         if (!clientId) {
             setClient(null)
             setAccounts([])
             setCategoryList([])
             setLedgerEntries([])
+            setIsBaseDataLoaded(true)
             return () => {
                 active = false
             }
@@ -138,6 +151,7 @@ function LedgerPage() {
                 setClient(clientData || null)
                 setAccounts(Array.isArray(accountsData) ? accountsData.map(mapAccount) : [])
                 setCategoryList(Array.isArray(categoriesData) ? categoriesData.map(mapCategory) : [])
+                setIsBaseDataLoaded(true)
             })
             .catch((err) => {
                 if (!active) return
@@ -145,6 +159,7 @@ function LedgerPage() {
                 setClient(null)
                 setAccounts([])
                 setCategoryList([])
+                setIsBaseDataLoaded(true)
             })
 
         return () => {
@@ -153,11 +168,46 @@ function LedgerPage() {
     }, [clientId, error])
 
     useEffect(() => {
+        setHasAppliedPreselectedCategory(false)
+    }, [clientId, preselectedCategoryName])
+
+    useEffect(() => {
+        if (!clientId || !isBaseDataLoaded || hasAppliedPreselectedCategory) return
+
+        const normalizedCategory = String(preselectedCategoryName || "").trim()
+        if (!normalizedCategory) {
+            setHasAppliedPreselectedCategory(true)
+            return
+        }
+
+        const lowerCategory = normalizedCategory.toLowerCase()
+        const matchedCategory = categoryList.find(
+            (item) => String(item?.name || "").trim().toLowerCase() === lowerCategory
+        )
+
+        setActiveSection("ledger")
+        setTransactionsFilters({
+            ...DEFAULT_TRANSACTIONS_FILTERS,
+            categoryIds: matchedCategory?.id ? [matchedCategory.id] : [],
+            includeUncategorized: lowerCategory === "uncategorized",
+        })
+        pageRef.current = 1
+        setHasAppliedPreselectedCategory(true)
+    }, [
+        clientId,
+        isBaseDataLoaded,
+        hasAppliedPreselectedCategory,
+        preselectedCategoryName,
+        categoryList,
+    ])
+
+    useEffect(() => {
         let active = true
 
         if (!clientId) {
             setLedgerEntries([])
             setTransactionsHasMore(false)
+            setTransactionsPeriodOptions({ years: [], months: [] })
             pageRef.current = 1
             lastScrollTopRef.current = 0
             setTransactionsFilters(DEFAULT_TRANSACTIONS_FILTERS)
@@ -202,6 +252,34 @@ function LedgerPage() {
             active = false
         }
     }, [clientId, transactionsSearchTerm, transactionsFilters, error])
+
+    useEffect(() => {
+        let active = true
+
+        if (!clientId) {
+            setTransactionsPeriodOptions({ years: [], months: [] })
+            return () => {
+                active = false
+            }
+        }
+
+        listTransactionPeriodOptions(clientId, { silentLoading: true })
+            .then((payload) => {
+                if (!active) return
+                setTransactionsPeriodOptions({
+                    years: Array.isArray(payload?.years) ? payload.years : [],
+                    months: Array.isArray(payload?.months) ? payload.months : [],
+                })
+            })
+            .catch(() => {
+                if (!active) return
+                setTransactionsPeriodOptions({ years: [], months: [] })
+            })
+
+        return () => {
+            active = false
+        }
+    }, [clientId])
 
     const loadMoreTransactions = async () => {
         if (!clientId || !transactionsHasMore || isLoadingTransactions) return
@@ -263,6 +341,9 @@ function LedgerPage() {
             accountIds: Array.isArray(nextFilters.accountIds) ? nextFilters.accountIds : [],
             categoryIds: Array.isArray(nextFilters.categoryIds) ? nextFilters.categoryIds : [],
             includeUncategorized: Boolean(nextFilters.includeUncategorized),
+            splitMode: String(nextFilters.splitMode || "all"),
+            years: Array.isArray(nextFilters.years) ? nextFilters.years : [],
+            months: Array.isArray(nextFilters.months) ? nextFilters.months : [],
             fromDate: String(nextFilters.fromDate || ""),
             toDate: String(nextFilters.toDate || ""),
             minAmount: String(nextFilters.minAmount || ""),
@@ -278,6 +359,13 @@ function LedgerPage() {
             setLedgerEntries((current) =>
                 current.map((item) => (item.id === id ? normalized : item))
             )
+            if (patch?.date !== undefined) {
+                const periodOptions = await listTransactionPeriodOptions(clientId, { silentLoading: true })
+                setTransactionsPeriodOptions({
+                    years: Array.isArray(periodOptions?.years) ? periodOptions.years : [],
+                    months: Array.isArray(periodOptions?.months) ? periodOptions.months : [],
+                })
+            }
             success("Transaction updated successfully")
             return updated
         } catch (err) {
@@ -290,11 +378,35 @@ function LedgerPage() {
         try {
             await deleteTransactionById(id)
             setLedgerEntries((current) => current.filter((item) => item.id !== id))
+            const periodOptions = await listTransactionPeriodOptions(clientId, { silentLoading: true })
+            setTransactionsPeriodOptions({
+                years: Array.isArray(periodOptions?.years) ? periodOptions.years : [],
+                months: Array.isArray(periodOptions?.months) ? periodOptions.months : [],
+            })
             success("Transaction deleted successfully")
         } catch (err) {
             error(err.message || "Failed to delete transaction")
             throw err
         }
+    }
+
+    const handleImportTransactions = async (transactions, summary = null) => {
+        const result = await createTransactionsBatch(transactions)
+        const insertedCount = Number(result?.insertedCount || 0)
+        const totalRows = Number(summary?.totals?.totalRows || transactions.length)
+        const skippedRows = Number(summary?.totals?.skippedRows || Math.max(totalRows - insertedCount, 0))
+        const filesCount = Number(summary?.totals?.files || 1)
+
+        success(
+            `${insertedCount} transactions imported from ${filesCount} file(s). ${skippedRows} skipped out of ${totalRows} row(s).`
+        )
+
+        const periodOptions = await listTransactionPeriodOptions(clientId, { silentLoading: true })
+        setTransactionsPeriodOptions({
+            years: Array.isArray(periodOptions?.years) ? periodOptions.years : [],
+            months: Array.isArray(periodOptions?.months) ? periodOptions.months : [],
+        })
+        setTransactionsFilters((current) => ({ ...current }))
     }
 
     const handleCreateAccount = async (e) => {
@@ -347,65 +459,39 @@ function LedgerPage() {
         }
     }
 
-    const startEditAccount = (account) => {
-        setEditingAccountId(account.id)
-        setEditingAccountName(account.name || "")
-        setEditingAccountType(account.type || "")
-        setShowEditAccountForm(true)
-    }
-
-    const handleEditAccount = async (e) => {
-        e.preventDefault()
-
+    const handleSaveAccountEdit = async (accountId, patch) => {
         try {
             setIsSubmitting(true)
 
-            const updated = await updateAccountById(editingAccountId, {
-                name: editingAccountName,
-                type: editingAccountType,
-            })
+            const updated = await updateAccountById(accountId, patch)
 
             setAccounts((current) =>
-                current.map((item) => (item.id === editingAccountId ? mapAccount(updated) : item))
+                current.map((item) => (item.id === accountId ? mapAccount(updated) : item))
             )
-            setShowEditAccountForm(false)
-            setEditingAccountId("")
             success("Account updated successfully")
+            return updated
         } catch (err) {
             error(err.message || "Failed to update account")
+            throw err
         } finally {
             setIsSubmitting(false)
         }
     }
 
-    const startEditCategory = (category) => {
-        setEditingCategoryId(category.id)
-        setEditingCategoryName(category.name || "")
-        setEditingCategoryType(category.type || "")
-        setEditingCategoryDescription(category.description || "")
-        setShowEditCategoryForm(true)
-    }
-
-    const handleEditCategory = async (e) => {
-        e.preventDefault()
-
+    const handleSaveCategoryEdit = async (categoryId, patch) => {
         try {
             setIsSubmitting(true)
 
-            const updated = await updateCategoryById(editingCategoryId, {
-                name: editingCategoryName,
-                type: editingCategoryType,
-                description: editingCategoryDescription,
-            })
+            const updated = await updateCategoryById(categoryId, patch)
 
             setCategoryList((current) =>
-                current.map((item) => (item.id === editingCategoryId ? mapCategory(updated) : item))
+                current.map((item) => (item.id === categoryId ? mapCategory(updated) : item))
             )
-            setShowEditCategoryForm(false)
-            setEditingCategoryId("")
             success("Category updated successfully")
+            return updated
         } catch (err) {
             error(err.message || "Failed to update category")
+            throw err
         } finally {
             setIsSubmitting(false)
         }
@@ -479,12 +565,16 @@ function LedgerPage() {
                                     ledgerEntries={ledgerEntries}
                                     accounts={accounts}
                                     categories={categoryList}
+                                    yearOptions={transactionsPeriodOptions.years}
+                                    monthOptions={transactionsPeriodOptions.months}
+                                    clientId={clientId}
                                     searchTerm={transactionsSearchTerm}
                                     filters={transactionsFilters}
                                     onApplyFilters={handleApplyTransactionsFilters}
                                     onSearchTermChange={setTransactionsSearchTerm}
                                     onUpdateEntry={handleUpdateTransaction}
                                     onDeleteEntry={handleDeleteTransaction}
+                                    onImportTransactions={handleImportTransactions}
                                     isLoading={isLoadingTransactions}
                                     isLoadingMore={isLoadingMoreTransactions}
                                     showUploadModal={showUploadModal}
@@ -498,7 +588,7 @@ function LedgerPage() {
                         <AccountsSection
                             accounts={accounts}
                             onCreate={() => setShowAccountForm(true)}
-                            onEdit={startEditAccount}
+                            onSaveEdit={handleSaveAccountEdit}
                             onDelete={setAccountToDelete}
                         />
                     )}
@@ -507,7 +597,7 @@ function LedgerPage() {
                         <CategoriesSection
                             categories={categoryList}
                             onCreate={() => setShowCategoryForm(true)}
-                            onEdit={startEditCategory}
+                            onSaveEdit={handleSaveCategoryEdit}
                             onDelete={setCategoryToDelete}
                         />
                     )}
@@ -541,32 +631,6 @@ function LedgerPage() {
             </PopupModal>
 
             <PopupModal
-                isOpen={showEditAccountForm}
-                title="Edit Account"
-                onClose={() => setShowEditAccountForm(false)}
-            >
-                <form className="flex flex-col gap-2" onSubmit={handleEditAccount}>
-                    <input
-                        className="border-2 border-gray-100 rounded-md px-3 py-2 placeholder:text-black"
-                        type="text"
-                        placeholder="Account name"
-                        value={editingAccountName}
-                        onChange={(e) => setEditingAccountName(e.target.value)}
-                    />
-                    <input
-                        className="border-2 border-gray-100 rounded-md px-3 py-2 placeholder:text-black"
-                        type="text"
-                        placeholder="Type"
-                        value={editingAccountType}
-                        onChange={(e) => setEditingAccountType(e.target.value)}
-                    />
-                    <button className="bg-gray-100 rounded-md p-2" type="submit" disabled={isSubmitting}>
-                        {isSubmitting ? "Saving..." : "Save"}
-                    </button>
-                </form>
-            </PopupModal>
-
-            <PopupModal
                 isOpen={showCategoryForm}
                 title="New Category"
                 onClose={() => setShowCategoryForm(false)}
@@ -592,39 +656,6 @@ function LedgerPage() {
                         placeholder="Description"
                         value={newCategoryDescription}
                         onChange={(e) => setNewCategoryDescription(e.target.value)}
-                    />
-                    <button className="bg-gray-100 rounded-md p-2" type="submit" disabled={isSubmitting}>
-                        {isSubmitting ? "Saving..." : "Save"}
-                    </button>
-                </form>
-            </PopupModal>
-
-            <PopupModal
-                isOpen={showEditCategoryForm}
-                title="Edit Category"
-                onClose={() => setShowEditCategoryForm(false)}
-            >
-                <form className="flex flex-col gap-2" onSubmit={handleEditCategory}>
-                    <input
-                        className="border-2 border-gray-100 rounded-md px-3 py-2 placeholder:text-black"
-                        type="text"
-                        placeholder="Category name"
-                        value={editingCategoryName}
-                        onChange={(e) => setEditingCategoryName(e.target.value)}
-                    />
-                    <input
-                        className="border-2 border-gray-100 rounded-md px-3 py-2 placeholder:text-black"
-                        type="text"
-                        placeholder="Type"
-                        value={editingCategoryType}
-                        onChange={(e) => setEditingCategoryType(e.target.value)}
-                    />
-                    <input
-                        className="border-2 border-gray-100 rounded-md px-3 py-2 placeholder:text-black"
-                        type="text"
-                        placeholder="Description"
-                        value={editingCategoryDescription}
-                        onChange={(e) => setEditingCategoryDescription(e.target.value)}
                     />
                     <button className="bg-gray-100 rounded-md p-2" type="submit" disabled={isSubmitting}>
                         {isSubmitting ? "Saving..." : "Save"}

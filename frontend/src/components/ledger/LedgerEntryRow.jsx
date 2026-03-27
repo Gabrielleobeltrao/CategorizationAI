@@ -9,6 +9,8 @@ function LedgerEntryRow({
     account,
     category,
     amount,
+    isSplit = false,
+    splitCount = 0,
     isEditing = false,
     editingDraft = null,
     onStartEdit,
@@ -16,6 +18,11 @@ function LedgerEntryRow({
     onSaveEdit,
     onChangeDraft,
     onDelete,
+    onSplit,
+    isSplitting = false,
+    isSavingSplit = false,
+    onSaveSplit,
+    onCancelSplit,
     onCategoryChange,
     isSelected = false,
     onToggleSelect,
@@ -63,7 +70,9 @@ function LedgerEntryRow({
                     onChange={(e) => onChangeDraft({ description: e.target.value })}
                 />
             ) : (
-                <h4 className="line-clamp-2">{currentDescription}</h4>
+                <div className="flex items-center gap-2 min-w-0">
+                    <h4 className="line-clamp-2">{currentDescription}</h4>
+                </div>
             )}
 
             {isEditing ? (
@@ -95,39 +104,45 @@ function LedgerEntryRow({
             ) : (
                 <h4>{account || "No account"}</h4>
             )}
-            <div className="relative w-full">
-                <select
-                    className="w-full rounded-full border-3 border-gray-100 bg-white p-2 pl-3 appearance-none"
-                    value={currentCategory || ""}
-                    disabled={isApplyingCategoryBulk}
-                    onChange={(e) => {
-                        const nextCategory = e.target.value
-                        if (isEditing) {
-                            onChangeDraft({ category: nextCategory })
-                            return
-                        }
-                        onCategoryChange?.(id, nextCategory)
-                    }}
-                >
-                    <option value="">Uncategorized</option>
-                    {categories.map((c) => (
-                        <option key={c.id} value={c.name}>
-                            {c.name}
-                        </option>
-                    ))}
-                </select>
-                <svg
-                    className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                >
-                    <path d="M6 9l6 6 6-6" />
-                </svg>
-            </div>
+            {isSplit ? (
+                <h4 className="text-xs font-semibold">
+                    Split ({splitCount})
+                </h4>
+            ) : (
+                <div className="relative w-full">
+                    <select
+                        className="w-full rounded-full border-3 border-gray-100 bg-white p-2 pl-3 appearance-none"
+                        value={currentCategory || ""}
+                        disabled={isApplyingCategoryBulk}
+                        onChange={(e) => {
+                            const nextCategory = e.target.value
+                            if (isEditing) {
+                                onChangeDraft({ category: nextCategory })
+                                return
+                            }
+                            onCategoryChange?.(id, nextCategory)
+                        }}
+                    >
+                        <option value="">Uncategorized</option>
+                        {categories.map((c) => (
+                            <option key={c.id} value={c.name}>
+                                {c.name}
+                            </option>
+                        ))}
+                    </select>
+                    <svg
+                        className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                    >
+                        <path d="M6 9l6 6 6-6" />
+                    </svg>
+                </div>
+            )}
             {isEditing && !isBatchEditing ? (
                 <input
                     type="number"
@@ -140,53 +155,87 @@ function LedgerEntryRow({
                 <h4 className="text-right">${Number(currentAmount).toFixed(2)}</h4>
             )}
             <div className="flex items-center justify-end gap-1">
-                <button
-                    type="button"
-                    className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-sky-700"
-                    title={isMultiSelectionMode ? "Edit selected: date/account/category only" : "Edit transaction"}
-                    aria-label="Edit transaction"
-                    onClick={() => {
-                        if (isEditing) {
-                            onSaveEdit?.()
-                            return
-                        }
-                        onStartEdit?.()
-                    }}
-                >
-                    {isEditing ? (
-                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M20 6 9 17l-5-5" />
-                        </svg>
-                    ) : (
-                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M12 20h9" />
-                            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5z" />
-                        </svg>
-                    )}
-                </button>
-
-                {!isEditing && (
+                {!isSplitting && (
                     <button
                         type="button"
-                        className={`rounded-md p-1 ${isMultiSelectionMode ? "cursor-not-allowed text-gray-300" : "text-gray-500 hover:bg-gray-200 hover:text-gray-800"}`}
-                        title="Split transaction"
-                        aria-label="Split transaction"
-                        disabled={isMultiSelectionMode}
+                        className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-sky-700"
+                        title={isMultiSelectionMode ? "Edit selected: date/account/category only" : "Edit transaction"}
+                        aria-label="Edit transaction"
                         onClick={() => {
-                            if (isMultiSelectionMode) return
-                            console.log("Split transaction", id)
+                            if (isEditing) {
+                                onSaveEdit?.()
+                                return
+                            }
+                            onStartEdit?.()
                         }}
                     >
-                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M4 7h9" />
-                            <path d="M13 7l-2-2m2 2-2 2" />
-                            <path d="M20 17h-9" />
-                            <path d="M11 17l2-2m-2 2 2 2" />
-                        </svg>
+                        {isEditing ? (
+                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M20 6 9 17l-5-5" />
+                            </svg>
+                        ) : (
+                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M12 20h9" />
+                                <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5z" />
+                            </svg>
+                        )}
                     </button>
                 )}
 
                 {!isEditing && (
+                    <>
+                        {isSplitting ? (
+                            <>
+                                <button
+                                    type="button"
+                                    className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-emerald-700 disabled:opacity-50"
+                                    title="Save split"
+                                    aria-label="Save split"
+                                    disabled={isSavingSplit}
+                                    onClick={() => onSaveSplit?.()}
+                                >
+                                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M20 6 9 17l-5-5" />
+                                    </svg>
+                                </button>
+                                <button
+                                    type="button"
+                                    className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-gray-800 disabled:opacity-50"
+                                    title="Cancel split"
+                                    aria-label="Cancel split"
+                                    disabled={isSavingSplit}
+                                    onClick={() => onCancelSplit?.()}
+                                >
+                                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M18 6 6 18" />
+                                        <path d="m6 6 12 12" />
+                                    </svg>
+                                </button>
+                            </>
+                        ) : (
+                            <button
+                                type="button"
+                                className={`rounded-md p-1 ${isMultiSelectionMode ? "cursor-not-allowed text-gray-300" : "text-gray-500 hover:bg-gray-200 hover:text-gray-800"}`}
+                                title="Split transaction"
+                                aria-label="Split transaction"
+                                disabled={isMultiSelectionMode}
+                                onClick={() => {
+                                    if (isMultiSelectionMode) return
+                                    onSplit?.()
+                                }}
+                            >
+                                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M4 7h9" />
+                                    <path d="M13 7l-2-2m2 2-2 2" />
+                                    <path d="M20 17h-9" />
+                                    <path d="M11 17l2-2m-2 2 2 2" />
+                                </svg>
+                            </button>
+                        )}
+                    </>
+                )}
+
+                {!isEditing && !isSplitting && (
                     <button
                         type="button"
                         className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-rose-600"

@@ -10,6 +10,20 @@ const CSV_TARGET_FIELDS = [
     { value: "amount", label: "Amount" },
     { value: "ignore", label: "Ignore" },
 ]
+const MONTH_LABELS = {
+    "01": "Jan",
+    "02": "Feb",
+    "03": "Mar",
+    "04": "Apr",
+    "05": "May",
+    "06": "Jun",
+    "07": "Jul",
+    "08": "Aug",
+    "09": "Sep",
+    "10": "Oct",
+    "11": "Nov",
+    "12": "Dec",
+}
 const REQUIRED_UPLOAD_FIELDS = ["date", "description", "amount"]
 
 function formatPreviewDate(value = "") {
@@ -172,7 +186,7 @@ function parseCsvText(csvText = "") {
 
     const previewRows = finalPreviewIndexes.map((index) => cleanedRows[index]).filter(Boolean)
 
-    return { columns: cleanedColumns, previewRows }
+    return { columns: cleanedColumns, previewRows, rows: cleanedRows }
 }
 
 function guessTargetFieldFromHeader(header = "") {
@@ -211,16 +225,43 @@ function formatPreviewCell(value = "", mappedTarget = "ignore") {
     return String(value || "")
 }
 
+function normalizeDateToISO(value = "") {
+    const safeValue = String(value || "").trim()
+    if (!safeValue) return ""
+    if (/^\d{4}-\d{2}-\d{2}$/.test(safeValue)) return safeValue
+
+    const slashParts = safeValue.split("/")
+    if (slashParts.length === 3) {
+        const [month, day, year] = slashParts
+        const mm = month.padStart(2, "0")
+        const dd = day.padStart(2, "0")
+        if (year.length === 4) return `${year}-${mm}-${dd}`
+    }
+
+    return ""
+}
+
+function parseAmountToNumber(value = "") {
+    const normalized = String(value || "").replace(/[^0-9.-]/g, "")
+    const amount = Number(normalized)
+    if (Number.isNaN(amount)) return null
+    return amount
+}
+
 function LedgerEntriesTable({
     ledgerEntries,
     accounts,
     categories,
+    yearOptions = [],
+    monthOptions = [],
+    clientId,
     searchTerm,
     filters,
     onApplyFilters,
     onSearchTermChange,
     onUpdateEntry,
     onDeleteEntry,
+    onImportTransactions,
     isLoading = false,
     isLoadingMore,
     showUploadModal = false,
@@ -233,16 +274,24 @@ function LedgerEntriesTable({
     const [isApplyingCategoryBulk, setIsApplyingCategoryBulk] = useState(false)
     const [pendingDeleteIds, setPendingDeleteIds] = useState([])
     const [isDeletingEntries, setIsDeletingEntries] = useState(false)
+    const [splittingEntryId, setSplittingEntryId] = useState("")
+    const [splitDraftRows, setSplitDraftRows] = useState([])
+    const [splitError, setSplitError] = useState("")
+    const [isSavingSplit, setIsSavingSplit] = useState(false)
     const [searchInput, setSearchInput] = useState(() => searchTerm || "")
     const [showFilterModal, setShowFilterModal] = useState(false)
     const [uploadedCsvFiles, setUploadedCsvFiles] = useState([])
     const [uploadAccountId, setUploadAccountId] = useState("")
+    const [isImportingTransactions, setIsImportingTransactions] = useState(false)
     const appliedFilters = useMemo(() => ({
         accountIds: [],
         categoryIds: [],
         includeUncategorized: false,
+        splitMode: "all",
         fromDate: "",
         toDate: "",
+        years: [],
+        months: [],
         minAmount: "",
         maxAmount: "",
         ...(filters || {}),
@@ -356,6 +405,9 @@ function LedgerEntriesTable({
         let count = 0
         if (selectedAccounts.length > 0) count += 1
         if (selectedCategories.length > 0 || appliedFilters.includeUncategorized) count += 1
+        if (String(appliedFilters.splitMode || "all") !== "all") count += 1
+        if (Array.isArray(appliedFilters.years) && appliedFilters.years.length > 0) count += 1
+        if (Array.isArray(appliedFilters.months) && appliedFilters.months.length > 0) count += 1
         if (appliedFilters.fromDate !== "") count += 1
         if (appliedFilters.toDate !== "") count += 1
         if (appliedFilters.minAmount !== "") count += 1
@@ -410,7 +462,7 @@ function LedgerEntriesTable({
                 editingTargetIds.includes(id)
             const targetIds = shouldApplyToSelection ? editingTargetIds : [id]
 
-            const patch = shouldApplyToSelection
+            const basePatch = shouldApplyToSelection
                 ? (() => {
                     const nextPatch = {}
 
@@ -440,14 +492,33 @@ function LedgerEntriesTable({
                     amount: Number(editingDraft.amount || 0),
                 }
 
-            if (shouldApplyToSelection && Object.keys(patch).length === 0) {
+            const patchByTarget = targetIds
+                .map((targetId) => {
+                    const targetEntry = ledgerEntries.find((entry) => entry.id === targetId)
+                    const isSplitEntry = Boolean(targetEntry?.isSplit) || (Array.isArray(targetEntry?.splits) && targetEntry.splits.length > 1)
+                    const nextPatch = { ...basePatch }
+
+                    if (isSplitEntry) {
+                        delete nextPatch.category
+                        delete nextPatch.categoryId
+                    }
+
+                    return { targetId, patch: nextPatch }
+                })
+                .filter(({ patch }) => Object.keys(patch).length > 0)
+
+            if (patchByTarget.length === 0) {
                 setEditingTargetIds([])
                 setEditingDraft(null)
                 setEditingTouched({})
                 return
             }
 
-            await Promise.all(targetIds.map((targetId) => onUpdateEntry?.(targetId, patch)))
+            await Promise.all(
+                patchByTarget.map(({ targetId, patch }) =>
+                    onUpdateEntry?.(targetId, patch)
+                )
+            )
             setEditingTargetIds([])
             setEditingDraft(null)
             setEditingTouched({})
@@ -483,13 +554,179 @@ function LedgerEntriesTable({
         setPendingDeleteIds([])
     }
 
+    const createSplitRow = (split = {}, fallbackAmount = 0) => ({
+        localId: split.localId || `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        categoryId: split.categoryId || "",
+        amount:
+            split.amount !== undefined && split.amount !== null && split.amount !== ""
+                ? String(split.amount)
+                : String(fallbackAmount),
+    })
+
+    const startSplitEntry = (entry) => {
+        const existingSplits = Array.isArray(entry?.splits) ? entry.splits : []
+        let nextRows = []
+
+        if (existingSplits.length >= 2) {
+            nextRows = existingSplits.map((split) => createSplitRow(split, 0))
+        } else {
+            const totalAmount = Number(entry?.amount || 0)
+            const firstAmount = Number((totalAmount / 2).toFixed(2))
+            const secondAmount = Number((totalAmount - firstAmount).toFixed(2))
+            nextRows = [
+                createSplitRow(
+                    {
+                        categoryId: entry?.categoryId || "",
+                        amount: firstAmount,
+                    },
+                    firstAmount
+                ),
+                createSplitRow({}, secondAmount),
+            ]
+        }
+
+        setSplittingEntryId(entry.id)
+        setSplitDraftRows(nextRows)
+        setSplitError("")
+    }
+
+    const cancelSplitEntry = () => {
+        setSplittingEntryId("")
+        setSplitDraftRows([])
+        setSplitError("")
+    }
+
+    const updateSplitRow = (localId, patch) => {
+        setSplitDraftRows((current) =>
+            current.map((row) => (row.localId === localId ? { ...row, ...patch } : row))
+        )
+        setSplitError("")
+    }
+
+    const addSplitRow = () => {
+        setSplitDraftRows((current) => [...current, createSplitRow({}, 0)])
+        setSplitError("")
+    }
+
+    const removeSplitRow = (localId) => {
+        setSplitDraftRows((current) => {
+            if (current.length <= 2) return current
+            return current.filter((row) => row.localId !== localId)
+        })
+        setSplitError("")
+    }
+
+    const saveSplitEntry = async (entry) => {
+        if (!entry?.id) return
+
+        if (splitDraftRows.length < 2) {
+            setSplitError("Split must have at least two lines")
+            return
+        }
+
+        const normalizedRows = splitDraftRows.map((row) => {
+            const amount = Number(row.amount)
+            return {
+                ...row,
+                amount,
+            }
+        })
+
+        if (normalizedRows.some((row) => !Number.isFinite(row.amount))) {
+            setSplitError("All split amounts must be valid numbers")
+            return
+        }
+
+        const transactionAmount = Number(entry.amount || 0)
+        const splitTotal = normalizedRows.reduce((sum, row) => sum + Number(row.amount || 0), 0)
+
+        if (Math.abs(Number(splitTotal.toFixed(2)) - Number(transactionAmount.toFixed(2))) > 0.01) {
+            setSplitError("Split total must match transaction amount")
+            return
+        }
+
+        const payloadSplits = normalizedRows.map((row) => {
+            const matchedCategory = categories.find((item) => item.id === row.categoryId)
+            return {
+                categoryId: row.categoryId || null,
+                category: matchedCategory?.name || null,
+                amount: Number(Number(row.amount).toFixed(2)),
+            }
+        })
+
+        try {
+            setIsSavingSplit(true)
+            await onUpdateEntry?.(entry.id, {
+                splits: payloadSplits,
+                isSplit: true,
+                categoryId: null,
+                category: null,
+            })
+            cancelSplitEntry()
+        } catch (err) {
+            console.error(err)
+            setSplitError("Failed to save split")
+        } finally {
+            setIsSavingSplit(false)
+        }
+    }
+
+    const getSplitCategoryId = (split) => {
+        if (split?.categoryId) return split.categoryId
+        const matchedCategory = categories.find((item) => item.name === split?.category)
+        return matchedCategory?.id || ""
+    }
+
+    const updateSavedSplitCategory = async (entry, splitIndex, nextCategoryId) => {
+        const currentSplits = Array.isArray(entry?.splits) ? entry.splits : []
+        if (currentSplits.length === 0) return
+
+        const nextSplits = currentSplits.map((split, index) => {
+            if (index !== splitIndex) {
+                return {
+                    categoryId: split?.categoryId || null,
+                    category: split?.category || null,
+                    amount: Number(split?.amount || 0),
+                }
+            }
+
+            const selectedCategory = categories.find((item) => item.id === nextCategoryId)
+            return {
+                categoryId: nextCategoryId || null,
+                category: selectedCategory?.name || null,
+                amount: Number(split?.amount || 0),
+            }
+        })
+
+        await onUpdateEntry?.(entry.id, {
+            splits: nextSplits,
+            isSplit: true,
+            categoryId: null,
+            category: null,
+        })
+    }
+
+    useEffect(() => {
+        if (!splittingEntryId) return
+        const exists = ledgerEntries.some((entry) => entry.id === splittingEntryId)
+        if (!exists) {
+            cancelSplitEntry()
+        }
+    }, [splittingEntryId, ledgerEntries])
+
     const changeEntryCategory = async (id, categoryName) => {
         try {
             const selectedCategory = categories.find((item) => item.name === categoryName)
             const shouldApplyToSelection =
                 effectiveSelectedEntryIds.length > 0 &&
                 effectiveSelectedEntryIds.includes(id)
-            const targetIds = shouldApplyToSelection ? effectiveSelectedEntryIds : [id]
+            const candidateTargetIds = shouldApplyToSelection ? effectiveSelectedEntryIds : [id]
+            const targetIds = candidateTargetIds.filter((targetId) => {
+                const targetEntry = ledgerEntries.find((entry) => entry.id === targetId)
+                return !(Boolean(targetEntry?.isSplit) || (Array.isArray(targetEntry?.splits) && targetEntry.splits.length > 1))
+            })
+
+            if (targetIds.length === 0) return
 
             setIsApplyingCategoryBulk(true)
             await Promise.all(
@@ -525,6 +762,7 @@ function LedgerEntriesTable({
                     isEditingMapping: false,
                     columns: parsedCsv.columns,
                     previewRows: parsedCsv.previewRows,
+                    rows: parsedCsv.rows,
                     columnRoles: buildDefaultColumnRoles(parsedCsv.columns),
                 }
             })
@@ -566,6 +804,96 @@ function LedgerEntriesTable({
         setUploadAccountId("")
         if (csvFileInputRef.current) {
             csvFileInputRef.current.value = ""
+        }
+    }
+
+    const buildTransactionsFromUploads = () => {
+        const selectedAccount = accountOptions.find((account) => account.id === uploadAccountId)
+        if (!selectedAccount) {
+            throw new Error("Please select an account")
+        }
+        if (!clientId) {
+            throw new Error("clientId is required")
+        }
+
+        const fileSummaries = []
+        const transactions = uploadedCsvFiles.flatMap((uploadedFile) => {
+            let validRows = 0
+            let skippedRows = 0
+            const rows = uploadedFile.rows || []
+
+            const fileTransactions = rows.flatMap((row) => {
+                const extracted = { date: "", description: "", amount: "" }
+
+                uploadedFile.columns.forEach((column) => {
+                    const target = uploadedFile.columnRoles[column]
+                    if (!target || target === "ignore") return
+                    if (target in extracted && extracted[target] === "") {
+                        extracted[target] = String(row[column] ?? "").trim()
+                    }
+                })
+
+                const normalizedDate = normalizeDateToISO(extracted.date)
+                const normalizedAmount = parseAmountToNumber(extracted.amount)
+                const normalizedDescription = extracted.description.trim()
+
+                if (!normalizedDate || !normalizedDescription || normalizedAmount === null) {
+                    skippedRows += 1
+                    return []
+                }
+                validRows += 1
+
+                return [
+                    {
+                        clientId,
+                        accountId: selectedAccount.id,
+                        accountName: selectedAccount.name,
+                        date: normalizedDate,
+                        description: normalizedDescription,
+                        amount: normalizedAmount,
+                        categoryId: null,
+                        category: null,
+                    },
+                ]
+            })
+
+            fileSummaries.push({
+                fileName: uploadedFile.fileName,
+                totalRows: rows.length,
+                validRows,
+                skippedRows,
+            })
+
+            return fileTransactions
+        })
+
+        if (transactions.length === 0) {
+            throw new Error("No valid transactions found in uploaded files")
+        }
+
+        const totals = fileSummaries.reduce(
+            (acc, fileSummary) => ({
+                files: acc.files + 1,
+                totalRows: acc.totalRows + fileSummary.totalRows,
+                validRows: acc.validRows + fileSummary.validRows,
+                skippedRows: acc.skippedRows + fileSummary.skippedRows,
+            }),
+            { files: 0, totalRows: 0, validRows: 0, skippedRows: 0 }
+        )
+
+        return { transactions, summary: { files: fileSummaries, totals } }
+    }
+
+    const handleConfirmUploadMapping = async () => {
+        try {
+            setIsImportingTransactions(true)
+            const { transactions, summary } = buildTransactionsFromUploads()
+            await onImportTransactions?.(transactions, summary)
+            closeUploadModal()
+        } catch (error) {
+            console.error(error)
+        } finally {
+            setIsImportingTransactions(false)
         }
     }
 
@@ -718,55 +1046,164 @@ function LedgerEntriesTable({
                                                 </div>
                                             </section>
 
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div className="space-y-2">
-                                                    <p className="text-sm font-medium text-gray-700">Date range</p>
-                                                    <label className="flex flex-col gap-1 text-sm text-gray-600">
-                                                        From
-                                                        <input
-                                                            type="date"
-                                                            className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm"
-                                                            value={draftFilters.fromDate}
-                                                            onChange={(e) => setDraftFilters((current) => ({ ...current, fromDate: e.target.value }))}
-                                                        />
-                                                    </label>
-                                                    <label className="flex flex-col gap-1 text-sm text-gray-600">
-                                                        To
-                                                        <input
-                                                            type="date"
-                                                            className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm"
-                                                            value={draftFilters.toDate}
-                                                            onChange={(e) => setDraftFilters((current) => ({ ...current, toDate: e.target.value }))}
-                                                        />
-                                                    </label>
+                                            <section className="space-y-2">
+                                                <p className="text-sm font-medium text-gray-700">Split</p>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {[
+                                                        { id: "all", label: "All entries" },
+                                                        { id: "split", label: "Split only" },
+                                                        { id: "regular", label: "Regular only" },
+                                                    ].map((option) => (
+                                                        <button
+                                                            key={option.id}
+                                                            type="button"
+                                                            className={`rounded-md border px-2.5 py-1.5 text-xs ${
+                                                                String(draftFilters.splitMode || "all") === option.id
+                                                                    ? "border-gray-900 bg-gray-900 text-white"
+                                                                    : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                                                            }`}
+                                                            onClick={() =>
+                                                                setDraftFilters((current) => ({
+                                                                    ...current,
+                                                                    splitMode: option.id,
+                                                                }))
+                                                            }
+                                                        >
+                                                            {option.label}
+                                                        </button>
+                                                    ))}
                                                 </div>
+                                            </section>
 
-                                                <div className="space-y-2">
-                                                    <p className="text-sm font-medium text-gray-700">Amount range</p>
-                                                    <label className="flex flex-col gap-1 text-sm text-gray-600">
-                                                        Min
-                                                        <input
-                                                            type="number"
-                                                            step="0.01"
-                                                            placeholder="0.00"
-                                                            className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm"
-                                                            value={draftFilters.minAmount}
-                                                            onChange={(e) => setDraftFilters((current) => ({ ...current, minAmount: e.target.value }))}
-                                                        />
-                                                    </label>
-                                                    <label className="flex flex-col gap-1 text-sm text-gray-600">
-                                                        Max
-                                                        <input
-                                                            type="number"
-                                                            step="0.01"
-                                                            placeholder="9999.99"
-                                                            className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm"
-                                                            value={draftFilters.maxAmount}
-                                                            onChange={(e) => setDraftFilters((current) => ({ ...current, maxAmount: e.target.value }))}
-                                                        />
-                                                    </label>
+                                            <section className="space-y-2">
+                                                <p className="text-sm font-medium text-gray-700">
+                                                    Year {Array.isArray(draftFilters.years) && draftFilters.years.length > 0 ? `(${draftFilters.years.length})` : ""}
+                                                </p>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {["all", ...yearOptions].map((year) => (
+                                                        <button
+                                                            key={year}
+                                                            type="button"
+                                                            className={`rounded-md border px-2.5 py-1.5 text-xs ${
+                                                                (year === "all" && (!Array.isArray(draftFilters.years) || draftFilters.years.length === 0)) ||
+                                                                (Array.isArray(draftFilters.years) && draftFilters.years.includes(year))
+                                                                    ? "border-gray-900 bg-gray-900 text-white"
+                                                                    : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                                                            }`}
+                                                            onClick={() =>
+                                                                setDraftFilters((current) => {
+                                                                    const currentYears = Array.isArray(current.years) ? current.years : []
+                                                                    if (year === "all") return { ...current, years: [] }
+                                                                    const exists = currentYears.includes(year)
+                                                                    return {
+                                                                        ...current,
+                                                                        years: exists
+                                                                            ? currentYears.filter((item) => item !== year)
+                                                                            : [...currentYears, year],
+                                                                    }
+                                                                })
+                                                            }
+                                                        >
+                                                            {year === "all" ? "All years" : year}
+                                                        </button>
+                                                    ))}
                                                 </div>
-                                            </div>
+                                            </section>
+
+                                            <section className="space-y-2">
+                                                <p className="text-sm font-medium text-gray-700">
+                                                    Month {Array.isArray(draftFilters.months) && draftFilters.months.length > 0 ? `(${draftFilters.months.length})` : ""}
+                                                </p>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {["all", ...monthOptions].map((monthValue) => (
+                                                        <button
+                                                            key={monthValue}
+                                                            type="button"
+                                                            className={`rounded-md border px-2.5 py-1.5 text-xs ${
+                                                                (monthValue === "all" && (!Array.isArray(draftFilters.months) || draftFilters.months.length === 0)) ||
+                                                                (Array.isArray(draftFilters.months) && draftFilters.months.includes(monthValue))
+                                                                    ? "border-gray-900 bg-gray-900 text-white"
+                                                                    : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                                                            }`}
+                                                            onClick={() =>
+                                                                setDraftFilters((current) => {
+                                                                    const currentMonths = Array.isArray(current.months) ? current.months : []
+                                                                    if (monthValue === "all") return { ...current, months: [] }
+                                                                    const exists = currentMonths.includes(monthValue)
+                                                                    return {
+                                                                        ...current,
+                                                                        months: exists
+                                                                            ? currentMonths.filter((item) => item !== monthValue)
+                                                                            : [...currentMonths, monthValue],
+                                                                    }
+                                                                })
+                                                            }
+                                                            >
+                                                                {monthValue === "all"
+                                                                    ? "All months"
+                                                                    : MONTH_LABELS[monthValue] || monthValue}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                            </section>
+
+                                            <section className="space-y-2">
+                                                <p className="text-sm font-medium text-gray-700">Date range</p>
+                                                <label className="flex flex-col gap-1 text-sm text-gray-600">
+                                                    From
+                                                    <input
+                                                        type="date"
+                                                        className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm"
+                                                        value={draftFilters.fromDate}
+                                                        onChange={(e) =>
+                                                            setDraftFilters((current) => ({
+                                                                ...current,
+                                                                fromDate: e.target.value,
+                                                            }))
+                                                        }
+                                                    />
+                                                </label>
+                                                <label className="flex flex-col gap-1 text-sm text-gray-600">
+                                                    To
+                                                    <input
+                                                        type="date"
+                                                        className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm"
+                                                        value={draftFilters.toDate}
+                                                        onChange={(e) =>
+                                                            setDraftFilters((current) => ({
+                                                                ...current,
+                                                                toDate: e.target.value,
+                                                            }))
+                                                        }
+                                                    />
+                                                </label>
+                                            </section>
+
+                                            <section className="space-y-2">
+                                                <p className="text-sm font-medium text-gray-700">Amount range</p>
+                                                <label className="flex flex-col gap-1 text-sm text-gray-600">
+                                                    Min
+                                                    <input
+                                                        type="number"
+                                                        step="0.01"
+                                                        placeholder="0.00"
+                                                        className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm"
+                                                        value={draftFilters.minAmount}
+                                                        onChange={(e) => setDraftFilters((current) => ({ ...current, minAmount: e.target.value }))}
+                                                    />
+                                                </label>
+                                                <label className="flex flex-col gap-1 text-sm text-gray-600">
+                                                    Max
+                                                    <input
+                                                        type="number"
+                                                        step="0.01"
+                                                        placeholder="9999.99"
+                                                        className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm"
+                                                        value={draftFilters.maxAmount}
+                                                        onChange={(e) => setDraftFilters((current) => ({ ...current, maxAmount: e.target.value }))}
+                                                    />
+                                                </label>
+                                            </section>
                                         </div>
                                     </div>
 
@@ -779,8 +1216,11 @@ function LedgerEntriesTable({
                                                     accountIds: [],
                                                     categoryIds: [],
                                                     includeUncategorized: false,
+                                                    splitMode: "all",
                                                     fromDate: "",
                                                     toDate: "",
+                                                    years: [],
+                                                    months: [],
                                                     minAmount: "",
                                                     maxAmount: "",
                                                 }
@@ -838,6 +1278,8 @@ function LedgerEntriesTable({
                                 accountId={entry.accountId}
                                 accounts={accounts}
                                 account={entry.account}
+                                isSplit={Boolean(entry.isSplit) || (Array.isArray(entry.splits) && entry.splits.length > 1)}
+                                splitCount={Array.isArray(entry.splits) ? entry.splits.length : 0}
                                 category={entry.category}
                                 amount={entry.amount}
                                 isEditing={editingTargetIds.includes(entry.id)}
@@ -856,6 +1298,11 @@ function LedgerEntriesTable({
                                     })
                                 }}
                                 onDelete={deleteEntry}
+                                onSplit={() => startSplitEntry(entry)}
+                                isSplitting={splittingEntryId === entry.id}
+                                isSavingSplit={isSavingSplit}
+                                onSaveSplit={() => saveSplitEntry(entry)}
+                                onCancelSplit={cancelSplitEntry}
                                 onCategoryChange={changeEntryCategory}
                                 isSelected={effectiveSelectedEntryIds.includes(entry.id)}
                                 onToggleSelect={(isChecked) =>
@@ -866,6 +1313,186 @@ function LedgerEntriesTable({
                                 editingTouched={editingTouched}
                                 isApplyingCategoryBulk={isApplyingCategoryBulk}
                             />
+
+                            {splittingEntryId === entry.id && (
+                                <>
+
+                                    {splitDraftRows.map((row, rowIndex) => (
+                                        <div
+                                            key={row.localId}
+                                            className={`grid grid-cols-[24px_minmax(110px,0.7fr)_minmax(180px,2fr)_minmax(120px,1fr)_minmax(160px,1.3fr)_100px_96px] items-center gap-4 px-2 py-2 text-sm ${
+                                                index % 2 === 0
+                                                    ? rowIndex % 2 === 0
+                                                        ? "bg-zinc-50"
+                                                        : "bg-zinc-100"
+                                                    : rowIndex % 2 === 0
+                                                        ? "bg-zinc-100"
+                                                        : "bg-zinc-50"
+                                            }`}
+                                        >
+                                            <span className="block h-4 w-4" />
+                                            <span />
+                                            <span />
+                                            <span />
+                                            <div className="relative w-full">
+                                                <select
+                                                    className="w-full rounded-full border-3 border-gray-100 bg-white p-2 pl-3 pr-8 text-sm appearance-none"
+                                                    value={row.categoryId}
+                                                    onChange={(e) => updateSplitRow(row.localId, { categoryId: e.target.value })}
+                                                >
+                                                    <option value="">Uncategorized</option>
+                                                    {categories.map((category) => (
+                                                        <option key={category.id} value={category.id}>
+                                                            {category.name}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                <svg
+                                                    className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    strokeWidth="2.5"
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                >
+                                                    <path d="M6 9l6 6 6-6" />
+                                                </svg>
+                                            </div>
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-right text-sm"
+                                                value={row.amount}
+                                                onChange={(e) => updateSplitRow(row.localId, { amount: e.target.value })}
+                                            />
+                                            <div className="flex items-center justify-end">
+                                                <button
+                                                    type="button"
+                                                    className={`rounded-md p-1 ${splitDraftRows.length <= 2 ? "cursor-not-allowed text-gray-300" : "text-gray-500 hover:bg-gray-200 hover:text-rose-600"}`}
+                                                    disabled={splitDraftRows.length <= 2}
+                                                    onClick={() => removeSplitRow(row.localId)}
+                                                    title={`Remove split line ${rowIndex + 1}`}
+                                                    aria-label={`Remove split line ${rowIndex + 1}`}
+                                                >
+                                                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                        <path d="M3 6h18" />
+                                                        <path d="M8 6V4h8v2" />
+                                                        <path d="M19 6l-1 14H6L5 6" />
+                                                        <path d="M10 11v6M14 11v6" />
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+
+                                    <div
+                                        className={`grid grid-cols-[24px_minmax(110px,0.7fr)_minmax(180px,2fr)_minmax(120px,1fr)_minmax(160px,1.3fr)_100px_96px] items-center gap-4 px-2 py-3 text-xs ${
+                                            index % 2 === 0 ? "bg-gray-100" : "bg-white"
+                                        }`}
+                                    >
+                                        <span className="block h-4 w-4" />
+                                        <span />
+                                        <span />
+                                        <span />
+                                        <div className="flex items-center justify-between gap-2">
+                                            <button
+                                                type="button"
+                                                className="w-fit rounded-md bg-white px-3 py-1.5 font-semibold text-gray-700 hover:bg-gray-50"
+                                                onClick={addSplitRow}
+                                            >
+                                                Add line
+                                            </button>
+                                        </div>
+                                        <span className={`text-right font-semibold ${
+                                            Math.abs(
+                                                Number(splitDraftRows.reduce((sum, row) => sum + (Number(row.amount) || 0), 0).toFixed(2)) -
+                                                Number(Number(entry.amount || 0).toFixed(2))
+                                            ) <= 0.01
+                                                ? "text-gray-900"
+                                                : "text-rose-700"
+                                        }`}>
+                                            Diff: ${Number(
+                                                Number(splitDraftRows.reduce((sum, row) => sum + (Number(row.amount) || 0), 0).toFixed(2)) -
+                                                Number(Number(entry.amount || 0).toFixed(2))
+                                            ).toFixed(2)}
+                                        </span>
+                                        <span />
+                                    </div>
+
+                                    {splitError && (
+                                        <div
+                                            className={`grid grid-cols-[24px_minmax(110px,0.7fr)_minmax(180px,2fr)_minmax(120px,1fr)_minmax(160px,1.3fr)_100px_96px] items-center gap-4 px-2 pb-2 text-xs ${
+                                                index % 2 === 0
+                                                    ? (splitDraftRows.length + 1) % 2 === 0
+                                                        ? "bg-zinc-50"
+                                                        : "bg-zinc-100"
+                                                    : (splitDraftRows.length + 1) % 2 === 0
+                                                        ? "bg-zinc-100"
+                                                        : "bg-zinc-50"
+                                            }`}
+                                        >
+                                            <span className="block h-4 w-4" />
+                                            <span />
+                                            <span className="col-span-4 font-medium text-rose-700">{splitError}</span>
+                                            <span />
+                                        </div>
+                                    )}
+                                </>
+                            )}
+
+                            {splittingEntryId !== entry.id && Array.isArray(entry.splits) && entry.splits.length > 1 && (
+                                <>
+                                    {entry.splits.map((split, splitIndex) => (
+                                        <div
+                                            key={split.id || `${entry.id}-split-${splitIndex}`}
+                                            className={`grid grid-cols-[24px_minmax(110px,0.7fr)_minmax(180px,2fr)_minmax(120px,1fr)_minmax(160px,1.3fr)_100px_96px] items-center gap-4 px-2 py-2 text-sm ${
+                                                index % 2 === 0
+                                                    ? splitIndex % 2 === 0
+                                                        ? "bg-zinc-50"
+                                                        : "bg-zinc-100"
+                                                    : splitIndex % 2 === 0
+                                                        ? "bg-zinc-100"
+                                                        : "bg-zinc-50"
+                                            }`}
+                                        >
+                                            <span className="block h-4 w-4" />
+                                            <span />
+                                            <span />
+                                            <span />
+                                            <div className="relative w-full">
+                                                <select
+                                                    className="w-full rounded-full border-3 border-gray-100 bg-white p-2 pl-3 appearance-none"
+                                                    value={getSplitCategoryId(split)}
+                                                    onChange={(e) =>
+                                                        updateSavedSplitCategory(entry, splitIndex, e.target.value)
+                                                    }
+                                                >
+                                                    <option value="">Uncategorized</option>
+                                                    {categories.map((category) => (
+                                                        <option key={category.id} value={category.id}>
+                                                            {category.name}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                <svg
+                                                    className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    strokeWidth="2.5"
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                >
+                                                    <path d="M6 9l6 6 6-6" />
+                                                </svg>
+                                            </div>
+                                            <span className="text-right">${Number(split.amount || 0).toFixed(2)}</span>
+                                            <span />
+                                        </div>
+                                    ))}
+                                </>
+                            )}
                         </div>
                     ))}
 
@@ -917,18 +1544,41 @@ function LedgerEntriesTable({
                                 <span className="text-left">Amount</span>
                             </div>
                             <ul>
-                                {pendingDeleteEntries.slice(0, 8).map((entry, index) => (
-                                    <li
-                                        key={entry.id}
-                                    className={`grid grid-cols-[92px_1.3fr_1fr_1fr_70px] gap-3 pl-3 pr-6 py-2 text-xs text-gray-700 ${index % 2 === 0 ? "bg-white" : "bg-gray-50"}`}
-                                    >
-                                        <span className="whitespace-nowrap">{String(entry.date || "").split("-").reverse().join("/")}</span>
-                                        <span className="truncate">{entry.description || "No description"}</span>
-                                        <span className="truncate">{entry.account || "No account"}</span>
-                                        <span className="truncate">{entry.category || "Uncategorized"}</span>
-                                        <span className="text-left font-medium tabular-nums">${Number(entry.amount || 0).toFixed(2)}</span>
-                                    </li>
-                                ))}
+                                {pendingDeleteEntries.slice(0, 8).map((entry, index) => {
+                                    const hasSplits = Array.isArray(entry.splits) && entry.splits.length > 1
+
+                                    return (
+                                        <div key={entry.id}>
+                                            <li
+                                                className={`grid grid-cols-[92px_1.3fr_1fr_1fr_70px] gap-3 pl-3 pr-6 py-2 text-xs text-gray-700 ${index % 2 === 0 ? "bg-white" : "bg-gray-50"}`}
+                                            >
+                                                <span className="whitespace-nowrap">{String(entry.date || "").split("-").reverse().join("/")}</span>
+                                                <span className="truncate">{entry.description || "No description"}</span>
+                                                <span className="truncate">{entry.account || "No account"}</span>
+                                                <span className="truncate">
+                                                    {hasSplits ? `Split (${entry.splits.length})` : entry.category || "Uncategorized"}
+                                                </span>
+                                                <span className="text-left font-medium tabular-nums">${Number(entry.amount || 0).toFixed(2)}</span>
+                                            </li>
+
+                                            {hasSplits &&
+                                                entry.splits.map((split, splitIndex) => (
+                                                    <li
+                                                        key={`${entry.id}-split-delete-${splitIndex}`}
+                                                        className={`grid grid-cols-[92px_1.3fr_1fr_1fr_70px] gap-3 pl-3 pr-6 py-1.5 text-xs ${
+                                                            splitIndex % 2 === 0 ? "bg-zinc-50" : "bg-zinc-100"
+                                                        }`}
+                                                    >
+                                                        <span />
+                                                        <span className="truncate text-gray-500">Split line {splitIndex + 1}</span>
+                                                        <span />
+                                                        <span className="truncate text-gray-700">{split.category || "Uncategorized"}</span>
+                                                        <span className="text-left tabular-nums text-gray-700">${Number(split.amount || 0).toFixed(2)}</span>
+                                                    </li>
+                                                ))}
+                                        </div>
+                                    )
+                                })}
                             </ul>
                         </div>
                     </div>
@@ -1156,11 +1806,12 @@ function LedgerEntriesTable({
                                 uploadedCsvFiles.length === 0 ||
                                 hasDuplicateMappingInAnyFile ||
                                 hasMissingRequiredMappingInAnyFile ||
-                                !uploadAccountId
+                                !uploadAccountId ||
+                                isImportingTransactions
                             }
-                            onClick={closeUploadModal}
+                            onClick={handleConfirmUploadMapping}
                         >
-                            Confirm mapping
+                            {isImportingTransactions ? "Importing..." : "Confirm mapping"}
                         </button>
                     </div>
                 </div>
