@@ -23,16 +23,19 @@ function EmployeesPage() {
     const [currentUserProfile, setCurrentUserProfile] = useState(null)
 
     const [showEmployeeForm, setShowEmployeeForm] = useState(false)
-    const [showEditEmployeeForm, setShowEditEmployeeForm] = useState(false)
     const [newEmployeeName, setNewEmployeeName] = useState("")
     const [newEmployeeEmail, setNewEmployeeEmail] = useState("")
     const [newEmployeePassword, setNewEmployeePassword] = useState("")
     const [newEmployeeRole, setNewEmployeeRole] = useState("")
     const [editingEmployeeId, setEditingEmployeeId] = useState("")
-    const [editingEmployeeName, setEditingEmployeeName] = useState("")
-    const [editingEmployeeEmail, setEditingEmployeeEmail] = useState("")
-    const [editingEmployeeRole, setEditingEmployeeRole] = useState("")
-    const [editingEmployeeStatus, setEditingEmployeeStatus] = useState("active")
+    const [editingDraft, setEditingDraft] = useState({
+        name: "",
+        email: "",
+        role: "staff",
+        status: "active",
+    })
+    const [searchTerm, setSearchTerm] = useState("")
+    const [roleFilter, setRoleFilter] = useState("all")
     const [employeeToDelete, setEmployeeToDelete] = useState(null)
     const [employees, setEmployees] = useState([])
     const [isSubmitting, setIsSubmitting] = useState(false)
@@ -43,31 +46,30 @@ function EmployeesPage() {
     const [refreshKey, setRefreshKey] = useState(0)
     const displayedRoles = roles.length > 0 ? roles : fallbackRoles
     const { success, error } = useNotification()
-    const roleOrder = ["owner", "manager", "staff", "viewer"]
+    const roleLabelByKey = useMemo(
+        () =>
+            displayedRoles.reduce((acc, item) => {
+                acc[item.key] = item.label
+                return acc
+            }, {}),
+        [displayedRoles]
+    )
 
-    const groupedEmployees = useMemo(() => {
-        const groups = {}
+    const filteredEmployees = useMemo(() => {
+        const safeSearch = String(searchTerm || "").trim().toLowerCase()
+        return [...employees]
+            .filter((employee) => {
+                if (roleFilter !== "all" && employee.role !== roleFilter) return false
+                if (!safeSearch) return true
 
-        displayedRoles.forEach((roleItem) => {
-            groups[roleItem.key] = []
-        })
-
-        employees.forEach((employee) => {
-            const roleKey = String(employee.role || "staff").toLowerCase()
-            if (!groups[roleKey]) groups[roleKey] = []
-            groups[roleKey].push(employee)
-        })
-
-        Object.keys(groups).forEach((roleKey) => {
-            groups[roleKey] = [...groups[roleKey]].sort((a, b) => {
-                const nameA = String(a.name || "").toLowerCase()
-                const nameB = String(b.name || "").toLowerCase()
-                return nameA.localeCompare(nameB)
+                const name = String(employee.name || "").toLowerCase()
+                const email = String(employee.email || "").toLowerCase()
+                return name.includes(safeSearch) || email.includes(safeSearch)
             })
-        })
-
-        return groups
-    }, [employees, displayedRoles])
+            .sort((a, b) =>
+                String(a.name || "").toLowerCase().localeCompare(String(b.name || "").toLowerCase())
+            )
+    }, [employees, searchTerm, roleFilter])
 
     useEffect(() => {
         let active = true
@@ -208,24 +210,34 @@ function EmployeesPage() {
 
     const startEditEmployee = (employeeItem) => {
         setEditingEmployeeId(employeeItem.id)
-        setEditingEmployeeName(employeeItem.name || "")
-        setEditingEmployeeEmail(employeeItem.email || "")
-        setEditingEmployeeRole(employeeItem.role || "staff")
-        setEditingEmployeeStatus(employeeItem.status || "active")
-        setShowEditEmployeeForm(true)
+        setEditingDraft({
+            name: employeeItem.name || "",
+            email: employeeItem.email || "",
+            role: employeeItem.role || "staff",
+            status: employeeItem.status || "active",
+        })
     }
 
-    const handleUpdateEmployee = async (e) => {
-        e.preventDefault()
+    const cancelEditEmployee = () => {
+        setEditingEmployeeId("")
+        setEditingDraft({
+            name: "",
+            email: "",
+            role: "staff",
+            status: "active",
+        })
+    }
+
+    const handleUpdateEmployee = async () => {
+        if (!editingEmployeeId) return
 
         try {
             setIsSubmitting(true)
 
             const updated = await updateEmployeeById(editingEmployeeId, {
-                name: editingEmployeeName,
-                email: editingEmployeeEmail,
-                role: editingEmployeeRole || "staff",
-                status: editingEmployeeStatus || "active",
+                name: editingDraft.name,
+                role: editingDraft.role || "staff",
+                status: editingDraft.status || "active",
             })
 
             setEmployees((current) =>
@@ -233,19 +245,17 @@ function EmployeesPage() {
                     item.id === editingEmployeeId
                         ? {
                             ...item,
-                            name: updated?.name || editingEmployeeName,
-                            email: updated?.email || editingEmployeeEmail,
-                            role: updated?.role || editingEmployeeRole,
-                            status: updated?.status || editingEmployeeStatus,
+                            name: updated?.name || editingDraft.name,
+                            email: item.email,
+                            role: updated?.role || editingDraft.role,
+                            status: updated?.status || editingDraft.status,
                         }
                         : item
                 )
             )
 
             success("Employee updated successfully")
-            setShowEditEmployeeForm(false)
-            setEditingEmployeeId("")
-            setRefreshKey((current) => current + 1)
+            cancelEditEmployee()
         } catch (err) {
             error(err.message || "Failed to update employee")
         } finally {
@@ -268,26 +278,12 @@ function EmployeesPage() {
         }
     }
 
-    const handleToggleEmployeeStatus = async (employeeItem) => {
-        const nextStatus = employeeItem.status === "inactive" ? "active" : "inactive"
-
-        try {
-            const updated = await updateEmployeeById(employeeItem.id, {
-                status: nextStatus,
-            })
-
-            setEmployees((current) =>
-                current.map((item) =>
-                    item.id === employeeItem.id
-                        ? { ...item, status: updated?.status || nextStatus }
-                        : item
-                )
-            )
-
-            success(`Employee ${nextStatus === "active" ? "activated" : "deactivated"} successfully`)
-        } catch (err) {
-            error(err.message || "Failed to update employee status")
-        }
+    const isCurrentUser = (employeeItem) => {
+        const currentEmail = String(currentUserProfile?.email || "").toLowerCase()
+        const itemEmail = String(employeeItem.email || "").toLowerCase()
+        const currentId = String(currentUserProfile?._id || "")
+        const itemId = String(employeeItem.id || "")
+        return (currentEmail && currentEmail === itemEmail) || (currentId && currentId === itemId)
     }
 
     return (
@@ -305,81 +301,233 @@ function EmployeesPage() {
                     </button>
                 </header>
 
-                <section className="flex flex-col gap-6">
-                    {roleOrder.map((roleKey) => {
-                        const roleMeta = displayedRoles.find((item) => item.key === roleKey)
-                        const roleLabel = roleMeta?.label || roleKey
-                        const roleEmployees = groupedEmployees[roleKey] || []
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_180px]">
+                    <div className="relative">
+                        <input
+                            type="text"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            placeholder="Search by name or email"
+                            className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-10 pr-3 text-sm outline-none focus:border-gray-500"
+                        />
+                        <svg
+                            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                        >
+                            <circle cx="11" cy="11" r="7" />
+                            <path d="m20 20-3.5-3.5" />
+                        </svg>
+                    </div>
 
-                        if (roleEmployees.length === 0) return null
+                    <div className="relative">
+                        <select
+                            className="w-full appearance-none rounded-full border-3 border-gray-100 bg-white px-3 py-2.5 pr-8 text-sm"
+                            value={roleFilter}
+                            onChange={(e) => setRoleFilter(e.target.value)}
+                        >
+                            <option value="all">All roles</option>
+                            {displayedRoles.map((role) => (
+                                <option key={role.key} value={role.key}>
+                                    {role.label}
+                                </option>
+                            ))}
+                        </select>
+                        <svg
+                            className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                        >
+                            <path d="M6 9l6 6 6-6" />
+                        </svg>
+                    </div>
 
-                        return (
-                            <section key={roleKey} className="flex flex-col gap-3">
-                                <div className="flex items-center justify-between border-b border-gray-200 pb-2">
-                                    <h3 className="text-base font-semibold">{roleLabel}</h3>
-                                    <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600">
-                                        {roleEmployees.length}
-                                    </span>
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {roleEmployees.map((employeeItem) => {
-                                        const currentEmail = String(currentUserProfile?.email || "").toLowerCase()
-                                        const itemEmail = String(employeeItem.email || "").toLowerCase()
-                                        const currentId = String(currentUserProfile?._id || "")
-                                        const itemId = String(employeeItem.id || "")
-                                        const isCurrentUser = (currentEmail && currentEmail === itemEmail) || (currentId && currentId === itemId)
+                </div>
 
-                                        return (
-                                            <article
-                                                key={employeeItem.id}
-                                                className="border border-gray-200 rounded-lg p-4"
-                                            >
-                                                <h2 className="text-lg font-semibold">{employeeItem.name}</h2>
-                                                <p className="text-sm text-gray-600">{employeeItem.email}</p>
-                                                <p className="text-sm text-gray-500">Role: {employeeItem.role}</p>
-                                                <p className="text-xs uppercase tracking-wide text-gray-400">
-                                                    Status: {employeeItem.status}
+                <section>
+                    <div className="grid grid-cols-[1fr_1.2fr_0.8fr_120px_auto] gap-3 border-b border-gray-200 px-1 py-3 text-xs font-semibold uppercase tracking-wide text-gray-600">
+                        <span>Name</span>
+                        <span>Email</span>
+                        <span>Role</span>
+                        <span>Status</span>
+                        <div className="flex min-w-[72px] justify-end">
+                            <span>Actions</span>
+                        </div>
+                    </div>
+                    <div className="divide-y divide-gray-100">
+                        {filteredEmployees.map((employeeItem) => {
+                            const isCurrent = isCurrentUser(employeeItem)
+                            const isEditing = editingEmployeeId === employeeItem.id
+
+                            return (
+                                <div key={employeeItem.id}>
+                                    <div className="grid grid-cols-[1fr_1.2fr_0.8fr_120px_auto] gap-3 px-1 py-3 hover:bg-gray-50">
+                                        <div className="min-w-0">
+                                            {isEditing ? (
+                                                <input
+                                                    type="text"
+                                                    className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm"
+                                                    value={editingDraft.name}
+                                                    onChange={(e) =>
+                                                        setEditingDraft((current) => ({ ...current, name: e.target.value }))
+                                                    }
+                                                />
+                                            ) : (
+                                                <p className="truncate font-medium text-gray-900">{employeeItem.name}</p>
+                                            )}
+                                        </div>
+
+                                        <div className="min-w-0 flex items-center">
+                                            <p className="truncate text-gray-700">{employeeItem.email}</p>
+                                        </div>
+
+                                        <div className="min-w-0">
+                                            {isEditing ? (
+                                                <div className="relative">
+                                                    <select
+                                                        className="w-full appearance-none rounded-full border-3 border-gray-100 bg-white px-3 py-1.5 pr-8 text-sm"
+                                                        value={editingDraft.role}
+                                                        onChange={(e) =>
+                                                            setEditingDraft((current) => ({ ...current, role: e.target.value }))
+                                                        }
+                                                    >
+                                                        {displayedRoles.map((role) => (
+                                                            <option key={role.key} value={role.key}>
+                                                                {role.label}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                    <svg
+                                                        className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
+                                                        viewBox="0 0 24 24"
+                                                        fill="none"
+                                                        stroke="currentColor"
+                                                        strokeWidth="2.5"
+                                                        strokeLinecap="round"
+                                                        strokeLinejoin="round"
+                                                    >
+                                                        <path d="M6 9l6 6 6-6" />
+                                                    </svg>
+                                                </div>
+                                            ) : (
+                                                <p className="truncate text-gray-700">
+                                                    {roleLabelByKey[employeeItem.role] || employeeItem.role}
                                                 </p>
-                                                {!isCurrentUser && (
-                                                    <div className="mt-3 flex items-center gap-2">
-                                                        <button
-                                                            type="button"
-                                                            className={`relative inline-flex h-6 w-12 items-center rounded-full transition ${
-                                                                employeeItem.status === "active" ? "bg-emerald-500" : "bg-gray-300"
-                                                            }`}
-                                                            onClick={() => handleToggleEmployeeStatus(employeeItem)}
-                                                            title={employeeItem.status === "active" ? "Deactivate employee" : "Activate employee"}
-                                                            aria-label={employeeItem.status === "active" ? "Deactivate employee" : "Activate employee"}
-                                                        >
-                                                            <span
-                                                                className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${
-                                                                    employeeItem.status === "active" ? "translate-x-6" : "translate-x-1"
-                                                                }`}
-                                                            />
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            className="rounded-md border border-gray-200 px-3 py-1.5 text-xs font-medium hover:bg-gray-50"
-                                                            onClick={() => startEditEmployee(employeeItem)}
-                                                        >
-                                                            Edit
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            className="rounded-md border border-rose-200 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50"
-                                                            onClick={() => setEmployeeToDelete(employeeItem)}
-                                                        >
-                                                            Delete
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </article>
-                                        )
-                                    })}
+                                            )}
+                                        </div>
+
+                                        <div className="min-w-0 flex items-center">
+                                            {isEditing ? (
+                                                <button
+                                                    type="button"
+                                                    className={`relative inline-flex h-5 w-10 items-center rounded-full transition ${
+                                                        editingDraft.status === "active" ? "bg-emerald-500" : "bg-gray-300"
+                                                    }`}
+                                                    onClick={() =>
+                                                        setEditingDraft((current) => ({
+                                                            ...current,
+                                                            status: current.status === "active" ? "inactive" : "active",
+                                                        }))
+                                                    }
+                                                    title={editingDraft.status === "active" ? "Set inactive" : "Set active"}
+                                                    aria-label={editingDraft.status === "active" ? "Set inactive" : "Set active"}
+                                                >
+                                                    <span
+                                                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
+                                                            editingDraft.status === "active" ? "translate-x-5" : "translate-x-1"
+                                                        }`}
+                                                    />
+                                                </button>
+                                            ) : (
+                                                <p className="text-sm text-gray-700">
+                                                    {employeeItem.status}
+                                                </p>
+                                            )}
+                                        </div>
+
+                                        <div className="flex min-w-[72px] items-center justify-end gap-2">
+                                            {isCurrent && (
+                                                <div className="flex items-center gap-2 opacity-0" aria-hidden="true">
+                                                    <span className="h-4 w-4" />
+                                                    <span className="h-4 w-4" />
+                                                </div>
+                                            )}
+                                            {!isCurrent && (
+                                                <>
+                                                    {isEditing ? (
+                                                        <>
+                                                            <button
+                                                                type="button"
+                                                                className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-emerald-700 disabled:opacity-50"
+                                                                onClick={handleUpdateEmployee}
+                                                                disabled={isSubmitting}
+                                                                title="Save employee"
+                                                                aria-label="Save employee"
+                                                            >
+                                                                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                                    <path d="M20 6 9 17l-5-5" />
+                                                                </svg>
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-gray-800 disabled:opacity-50"
+                                                                onClick={cancelEditEmployee}
+                                                                disabled={isSubmitting}
+                                                                title="Cancel edit"
+                                                                aria-label="Cancel edit"
+                                                            >
+                                                                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                                    <path d="M18 6 6 18" />
+                                                                    <path d="m6 6 12 12" />
+                                                                </svg>
+                                                            </button>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <button
+                                                                type="button"
+                                                                className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-sky-700"
+                                                                onClick={() => startEditEmployee(employeeItem)}
+                                                                title="Edit employee"
+                                                                aria-label="Edit employee"
+                                                            >
+                                                                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                                    <path d="M12 20h9" />
+                                                                    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5z" />
+                                                                </svg>
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-rose-600"
+                                                                onClick={() => setEmployeeToDelete(employeeItem)}
+                                                                title="Delete employee"
+                                                                aria-label="Delete employee"
+                                                            >
+                                                                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                                    <path d="M3 6h18" />
+                                                                    <path d="M8 6V4h8v2" />
+                                                                    <path d="M19 6l-1 14H6L5 6" />
+                                                                    <path d="M10 11v6M14 11v6" />
+                                                                </svg>
+                                                            </button>
+                                                        </>
+                                                    )}
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
                                 </div>
-                            </section>
-                        )
-                    })}
+                            )
+                        })}
+                    </div>
                 </section>
 
                 {isLoadingEmployees && (
@@ -391,6 +539,12 @@ function EmployeesPage() {
                 {!isLoadingEmployees && employees.length === 0 && (
                     <p className="text-sm text-gray-500">
                         No employees found for this office
+                    </p>
+                )}
+
+                {!isLoadingEmployees && employees.length > 0 && filteredEmployees.length === 0 && (
+                    <p className="text-sm text-gray-500">
+                        No employees match your current filters
                     </p>
                 )}
 
@@ -421,18 +575,31 @@ function EmployeesPage() {
                             value={newEmployeePassword}
                             onChange={(e) => setNewEmployeePassword(e.target.value)}
                         />
-                        <select
-                            className="border-2 border-gray-100 rounded-full px-3 py-2 bg-white"
-                            value={newEmployeeRole}
-                            onChange={(e) => setNewEmployeeRole(e.target.value)}
-                            disabled={isLoadingRoles}
-                        >
-                            {displayedRoles.map((role) => (
-                                <option key={role.key} value={role.key}>
-                                    {role.label}
-                                </option>
-                            ))}
-                        </select>
+                        <div className="relative">
+                            <select
+                                className="w-full appearance-none rounded-full border-3 border-gray-100 bg-white px-3 py-2 pr-8"
+                                value={newEmployeeRole}
+                                onChange={(e) => setNewEmployeeRole(e.target.value)}
+                                disabled={isLoadingRoles}
+                            >
+                                {displayedRoles.map((role) => (
+                                    <option key={role.key} value={role.key}>
+                                        {role.label}
+                                    </option>
+                                ))}
+                            </select>
+                            <svg
+                                className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            >
+                                <path d="M6 9l6 6 6-6" />
+                            </svg>
+                        </div>
                         {displayedRoles.length > 0 && (
                             <div className="rounded-md border border-gray-100 bg-gray-50 px-3 py-2 text-xs text-gray-700">
                                 {displayedRoles.find((role) => role.key === newEmployeeRole)?.description || "Select a role"}
@@ -440,52 +607,6 @@ function EmployeesPage() {
                         )}
                         <button className="bg-gray-100 rounded-full p-2" type="submit" disabled={isSubmitting || isLoadingProfile || !officeId}>
                             {isSubmitting ? "Saving..." : "Save Employee"}
-                        </button>
-                    </form>
-                </PopupModal>
-
-                <PopupModal
-                    isOpen={showEditEmployeeForm}
-                    title="Edit Employee"
-                    onClose={() => setShowEditEmployeeForm(false)}
-                >
-                    <form className="flex flex-col gap-3" onSubmit={handleUpdateEmployee}>
-                        <input
-                            className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
-                            type="text"
-                            placeholder="Employee name"
-                            value={editingEmployeeName}
-                            onChange={(e) => setEditingEmployeeName(e.target.value)}
-                        />
-                        <input
-                            className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
-                            type="email"
-                            placeholder="Employee email"
-                            value={editingEmployeeEmail}
-                            onChange={(e) => setEditingEmployeeEmail(e.target.value)}
-                        />
-                        <select
-                            className="border-2 border-gray-100 rounded-full px-3 py-2 bg-white"
-                            value={editingEmployeeRole}
-                            onChange={(e) => setEditingEmployeeRole(e.target.value)}
-                            disabled={isLoadingRoles}
-                        >
-                            {displayedRoles.map((role) => (
-                                <option key={role.key} value={role.key}>
-                                    {role.label}
-                                </option>
-                            ))}
-                        </select>
-                        <select
-                            className="border-2 border-gray-100 rounded-full px-3 py-2 bg-white"
-                            value={editingEmployeeStatus}
-                            onChange={(e) => setEditingEmployeeStatus(e.target.value)}
-                        >
-                            <option value="active">Active</option>
-                            <option value="inactive">Inactive</option>
-                        </select>
-                        <button className="bg-gray-100 rounded-full p-2" type="submit" disabled={isSubmitting}>
-                            {isSubmitting ? "Saving..." : "Save Changes"}
                         </button>
                     </form>
                 </PopupModal>
