@@ -11,6 +11,16 @@ import {
     updateClientById,
 } from "../services/clients.service"
 
+function getEmptyClientDraft() {
+    return {
+        name: "",
+        businessType: "",
+        description: "",
+        mainActivity: "",
+        state: "",
+    }
+}
+
 function ClientsPage() {
 
     const navigate = useNavigate()
@@ -34,14 +44,10 @@ function ClientsPage() {
     const [newClientMainActivity, setNewClientMainActivity] = useState("")
     const [newClientState, setNewClientState] = useState("")
 
-    const [showEditClientForm, setShowEditClientForm] = useState(false)
     const [editingClientId, setEditingClientId] = useState("")
-    const [editClientName, setEditClientName] = useState("")
-    const [editClientBusinessType, setEditClientBusinessType] = useState("")
-    const [editClientDescription, setEditClientDescription] = useState("")
-    const [editClientMainActivity, setEditClientMainActivity] = useState("")
-    const [editClientState, setEditClientState] = useState("")
+    const [editingClientDraft, setEditingClientDraft] = useState(getEmptyClientDraft())
     const [clientToDelete, setClientToDelete] = useState(null)
+    const [expandedClientIds, setExpandedClientIds] = useState([])
 
     useEffect(() => {
         let active = true
@@ -155,39 +161,69 @@ function ClientsPage() {
         }
     }
 
-    const openEditClientModal = (client) => {
+    const startInlineEditClient = (client) => {
         setEditingClientId(client.id)
-        setEditClientName(client.name || "")
-        setEditClientBusinessType(client.businessType || "")
-        setEditClientDescription(client.description || "")
-        setEditClientMainActivity(client.mainActivity || "")
-        setEditClientState(client.state || "")
-        setShowEditClientForm(true)
+        setEditingClientDraft({
+            name: client.name || "",
+            businessType: client.businessType || "",
+            description: client.description || "",
+            mainActivity: client.mainActivity || "",
+            state: client.state || "",
+        })
+        setExpandedClientIds((current) =>
+            current.includes(client.id) ? current : [...current, client.id]
+        )
     }
 
-    const handleEditClient = async (e) => {
-        e.preventDefault()
+    const cancelInlineEditClient = () => {
+        setEditingClientId("")
+        setEditingClientDraft(getEmptyClientDraft())
+    }
+
+    const handleEditClient = async () => {
+        if (!editingClientId) return
 
         try {
             setIsSubmitting(true)
 
-            await updateClientById(editingClientId, {
-                name: editClientName,
-                businessType: editClientBusinessType,
-                description: editClientDescription,
-                mainActivity: editClientMainActivity,
-                state: editClientState,
-            })
+            const payload = {
+                name: editingClientDraft.name,
+                businessType: editingClientDraft.businessType,
+                description: editingClientDraft.description,
+                mainActivity: editingClientDraft.mainActivity,
+                state: editingClientDraft.state,
+            }
+            const updated = await updateClientById(editingClientId, payload)
+
+            setClients((current) =>
+                current.map((item) =>
+                    item.id === editingClientId
+                        ? {
+                            ...item,
+                            name: updated?.name ?? payload.name,
+                            businessType: updated?.businessType ?? payload.businessType,
+                            description: updated?.description ?? payload.description,
+                            mainActivity: updated?.mainActivity ?? payload.mainActivity,
+                            state: updated?.state ?? payload.state,
+                        }
+                        : item
+                )
+            )
 
             success("Client updated successfully")
-            setShowEditClientForm(false)
-            setEditingClientId("")
-            setRefreshKey((current) => current + 1)
+            cancelInlineEditClient()
         } catch (err) {
             error(err.message || "Failed to update client")
         } finally {
             setIsSubmitting(false)
         }
+    }
+
+    const handleChangeEditingDraft = (patch) => {
+        setEditingClientDraft((current) => ({
+            ...current,
+            ...patch,
+        }))
     }
 
     const handleDeleteClient = async () => {
@@ -196,6 +232,9 @@ function ClientsPage() {
             setIsSubmitting(true)
             await deleteClientById(clientToDelete.id)
             success("Client deleted successfully")
+            setExpandedClientIds((current) =>
+                current.filter((id) => id !== clientToDelete.id)
+            )
             setClientToDelete(null)
 
             if (clients.length === 1 && page > 1) {
@@ -208,6 +247,14 @@ function ClientsPage() {
         } finally {
             setIsSubmitting(false)
         }
+    }
+
+    const toggleClientExpanded = (clientId) => {
+        setExpandedClientIds((current) =>
+            current.includes(clientId)
+                ? current.filter((id) => id !== clientId)
+                : [...current, clientId]
+        )
     }
 
     return (
@@ -249,45 +296,169 @@ function ClientsPage() {
                 </div>
 
                 <section>
-                    <div className="grid grid-cols-[1.4fr_1fr_0.8fr_0.6fr] gap-3 border-b border-gray-200 px-1 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600">
+                    <div className="grid grid-cols-[1fr_auto] gap-3 border-b border-gray-200 px-1 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600">
                         <span>Client</span>
-                        <span>Business Type</span>
-                        <span>State</span>
                         <span className="text-right">Actions</span>
                     </div>
                     <div className="divide-y divide-gray-100">
-                        {clients.map((client) => (
-                            <div
-                                key={client.id}
-                                className="grid w-full grid-cols-[1.4fr_1fr_0.8fr_0.6fr] gap-3 px-1 py-3 hover:bg-gray-50"
-                            >
-                                <button
-                                    type="button"
-                                    className="contents text-left"
-                                    onClick={() => navigate(`/clients/${client.id}/ledger`)}
-                                >
-                                    <span className="font-medium text-gray-900">{client.name}</span>
-                                    <span className="text-gray-700">{client.businessType}</span>
-                                    <span className="text-gray-500">{client.state}</span>
-                                </button>
-                                <div className="flex items-center justify-end gap-2">
-                                    <button
-                                        type="button"
-                                        className="rounded-md border border-gray-200 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
-                                        onClick={() => openEditClientModal(client)}
-                                    >
-                                        Edit
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className="rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
-                                        onClick={() => setClientToDelete(client)}
-                                    >
-                                        Delete
-                                    </button>
+                        {clients.map((client) => {
+                            const isEditing = editingClientId === client.id
+                            const isExpanded = expandedClientIds.includes(client.id)
+
+                            return (
+                                <div key={client.id}>
+                                    <div className="grid w-full grid-cols-[1fr_auto] gap-3 px-1 py-3 hover:bg-gray-50">
+                                        <div className="flex min-w-0 flex-col gap-2">
+                                            {isEditing ? (
+                                                <input
+                                                    type="text"
+                                                    className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm"
+                                                    value={editingClientDraft.name}
+                                                    onChange={(e) => handleChangeEditingDraft({ name: e.target.value })}
+                                                />
+                                            ) : (
+                                                <button
+                                                    type="button"
+                                                    className="w-fit max-w-full truncate text-left font-medium text-gray-900 hover:underline"
+                                                    onClick={() => navigate(`/clients/${client.id}/ledger`)}
+                                                    title={client.name}
+                                                >
+                                                    {client.name}
+                                                </button>
+                                            )}
+
+                                            {isExpanded && (
+                                                <div className="mt-1 pt-2">
+                                                    <div className="grid grid-cols-1 gap-y-2 text-sm md:grid-cols-[140px_minmax(0,1fr)] md:gap-x-4">
+                                                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Business Type</p>
+                                                        {isEditing ? (
+                                                            <input
+                                                                type="text"
+                                                                className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm"
+                                                                value={editingClientDraft.businessType}
+                                                                onChange={(e) => handleChangeEditingDraft({ businessType: e.target.value })}
+                                                            />
+                                                        ) : (
+                                                            <p className="text-gray-700">{client.businessType || "-"}</p>
+                                                        )}
+
+                                                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">State</p>
+                                                        {isEditing ? (
+                                                            <input
+                                                                type="text"
+                                                                className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm"
+                                                                value={editingClientDraft.state}
+                                                                onChange={(e) => handleChangeEditingDraft({ state: e.target.value })}
+                                                            />
+                                                        ) : (
+                                                            <p className="text-gray-700">{client.state || "-"}</p>
+                                                        )}
+
+                                                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Main Activity</p>
+                                                        {isEditing ? (
+                                                            <input
+                                                                type="text"
+                                                                className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm"
+                                                                value={editingClientDraft.mainActivity}
+                                                                onChange={(e) => handleChangeEditingDraft({ mainActivity: e.target.value })}
+                                                            />
+                                                        ) : (
+                                                            <p className="text-gray-700">{client.mainActivity || "-"}</p>
+                                                        )}
+
+                                                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 md:pt-1">Description</p>
+                                                        {isEditing ? (
+                                                            <textarea
+                                                                rows={2}
+                                                                className="w-full resize-none rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm"
+                                                                value={editingClientDraft.description}
+                                                                onChange={(e) => handleChangeEditingDraft({ description: e.target.value })}
+                                                            />
+                                                        ) : (
+                                                            <p className="text-gray-700">{client.description || "-"}</p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="flex items-start justify-end gap-2">
+                                            <button
+                                                type="button"
+                                                className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-gray-800"
+                                                onClick={() => toggleClientExpanded(client.id)}
+                                                title={isExpanded ? "Hide details" : "Show details"}
+                                                aria-label={isExpanded ? "Hide details" : "Show details"}
+                                            >
+                                                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                    <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" />
+                                                    <circle cx="12" cy="12" r="3" />
+                                                </svg>
+                                            </button>
+
+                                            {isEditing ? (
+                                                <>
+                                                    <button
+                                                        type="button"
+                                                        className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-emerald-700 disabled:opacity-50"
+                                                        onClick={handleEditClient}
+                                                        disabled={isSubmitting}
+                                                        title="Save client"
+                                                        aria-label="Save client"
+                                                    >
+                                                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                            <path d="M20 6 9 17l-5-5" />
+                                                        </svg>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-gray-800 disabled:opacity-50"
+                                                        onClick={cancelInlineEditClient}
+                                                        disabled={isSubmitting}
+                                                        title="Cancel edit"
+                                                        aria-label="Cancel edit"
+                                                    >
+                                                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                            <path d="M18 6 6 18" />
+                                                            <path d="m6 6 12 12" />
+                                                        </svg>
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <button
+                                                        type="button"
+                                                        className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-sky-700"
+                                                        onClick={() => startInlineEditClient(client)}
+                                                        title="Edit client"
+                                                        aria-label="Edit client"
+                                                    >
+                                                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                            <path d="M12 20h9" />
+                                                            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5z" />
+                                                        </svg>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-rose-600"
+                                                        onClick={() => setClientToDelete(client)}
+                                                        title="Delete client"
+                                                        aria-label="Delete client"
+                                                    >
+                                                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                            <path d="M3 6h18" />
+                                                            <path d="M8 6V4h8v2" />
+                                                            <path d="M19 6l-1 14H6L5 6" />
+                                                            <path d="M10 11v6M14 11v6" />
+                                                        </svg>
+                                                    </button>
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
+                            )
+                        })}
                     </div>
                 </section>
 
@@ -372,53 +543,6 @@ function ClientsPage() {
                         />
                         <button className="bg-gray-100 rounded-full p-2" type="submit" disabled={isSubmitting || !officeId}>
                             {isSubmitting ? "Saving..." : "Save Client"}
-                        </button>
-                    </form>
-                </PopupModal>
-
-                <PopupModal
-                    isOpen={showEditClientForm}
-                    title="Edit Client"
-                    onClose={() => setShowEditClientForm(false)}
-                >
-                    <form className="flex flex-col gap-3" onSubmit={handleEditClient}>
-                        <input
-                            className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
-                            type="text"
-                            placeholder="Client name"
-                            value={editClientName}
-                            onChange={(e) => setEditClientName(e.target.value)}
-                        />
-                        <input
-                            className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
-                            type="text"
-                            placeholder="Business type"
-                            value={editClientBusinessType}
-                            onChange={(e) => setEditClientBusinessType(e.target.value)}
-                        />
-                        <input
-                            className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
-                            type="text"
-                            placeholder="Description"
-                            value={editClientDescription}
-                            onChange={(e) => setEditClientDescription(e.target.value)}
-                        />
-                        <input
-                            className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
-                            type="text"
-                            placeholder="Main activity"
-                            value={editClientMainActivity}
-                            onChange={(e) => setEditClientMainActivity(e.target.value)}
-                        />
-                        <input
-                            className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
-                            type="text"
-                            placeholder="State"
-                            value={editClientState}
-                            onChange={(e) => setEditClientState(e.target.value)}
-                        />
-                        <button className="bg-gray-100 rounded-full p-2" type="submit" disabled={isSubmitting || !editingClientId}>
-                            {isSubmitting ? "Saving..." : "Save Changes"}
                         </button>
                     </form>
                 </PopupModal>
