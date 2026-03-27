@@ -1,139 +1,280 @@
 import OpenAI from "openai"
-import dotnet from "dotenv"
+import dotenv from "dotenv"
+import { z } from "zod"
 
-dotnet.config({ quiet: true })
+dotenv.config({ quiet: true })
 
 const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
+  apiKey: process.env.OPENAI_API_KEY,
 })
 
-async function categorizeTransaction(categories, transactions, business) {
+const CategorySchema = z.object({
+  id: z.union([z.string(), z.number()]),
+  name: z.string().trim().min(1),
+  type: z.string().optional().nullable(),
+  description: z.string().optional().nullable(),
+})
 
-    // helper functions to produce prompt text
+const TransactionSchema = z.object({
+  id: z.union([z.string(), z.number()]),
+  description: z.string().optional().nullable(),
+  amount: z.number(),
+})
 
-    function promptCategories(categories) {
+const BusinessSchema = z.object({
+  name: z.string().optional().nullable(),
+  businessType: z.string().optional().nullable(),
+  mainActivity: z.string().optional().nullable(),
+  description: z.string().optional().nullable(),
+})
 
-        return categories.map(c =>
-            `name: ${c.name}, type: ${c.type}, description: ${c.description}`
-        ).join("\n")
-    }
+const CategorizationItemSchema = z.object({
+  id: z.union([z.string(), z.number()]),
+  categoryId: z.string(),
+})
 
-    function promptTransactions(transactions) {
+const CategorizationOutputSchema = z.object({
+  results: z.array(CategorizationItemSchema),
+})
 
-        return transactions.map(t =>
-            `id: ${t.id}, description: ${t.description}, amount: ${t.amount}`
-        ).join("\n")
-    }
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
 
-    function promptBusiness(business) {
-        if (!business) {
-            throw new Error("Business information is required for categorization")
-        }
+function withTimeout(promise, timeoutMs) {
+  let timeoutId
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`OpenAI request timed out after ${timeoutMs}ms`))
+    }, timeoutMs)
+  })
+  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeoutId))
+}
 
+function toIdKey(value) {
+  return String(value)
+}
 
-        const parts = []
+function chunkArray(items, size) {
+  const chunks = []
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size))
+  }
+  return chunks
+}
 
-        if (business.name) {
-            parts.push(`You are an accountant who works for the ${business.name}`)
-        } else {
-            parts.push("You are an accountant")
-        }
+function promptCategories(categories) {
+  return categories
+    .map(
+      (category) =>
+        `id: ${category.id}, name: ${category.name}, type: ${category.type || ""}, description: ${
+          category.description || ""
+        }`
+    )
+    .join("\n")
+}
 
-        if (business.businessType) {
-            parts.push(`,the type ${business.businessType},`)
-        }
+function promptTransactions(transactions) {
+  return transactions
+    .map(
+      (transaction) =>
+        `id: ${transaction.id}, description: ${transaction.description || ""}, amount: ${
+          transaction.amount
+        }`
+    )
+    .join("\n")
+}
 
-        if (business.mainActivity) {
-            parts.push(`,the main activity is ${business.mainActivity}`)
-        }
+function promptBusiness(business) {
+  const chunks = []
 
-        if (business.description) {
-            parts.push(`,${business.description}`)
-        }
+  if (business?.name) {
+    chunks.push(`You are an accountant for ${business.name}.`)
+  } else {
+    chunks.push("You are an accountant.")
+  }
 
-        return parts.join("")
+  if (business?.businessType) {
+    chunks.push(`Business type: ${business.businessType}.`)
+  }
 
-    }
+  if (business?.mainActivity) {
+    chunks.push(`Main activity: ${business.mainActivity}.`)
+  }
 
-    // main function
+  if (business?.description) {
+    chunks.push(`Business context: ${business.description}.`)
+  }
 
-    const response = await openai.chat.completions.create({
-        model: "gpt-4.1-mini",
-        messages: [
+  chunks.push("Always choose the most appropriate accounting category.")
+  return chunks.join(" ")
+}
+
+async function categorizeBatch({
+  categories,
+  transactions,
+  business,
+  model,
+  timeoutMs,
+  maxRetries,
+  backoffMs,
+  batchIndex,
+  totalBatches,
+}) {
+  const allowedCategoryIds = categories.map((category) => String(category.id))
+  const allowedCategoryIdsWithBlank = [...allowedCategoryIds, ""]
+
+  let lastError = null
+  for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
+    const startedAt = Date.now()
+    try {
+      const response = await withTimeout(
+        openai.chat.completions.create({
+          model,
+          messages: [
             {
-                role: "system",
-                content: promptBusiness(business),
+              role: "system",
+              content: promptBusiness(business),
             },
             {
-                role: "user",
-                content: `
-                    Available categories:
-                    ${promptCategories(categories)}
+              role: "user",
+              content: `
+Available categories:
+${promptCategories(categories)}
 
-                    Transaction list:
-                    ${promptTransactions(transactions)}
+Transaction list:
+${promptTransactions(transactions)}
 
-                    For each transaction, return ONLY valid JSON in this format:
-                    {
-                    "results": [
-                        {"id": 1, "category": ""}
-                    ]
-                    }
+Return ONLY valid JSON in this format:
+{
+  "results": [
+    { "id": "transaction-id", "categoryId": "category-id-or-empty" }
+  ]
+}
 
-                    Rules:
-                    - category must be exactly one of the available category names.
-                    - if the transaction is unclear or no category applies, set category to "".
-                `
-            }
-        ],
-        response_format: {
+Rules:
+- categoryId must be exactly one of the available category ids.
+- if unclear, categoryId must be "".
+- every transaction id in this batch should appear once in the output.
+              `.trim(),
+            },
+          ],
+          response_format: {
             type: "json_schema",
             json_schema: {
-                name: "categorization",
-                schema: {
-                    type: "object",
-                    properties: {
-                        results: {
-                            type: "array",
-                            items: {
-                                type: "object",
-                                properties: {
-                                    id: { type: "number" },
-                                    category: { type: "string" },
-                                },
-                                required: ["id", "category"]
-                            }
-                        }
+              name: "categorization",
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  results: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      additionalProperties: false,
+                      properties: {
+                        id: { type: ["string", "number"] },
+                        categoryId: { type: "string", enum: allowedCategoryIdsWithBlank },
+                      },
+                      required: ["id", "categoryId"],
                     },
-                    required: ["results"]
-                }
-            }
-        }
-    })
+                  },
+                },
+                required: ["results"],
+              },
+            },
+          },
+        }),
+        timeoutMs
+      )
 
-    const responseAI = response.choices[0].message
+      const messageContent = response?.choices?.[0]?.message?.content
+      const parsed = CategorizationOutputSchema.parse(JSON.parse(messageContent || "{}"))
+      const elapsedMs = Date.now() - startedAt
 
-    try {
-        const parsed = JSON.parse(responseAI.content)
-        const results = parsed.results
-        const allowedCategories = new Set(categories.map(c => c.name))
+      console.info(
+        `[categorizeTransaction] batch=${batchIndex}/${totalBatches} attempt=${attempt} requestId=${
+          response?.id || "n/a"
+        } tx=${transactions.length} ms=${elapsedMs}`
+      )
 
-        // update transactions with categories
-
-        for (const item of results) {
-            const tx = transactions.find(t => t.id === item.id)
-            if (tx) {
-                tx.category = allowedCategories.has(item.category) ? item.category : ""
-            }
-        }
-
-
-        return results
-    } catch (e) {
-        console.error("Falha ao analisar a resposta:", responseAI)
-        throw e
+      return parsed.results
+    } catch (error) {
+      lastError = error
+      const shouldRetry = attempt < maxRetries
+      console.warn(
+        `[categorizeTransaction] batch=${batchIndex}/${totalBatches} attempt=${attempt} failed: ${
+          error?.message || error
+        }${shouldRetry ? " (retrying)" : ""}`
+      )
+      if (!shouldRetry) break
+      await sleep(backoffMs * attempt)
     }
+  }
 
+  throw lastError
+}
+
+async function categorizeTransaction(categories, transactions, business, options = {}) {
+  const safeCategories = z.array(CategorySchema).parse(categories)
+  const safeTransactions = z.array(TransactionSchema).parse(transactions)
+  const safeBusiness = BusinessSchema.parse(business)
+
+  if (safeTransactions.length === 0) return []
+
+  const txById = new Map(safeTransactions.map((transaction) => [toIdKey(transaction.id), transaction]))
+
+  const model = String(options.model || "gpt-4.1-mini")
+  const batchSize = Number(options.batchSize || 40)
+  const timeoutMs = Number(options.timeoutMs || 25_000)
+  const maxRetries = Number(options.maxRetries || 3)
+  const backoffMs = Number(options.backoffMs || 600)
+
+  const batches = chunkArray(safeTransactions, batchSize)
+  const batchResults = []
+
+  for (let index = 0; index < batches.length; index += 1) {
+    const batch = batches[index]
+    const results = await categorizeBatch({
+      categories: safeCategories,
+      transactions: batch,
+      business: safeBusiness,
+      model,
+      timeoutMs,
+      maxRetries,
+      backoffMs,
+      batchIndex: index + 1,
+      totalBatches: batches.length,
+    })
+    batchResults.push(...results)
+  }
+
+  const allowedCategoryIds = new Set(safeCategories.map((category) => String(category.id)))
+  const resultById = new Map()
+
+  for (const item of batchResults) {
+    const idKey = toIdKey(item.id)
+    if (!txById.has(idKey)) continue
+    const normalizedCategoryId = allowedCategoryIds.has(String(item.categoryId))
+      ? String(item.categoryId)
+      : ""
+    resultById.set(idKey, {
+      id: txById.get(idKey).id,
+      categoryId: normalizedCategoryId || null,
+    })
+  }
+
+  const finalResults = safeTransactions.map((transaction) => {
+    const idKey = toIdKey(transaction.id)
+    return (
+      resultById.get(idKey) || {
+        id: transaction.id,
+        categoryId: null,
+      }
+    )
+  })
+
+  return finalResults
 }
 
 export default categorizeTransaction
