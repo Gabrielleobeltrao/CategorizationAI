@@ -307,7 +307,13 @@ function ClientsPage() {
 
                             return (
                                 <div key={client.id}>
-                                    <div className="grid w-full grid-cols-[1fr_auto] gap-3 px-1 py-3 hover:bg-gray-50">
+                                    <div
+                                        className={`grid w-full grid-cols-[1fr_auto] gap-3 px-1 py-3 hover:bg-gray-50 ${isEditing ? "" : "cursor-pointer"}`}
+                                        onClick={() => {
+                                            if (isEditing) return
+                                            navigate(`/clients/${client.id}/ledger`)
+                                        }}
+                                    >
                                         <div className="flex min-w-0 flex-col gap-2">
                                             {isEditing ? (
                                                 <input
@@ -319,8 +325,11 @@ function ClientsPage() {
                                             ) : (
                                                 <button
                                                     type="button"
-                                                    className="w-fit max-w-full truncate text-left font-medium text-gray-900 hover:underline"
-                                                    onClick={() => navigate(`/clients/${client.id}/ledger`)}
+                                                    className="w-full max-w-full truncate text-left font-medium text-gray-900"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation()
+                                                        navigate(`/clients/${client.id}/ledger`)
+                                                    }}
                                                     title={client.name}
                                                 >
                                                     {client.name}
@@ -386,7 +395,10 @@ function ClientsPage() {
                                             <button
                                                 type="button"
                                                 className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-gray-800"
-                                                onClick={() => toggleClientExpanded(client.id)}
+                                                onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    toggleClientExpanded(client.id)
+                                                }}
                                                 title={isExpanded ? "Hide details" : "Show details"}
                                                 aria-label={isExpanded ? "Hide details" : "Show details"}
                                             >
@@ -401,7 +413,10 @@ function ClientsPage() {
                                                     <button
                                                         type="button"
                                                         className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-emerald-700 disabled:opacity-50"
-                                                        onClick={handleEditClient}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation()
+                                                            handleEditClient()
+                                                        }}
                                                         disabled={isSubmitting}
                                                         title="Save client"
                                                         aria-label="Save client"
@@ -413,7 +428,10 @@ function ClientsPage() {
                                                     <button
                                                         type="button"
                                                         className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-gray-800 disabled:opacity-50"
-                                                        onClick={cancelInlineEditClient}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation()
+                                                            cancelInlineEditClient()
+                                                        }}
                                                         disabled={isSubmitting}
                                                         title="Cancel edit"
                                                         aria-label="Cancel edit"
@@ -429,7 +447,10 @@ function ClientsPage() {
                                                     <button
                                                         type="button"
                                                         className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-sky-700"
-                                                        onClick={() => startInlineEditClient(client)}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation()
+                                                            startInlineEditClient(client)
+                                                        }}
                                                         title="Edit client"
                                                         aria-label="Edit client"
                                                     >
@@ -441,7 +462,10 @@ function ClientsPage() {
                                                     <button
                                                         type="button"
                                                         className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-rose-600"
-                                                        onClick={() => setClientToDelete(client)}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation()
+                                                            setClientToDelete(client)
+                                                        }}
                                                         title="Delete client"
                                                         aria-label="Delete client"
                                                     >
