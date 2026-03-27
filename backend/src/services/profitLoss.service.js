@@ -1,4 +1,7 @@
-import { getProfitLossByClientAndRange } from "../repositories/profitLoss.repository.js"
+import {
+  getProfitLossByClientAndRange,
+  listProfitLossPeriodOptionsByClientId,
+} from "../repositories/profitLoss.repository.js"
 
 function toDateString(date) {
   return date.toISOString().slice(0, 10)
@@ -92,4 +95,10 @@ export async function getProfitLossByClientIdService({
     endDate: range.endDate,
     periodLabel: range.periodLabel,
   })
+}
+
+export async function listProfitLossPeriodOptionsByClientIdService(clientId) {
+  const safeClientId = String(clientId || "").trim()
+  if (!safeClientId) throw new Error("clientId is required")
+  return listProfitLossPeriodOptionsByClientId(safeClientId)
 }

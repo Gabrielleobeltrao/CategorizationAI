@@ -1,4 +1,7 @@
-import { getProfitLossByClientIdService } from "../services/profitLoss.service.js"
+import {
+  getProfitLossByClientIdService,
+  listProfitLossPeriodOptionsByClientIdService,
+} from "../services/profitLoss.service.js"
 
 export async function getProfitLossByClientIdController(req, res) {
   try {
@@ -14,6 +17,18 @@ export async function getProfitLossByClientIdController(req, res) {
       toDate,
     })
 
+    return res.status(200).json(result)
+  } catch (error) {
+    return res.status(400).json({
+      message: error.message,
+    })
+  }
+}
+
+export async function listProfitLossPeriodOptionsByClientIdController(req, res) {
+  try {
+    const { clientId } = req.params
+    const result = await listProfitLossPeriodOptionsByClientIdService(clientId)
     return res.status(200).json(result)
   } catch (error) {
     return res.status(400).json({

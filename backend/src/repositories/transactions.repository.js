@@ -60,6 +60,8 @@ export async function updateTransactionById(id, patch) {
       amount: patch.amount,
       categoryId: patch.categoryId,
       category: patch.category,
+      splits: patch.splits,
+      isSplit: patch.isSplit,
       updatedAt: new Date(),
     }
 
@@ -74,9 +76,52 @@ export async function updateTransactionById(id, patch) {
     )
 }
 
+export async function getTransactionById(id) {
+  const db = getDB()
+  return db.collection("transactions").findOne({ _id: new ObjectId(id) })
+}
+
 export async function deleteTransactionById(id) {
   const db = getDB()
   return db.collection("transactions").deleteOne({ _id: new ObjectId(id) })
+}
+
+export async function listTransactionPeriodOptions(clientId) {
+  const db = getDB()
+  const collection = db.collection("transactions")
+
+  const [result] = await collection
+    .aggregate([
+      {
+        $match: {
+          clientId,
+          date: { $regex: /^\d{4}-\d{2}-\d{2}$/ },
+        },
+      },
+      {
+        $project: {
+          year: { $substrBytes: ["$date", 0, 4] },
+          month: { $substrBytes: ["$date", 5, 2] },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          years: { $addToSet: "$year" },
+          months: { $addToSet: "$month" },
+        },
+      },
+    ])
+    .toArray()
+
+  const years = Array.isArray(result?.years)
+    ? [...result.years].sort((a, b) => Number(b) - Number(a))
+    : []
+  const months = Array.isArray(result?.months)
+    ? [...result.months].sort((a, b) => Number(a) - Number(b))
+    : []
+
+  return { years, months }
 }
 
 // busca paginada
@@ -88,6 +133,9 @@ export async function listTransactionsPaginated({
   accountIds = [],
   categoryIds = [],
   includeUncategorized = false,
+  splitMode = "all",
+  years = [],
+  months = [],
   fromDate = "",
   toDate = "",
   minAmount = null,
@@ -110,6 +158,7 @@ export async function listTransactionsPaginated({
       { description: regex },
       { accountName: regex },
       { category: regex },
+      { "splits.category": regex },
       { date: regex },
       ],
     })
@@ -120,12 +169,33 @@ export async function listTransactionsPaginated({
     conditions.push({ accountId: { $in: safeAccountIds } })
   }
 
+  if (splitMode === "split") {
+    conditions.push({
+      $or: [
+        { isSplit: true },
+        { "splits.1": { $exists: true } },
+      ],
+    })
+  } else if (splitMode === "regular") {
+    conditions.push({
+      $nor: [
+        { isSplit: true },
+        { "splits.1": { $exists: true } },
+      ],
+    })
+  }
+
   const safeCategoryIds = Array.isArray(categoryIds) ? categoryIds.filter(Boolean) : []
   if (safeCategoryIds.length > 0 || includeUncategorized) {
     const categoryConditions = []
 
     if (safeCategoryIds.length > 0) {
-      categoryConditions.push({ categoryId: { $in: safeCategoryIds } })
+      categoryConditions.push({
+        $or: [
+          { categoryId: { $in: safeCategoryIds } },
+          { "splits.categoryId": { $in: safeCategoryIds } },
+        ],
+      })
     }
 
     if (includeUncategorized) {
@@ -135,6 +205,18 @@ export async function listTransactionsPaginated({
           { categoryId: "" },
           { category: null },
           { category: "" },
+          {
+            splits: {
+              $elemMatch: {
+                $or: [
+                  { categoryId: null },
+                  { categoryId: "" },
+                  { category: null },
+                  { category: "" },
+                ],
+              },
+            },
+          },
         ],
       })
     }
@@ -151,6 +233,43 @@ export async function listTransactionsPaginated({
     if (fromDate) dateQuery.$gte = fromDate
     if (toDate) dateQuery.$lte = toDate
     conditions.push({ date: dateQuery })
+  }
+
+  const safeYears = Array.isArray(years)
+    ? years
+      .map((item) => String(item || "").trim())
+      .filter((item) => /^\d{4}$/.test(item))
+    : []
+  const safeMonths = Array.isArray(months)
+    ? months
+      .map((item) => String(item || "").trim())
+      .filter((item) => /^(0[1-9]|1[0-2])$/.test(item))
+    : []
+
+  if (safeYears.length > 0 || safeMonths.length > 0) {
+    const dateRegexConditions = []
+
+    if (safeYears.length > 0 && safeMonths.length > 0) {
+      safeYears.forEach((year) => {
+        safeMonths.forEach((month) => {
+          dateRegexConditions.push({ date: new RegExp(`^${year}-${month}-`) })
+        })
+      })
+    } else if (safeYears.length > 0) {
+      safeYears.forEach((year) => {
+        dateRegexConditions.push({ date: new RegExp(`^${year}-`) })
+      })
+    } else {
+      safeMonths.forEach((month) => {
+        dateRegexConditions.push({ date: new RegExp(`^\\d{4}-${month}-`) })
+      })
+    }
+
+    if (dateRegexConditions.length === 1) {
+      conditions.push(dateRegexConditions[0])
+    } else if (dateRegexConditions.length > 1) {
+      conditions.push({ $or: dateRegexConditions })
+    }
   }
 
   if (typeof minAmount === "number" || typeof maxAmount === "number") {

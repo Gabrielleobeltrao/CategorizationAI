@@ -2,6 +2,7 @@ import {
   createTransactionsBatchService,
   updateTransactionByIdService,
   listTransactionsPaginatedService,
+  listTransactionPeriodOptionsService,
   deleteTransactionByIdService,
 } from "../services/transactions.service.js"
 
@@ -31,6 +32,17 @@ export async function updateTransactionByIdController(req, res) {
 export async function listTransactionsPaginatedController(req, res) {
   try {
     const result = await listTransactionsPaginatedService(req.query)
+    return res.status(200).json(result)
+  } catch (error) {
+    return res.status(400).json({
+      message: error.message,
+    })
+  }
+}
+
+export async function listTransactionPeriodOptionsController(req, res) {
+  try {
+    const result = await listTransactionPeriodOptionsService(req.query)
     return res.status(200).json(result)
   } catch (error) {
     return res.status(400).json({

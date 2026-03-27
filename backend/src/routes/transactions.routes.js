@@ -3,6 +3,7 @@ import {
   createTransactionsBatchController,
   updateTransactionByIdController,
   listTransactionsPaginatedController,
+  listTransactionPeriodOptionsController,
   deleteTransactionByIdController,
 } from "../controllers/transactions.controller.js"
 import { requireAuth } from "../middlewares/requireAuth.js"
@@ -31,6 +32,15 @@ router.patch(
   validateObjectIdParam("id"),
   ensureResourceExists({ collection: "transactions", from: "params", field: "id", assignKey: "transaction" }),
   updateTransactionByIdController
+)
+
+router.get(
+  "/transactions/filter-options",
+  requireAuth,
+  requirePermission("transactions:read"),
+  validateObjectIdQuery("clientId"),
+  ensureResourceExists({ collection: "clients", from: "query", field: "clientId", assignKey: "client" }),
+  listTransactionPeriodOptionsController
 )
 
 router.get(
