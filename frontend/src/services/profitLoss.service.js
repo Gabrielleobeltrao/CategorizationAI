@@ -14,3 +14,11 @@ export async function getProfitLossByClientId(clientId, options = {}) {
 
   return api(`/api/clients/${cleanClientId}/profit-loss?${params.toString()}`)
 }
+
+export async function getProfitLossPeriodOptionsByClientId(clientId, options = {}) {
+  const cleanClientId = String(clientId || "").trim()
+  if (!cleanClientId) throw new Error("clientId is required")
+  const silentLoading = Boolean(options.silentLoading)
+
+  return api(`/api/clients/${cleanClientId}/profit-loss/period-options`, { silentLoading })
+}

@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react"
-import { useParams } from "react-router-dom"
+import { useNavigate, useParams } from "react-router-dom"
 import { getClientById } from "../services/clients.service"
-import { getProfitLossByClientId } from "../services/profitLoss.service"
+import {
+  getProfitLossByClientId,
+  getProfitLossPeriodOptionsByClientId,
+} from "../services/profitLoss.service"
 import { useNotification } from "../contexts/notification.context"
 
 function formatCurrency(value) {
@@ -12,23 +15,6 @@ function formatCurrency(value) {
   }).format(value)
 }
 
-function buildMonthOptions() {
-  const options = []
-  const year = 2026
-  for (let month = 12; month >= 1; month -= 1) {
-    const value = `${year}-${String(month).padStart(2, "0")}`
-    options.push({
-      value,
-      label: new Intl.DateTimeFormat("en-US", { month: "short" }).format(new Date(`${value}-01T00:00:00`)),
-    })
-  }
-  return options
-}
-
-function buildYearOptions() {
-  return ["2026", "2025", "2024", "2023", "2022"]
-}
-
 function formatPeriodLabel(value) {
   const [prefix, raw] = String(value || "").split(":")
   if (String(value || "").toUpperCase() === "ALL") return "All time"
@@ -37,27 +23,48 @@ function formatPeriodLabel(value) {
   return raw
 }
 
+function formatMonthLabel(value) {
+  if (!/^\d{4}-\d{2}$/.test(String(value || ""))) return String(value || "")
+  const [yearValue, monthValue] = value.split("-")
+  const date = new Date(`${yearValue}-${monthValue}-01T00:00:00Z`)
+  const monthLabel = date.toLocaleString("en-US", { month: "short", timeZone: "UTC" })
+  return `${monthLabel} ${yearValue}`
+}
+
 function ProfitLossPage() {
   const { clientId } = useParams()
+  const navigate = useNavigate()
   const { error } = useNotification()
   const [period, setPeriod] = useState("MONTH")
   const [isManual, setIsManual] = useState(false)
   const [showPercentView, setShowPercentView] = useState(false)
   const [fromDate, setFromDate] = useState("2026-03-01")
   const [toDate, setToDate] = useState("2026-03-31")
-  const [month, setMonth] = useState("2026-03")
-  const [year, setYear] = useState("2026")
+  const [month, setMonth] = useState("")
+  const [year, setYear] = useState("")
+  const [periodOptions, setPeriodOptions] = useState({ months: [], years: [] })
   const [client, setClient] = useState(null)
   const [profitLoss, setProfitLoss] = useState(null)
   const [isLoadingProfitLoss, setIsLoadingProfitLoss] = useState(false)
 
-  const monthOptions = useMemo(() => buildMonthOptions(), [])
-  const yearOptions = useMemo(() => buildYearOptions(), [])
+  const monthOptions = useMemo(
+    () =>
+      (Array.isArray(periodOptions.months) ? periodOptions.months : []).map((value) => ({
+        value,
+        label: formatMonthLabel(value),
+      })),
+    [periodOptions.months]
+  )
+  const yearOptions = useMemo(
+    () => (Array.isArray(periodOptions.years) ? periodOptions.years : []),
+    [periodOptions.years]
+  )
 
   useEffect(() => {
     let active = true
 
     if (!clientId) {
+      setPeriodOptions({ months: [], years: [] })
       return () => {
         active = false
       }
@@ -82,12 +89,75 @@ function ProfitLossPage() {
     let active = true
 
     if (!clientId) {
+      setPeriodOptions({ months: [], years: [] })
+      return () => {
+        active = false
+      }
+    }
+
+    getProfitLossPeriodOptionsByClientId(clientId, { silentLoading: true })
+      .then((payload) => {
+        if (!active) return
+        const nextMonths = Array.isArray(payload?.months) ? payload.months : []
+        const nextYears = Array.isArray(payload?.years) ? payload.years : []
+        setPeriodOptions({
+          months: nextMonths,
+          years: nextYears,
+        })
+      })
+      .catch(() => {
+        if (!active) return
+        setPeriodOptions({ months: [], years: [] })
+      })
+
+    return () => {
+      active = false
+    }
+  }, [clientId])
+
+  useEffect(() => {
+    if (monthOptions.length === 0) {
+      setMonth("")
+      return
+    }
+
+    const monthExists = monthOptions.some((option) => option.value === month)
+    if (!monthExists) {
+      setMonth(monthOptions[0].value)
+    }
+  }, [monthOptions, month])
+
+  useEffect(() => {
+    if (yearOptions.length === 0) {
+      setYear("")
+      return
+    }
+
+    if (!yearOptions.includes(year)) {
+      setYear(yearOptions[0])
+    }
+  }, [yearOptions, year])
+
+  useEffect(() => {
+    let active = true
+
+    if (!clientId) {
       return () => {
         active = false
       }
     }
 
     const run = async () => {
+      if (!isManual && period === "MONTH" && !month) {
+        setProfitLoss(null)
+        return
+      }
+
+      if (!isManual && period === "YEAR" && !year) {
+        setProfitLoss(null)
+        return
+      }
+
       setIsLoadingProfitLoss(true)
 
       try {
@@ -150,6 +220,13 @@ function ProfitLossPage() {
     return "font-normal"
   }
 
+  const goToLedgerWithCategory = (line) => {
+    const safeClientId = String(clientId || "").trim()
+    const categoryLabel = String(line?.label || "").trim()
+    if (!safeClientId || !categoryLabel) return
+    navigate(`/clients/${safeClientId}/ledger?category=${encodeURIComponent(categoryLabel)}`)
+  }
+
   return (
     <section className="w-full h-full min-h-0 p-8 overflow-auto">
       <div className="w-full flex flex-col gap-3">
@@ -209,6 +286,9 @@ function ProfitLossPage() {
                 {period === "MONTH" && !isManual && (
                   <div className="w-full overflow-x-auto">
                     <div className="flex h-8 min-w-max items-center gap-1.5">
+                      {monthOptions.length === 0 && (
+                        <span className="text-xs text-gray-500">No months available</span>
+                      )}
                       {monthOptions.map((option) => (
                         <button
                           key={option.value}
@@ -230,6 +310,9 @@ function ProfitLossPage() {
                 {period === "YEAR" && !isManual && (
                   <div className="w-full overflow-x-auto">
                     <div className="flex h-8 min-w-max items-center gap-1.5">
+                    {yearOptions.length === 0 && (
+                      <span className="text-xs text-gray-500">No years available</span>
+                    )}
                     {yearOptions.map((option) => (
                       <button
                         key={option}
@@ -338,9 +421,21 @@ function ProfitLossPage() {
                           key={line.id}
                           className={`grid grid-cols-[minmax(0,1fr)_180px] items-center px-3 py-2 text-sm ${index % 2 === 0 ? "bg-gray-100" : "bg-white"}`}
                         >
-                          <span className={`${line.level === 1 ? "pl-4" : ""} ${getLineWeightClass(line.type)} ${line.type === "item" ? "text-gray-700" : ""}`}>
-                            {line.label}
-                          </span>
+                          {line.type === "item" && line.id !== "service_income" ? (
+                            <button
+                              type="button"
+                              className={`w-fit text-left hover:underline ${line.level === 1 ? "pl-4" : ""} ${getLineWeightClass(line.type)} text-gray-700`}
+                              onClick={() => goToLedgerWithCategory(line)}
+                              title={`Open transactions filtered by ${line.label}`}
+                              aria-label={`Open transactions filtered by ${line.label}`}
+                            >
+                              {line.label}
+                            </button>
+                          ) : (
+                            <span className={`${line.level === 1 ? "pl-4" : ""} ${getLineWeightClass(line.type)} ${line.type === "item" ? "text-gray-700" : ""}`}>
+                              {line.label}
+                            </span>
+                          )}
                           <span className={`text-right ${getLineWeightClass(line.type)} ${line.amount < 0 ? "text-rose-600" : "text-gray-900"}`}>
                             {formatCurrency(line.amount)}
                           </span>
