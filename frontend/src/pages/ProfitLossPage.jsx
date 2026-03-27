@@ -6,6 +6,7 @@ import {
   getProfitLossPeriodOptionsByClientId,
 } from "../services/profitLoss.service"
 import { useNotification } from "../contexts/notification.context"
+import { downloadProfitLossPdf } from "../utils/pdf"
 
 function formatCurrency(value) {
   return new Intl.NumberFormat("en-US", {
@@ -227,6 +228,53 @@ function ProfitLossPage() {
     navigate(`/clients/${safeClientId}/ledger?category=${encodeURIComponent(categoryLabel)}`)
   }
 
+  const handleDownloadPdf = () => {
+    if (!profitLoss) return
+
+    const periodValue = profitLoss ? formatPeriodLabel(profitLoss.period) : "-"
+    const clientName = client?.name || "Unknown client"
+    const now = new Date()
+    const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
+      now.getDate()
+    ).padStart(2, "0")}`
+
+    const safeClientSlug = clientName.replace(/\s+/g, "-").toLowerCase()
+    const kpis = [
+      { id: "income", label: "Income", value: formula.income, displayValue: formatCurrency(formula.income) },
+      {
+        id: "cost_of_goods_sold",
+        label: "Cost of Goods Sold",
+        value: formula.costOfGoodsSold,
+        displayValue: formatCurrency(formula.costOfGoodsSold),
+      },
+      {
+        id: "operating_expenses",
+        label: "Operating Expenses",
+        value: formula.operatingExpenses,
+        displayValue: formatCurrency(formula.operatingExpenses),
+      },
+      { id: "net_income", label: "Net Income", value: formula.netIncome, displayValue: formatCurrency(formula.netIncome) },
+    ]
+
+    const statementRows = (Array.isArray(profitLoss.statement) ? profitLoss.statement : []).map((line) => ({
+      label: line.label,
+      level: line.level,
+      type: line.type,
+      rawAmount: Number(line.amount || 0),
+      amountText: formatCurrency(line.amount),
+    }))
+
+    downloadProfitLossPdf({
+      filename: `profit-loss-${safeClientSlug}-${timestamp}.pdf`,
+      title: "Profit & Loss",
+      clientName,
+      periodLabel: periodValue,
+      generatedAt: now.toLocaleString("en-US"),
+      kpis,
+      statementRows,
+    })
+  }
+
   return (
     <section className="w-full h-full min-h-0 p-8 overflow-auto">
       <div className="w-full flex flex-col gap-3">
@@ -399,17 +447,27 @@ function ProfitLossPage() {
               <article className="rounded-xl border border-gray-200 bg-white p-4">
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="text-lg font-semibold">Statement</h2>
-                  <button
-                    type="button"
-                    className={`rounded-md border px-2.5 py-1 text-sm font-semibold ${
-                      showPercentView
-                        ? "border-gray-900 bg-gray-900 text-white"
-                        : "border-gray-200 bg-white text-gray-700 hover:bg-gray-100"
-                    }`}
-                    onClick={() => setShowPercentView((value) => !value)}
-                  >
-                    %
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="rounded-md border border-gray-200 bg-white px-2.5 py-1 text-sm font-semibold text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+                      onClick={handleDownloadPdf}
+                      disabled={!profitLoss}
+                    >
+                      Download PDF
+                    </button>
+                    <button
+                      type="button"
+                      className={`rounded-md border px-2.5 py-1 text-sm font-semibold ${
+                        showPercentView
+                          ? "border-gray-900 bg-gray-900 text-white"
+                          : "border-gray-200 bg-white text-gray-700 hover:bg-gray-100"
+                      }`}
+                      onClick={() => setShowPercentView((value) => !value)}
+                    >
+                      %
+                    </button>
+                  </div>
                 </div>
                 <p className="text-sm text-gray-500">Revenue, costs, expenses and net income</p>
 
