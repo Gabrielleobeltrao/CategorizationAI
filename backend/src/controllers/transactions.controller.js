@@ -4,6 +4,7 @@ import {
   listTransactionsPaginatedService,
   listTransactionPeriodOptionsService,
   deleteTransactionByIdService,
+  categorizeTransactionsWithLlmService,
 } from "../services/transactions.service.js"
 
 export async function createTransactionsBatchController(req, res) {
@@ -56,6 +57,17 @@ export async function deleteTransactionByIdController(req, res) {
     const { id } = req.params
     await deleteTransactionByIdService(id)
     return res.status(204).send()
+  } catch (error) {
+    return res.status(400).json({
+      message: error.message,
+    })
+  }
+}
+
+export async function categorizeTransactionsWithLlmController(req, res) {
+  try {
+    const result = await categorizeTransactionsWithLlmService(req.body)
+    return res.status(200).json(result)
   } catch (error) {
     return res.status(400).json({
       message: error.message,

@@ -59,6 +59,19 @@ export async function getCategoryById(id) {
     return db.collection("categories").findOne({_id: new ObjectId(id)})
 }
 
+export async function listCategoriesByIds(ids = []) {
+    const db = getDB()
+    if (!Array.isArray(ids) || ids.length === 0) return []
+
+    const objectIds = ids
+        .filter((id) => id && ObjectId.isValid(String(id)))
+        .map((id) => new ObjectId(String(id)))
+
+    if (objectIds.length === 0) return []
+
+    return db.collection("categories").find({ _id: { $in: objectIds } }).toArray()
+}
+
 export async function deleteCategoryById(id) {
     const db = getDB()
     return db.collection("categories").deleteOne({ _id: new ObjectId(id) })

@@ -35,6 +35,11 @@ export async function insertTransactionsInBatches(transactions) {
       amount: t.amount,
       categoryId: t.categoryId ?? null,
       category: t.category ?? null,
+      llmProcessed: t.llmProcessed ?? false,
+      llmStatus: t.llmStatus ?? "not_processed",
+      llmProcessedAt: t.llmProcessedAt ?? null,
+      llmCategorySuggestionId: t.llmCategorySuggestionId ?? null,
+      llmCategorySuggestionName: t.llmCategorySuggestionName ?? null,
       createdAt: new Date(),
       updatedAt: new Date(),
     }))
@@ -62,6 +67,11 @@ export async function updateTransactionById(id, patch) {
       category: patch.category,
       splits: patch.splits,
       isSplit: patch.isSplit,
+      llmProcessed: patch.llmProcessed,
+      llmStatus: patch.llmStatus,
+      llmProcessedAt: patch.llmProcessedAt,
+      llmCategorySuggestionId: patch.llmCategorySuggestionId,
+      llmCategorySuggestionName: patch.llmCategorySuggestionName,
       updatedAt: new Date(),
     }
 
@@ -84,6 +94,81 @@ export async function getTransactionById(id) {
 export async function deleteTransactionById(id) {
   const db = getDB()
   return db.collection("transactions").deleteOne({ _id: new ObjectId(id) })
+}
+
+export async function listEligibleTransactionsForLlmByIds(clientId, transactionIds = []) {
+  const db = getDB()
+  const collection = db.collection("transactions")
+  const objectIds = transactionIds.map((id) => new ObjectId(id))
+
+  return collection
+    .find({
+      clientId,
+      _id: { $in: objectIds },
+      $nor: [
+        { isSplit: true },
+        { "splits.1": { $exists: true } },
+      ],
+      $or: [
+        { categoryId: null },
+        { categoryId: "" },
+        { category: null },
+        { category: "" },
+      ],
+    })
+    .toArray()
+}
+
+export async function listEligibleTransactionsForLlmByClientId(clientId) {
+  const db = getDB()
+  const collection = db.collection("transactions")
+
+  return collection
+    .find({
+      clientId,
+      $nor: [
+        { isSplit: true },
+        { "splits.1": { $exists: true } },
+      ],
+      $or: [
+        { categoryId: null },
+        { categoryId: "" },
+        { category: null },
+        { category: "" },
+      ],
+    })
+    .sort({ date: -1, _id: -1 })
+    .toArray()
+}
+
+export async function applyLlmCategorizationUpdates(updates = []) {
+  const db = getDB()
+  const collection = db.collection("transactions")
+
+  if (!Array.isArray(updates) || updates.length === 0) {
+    return { modifiedCount: 0 }
+  }
+
+  const operations = updates.map((item) => ({
+    updateOne: {
+      filter: { _id: new ObjectId(item.id) },
+      update: {
+        $set: {
+          categoryId: item.categoryId ?? null,
+          category: item.category ?? null,
+          llmProcessed: true,
+          llmStatus: item.llmStatus,
+          llmProcessedAt: item.llmProcessedAt,
+          llmCategorySuggestionId: item.llmCategorySuggestionId ?? null,
+          llmCategorySuggestionName: item.llmCategorySuggestionName ?? null,
+          updatedAt: new Date(),
+        },
+      },
+    },
+  }))
+
+  const result = await collection.bulkWrite(operations, { ordered: false })
+  return { modifiedCount: result.modifiedCount || 0 }
 }
 
 export async function listTransactionPeriodOptions(clientId) {
@@ -132,7 +217,8 @@ export async function listTransactionsPaginated({
   search = "",
   accountIds = [],
   categoryIds = [],
-  includeUncategorized = false,
+  includeUncategorizedIncome = false,
+  includeUncategorizedExpenses = false,
   splitMode = "all",
   years = [],
   months = [],
@@ -140,6 +226,7 @@ export async function listTransactionsPaginated({
   toDate = "",
   minAmount = null,
   maxAmount = null,
+  llmProcessed = "all",
 }) {
   const db = getDB()
   const collection = db.collection("transactions")
@@ -186,8 +273,72 @@ export async function listTransactionsPaginated({
   }
 
   const safeCategoryIds = Array.isArray(categoryIds) ? categoryIds.filter(Boolean) : []
-  if (safeCategoryIds.length > 0 || includeUncategorized) {
+  if (safeCategoryIds.length > 0 || includeUncategorizedIncome || includeUncategorizedExpenses) {
     const categoryConditions = []
+    const uncategorizedIncomeCondition = {
+      $or: [
+        {
+          $and: [
+            { amount: { $gt: 0 } },
+            {
+              $or: [
+                { categoryId: null },
+                { categoryId: "" },
+                { category: null },
+                { category: "" },
+                { category: "Uncategorized income" },
+              ],
+            },
+          ],
+        },
+        {
+          splits: {
+            $elemMatch: {
+              amount: { $gt: 0 },
+              $or: [
+                { categoryId: null },
+                { categoryId: "" },
+                { category: null },
+                { category: "" },
+                { category: "Uncategorized income" },
+              ],
+            },
+          },
+        },
+      ],
+    }
+    const uncategorizedExpensesCondition = {
+      $or: [
+        {
+          $and: [
+            { amount: { $lt: 0 } },
+            {
+              $or: [
+                { categoryId: null },
+                { categoryId: "" },
+                { category: null },
+                { category: "" },
+                { category: "Uncategorized expenses" },
+              ],
+            },
+          ],
+        },
+        {
+          splits: {
+            $elemMatch: {
+              amount: { $lt: 0 },
+              $or: [
+                { categoryId: null },
+                { categoryId: "" },
+                { category: null },
+                { category: "" },
+                { category: "Uncategorized expenses" },
+              ],
+            },
+          },
+        },
+      ],
+    }
 
     if (safeCategoryIds.length > 0) {
       categoryConditions.push({
@@ -198,27 +349,12 @@ export async function listTransactionsPaginated({
       })
     }
 
-    if (includeUncategorized) {
-      categoryConditions.push({
-        $or: [
-          { categoryId: null },
-          { categoryId: "" },
-          { category: null },
-          { category: "" },
-          {
-            splits: {
-              $elemMatch: {
-                $or: [
-                  { categoryId: null },
-                  { categoryId: "" },
-                  { category: null },
-                  { category: "" },
-                ],
-              },
-            },
-          },
-        ],
-      })
+    if (includeUncategorizedIncome) {
+      categoryConditions.push(uncategorizedIncomeCondition)
+    }
+
+    if (includeUncategorizedExpenses) {
+      categoryConditions.push(uncategorizedExpensesCondition)
     }
 
     if (categoryConditions.length === 1) {
@@ -277,6 +413,41 @@ export async function listTransactionsPaginated({
     if (typeof minAmount === "number") amountQuery.$gte = minAmount
     if (typeof maxAmount === "number") amountQuery.$lte = maxAmount
     conditions.push({ amount: amountQuery })
+  }
+
+  if (llmProcessed === "processed") {
+    conditions.push({
+      $or: [
+        { llmProcessed: true },
+        { llmProcessedAt: { $ne: null } },
+        { llmStatus: { $in: ["suggested", "empty", "error"] } },
+      ],
+    })
+  } else if (llmProcessed === "not_processed") {
+    conditions.push({
+      $and: [
+        {
+          $or: [
+            { llmProcessed: false },
+            { llmProcessed: { $exists: false } },
+          ],
+        },
+        {
+          $or: [
+            { llmProcessedAt: null },
+            { llmProcessedAt: { $exists: false } },
+          ],
+        },
+        {
+          $or: [
+            { llmStatus: "not_processed" },
+            { llmStatus: null },
+            { llmStatus: "" },
+            { llmStatus: { $exists: false } },
+          ],
+        },
+      ],
+    })
   }
 
   const filter = conditions.length === 1 ? conditions[0] : { $and: conditions }

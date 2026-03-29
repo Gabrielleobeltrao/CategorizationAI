@@ -5,8 +5,25 @@ import {
   listTransactionsPaginated,
   listTransactionPeriodOptions,
   deleteTransactionById,
+  listEligibleTransactionsForLlmByIds,
+  listEligibleTransactionsForLlmByClientId,
+  applyLlmCategorizationUpdates,
 } from "../repositories/transactions.repository.js"
+import { listCategoriesByClientId, listCategoriesByIds } from "../repositories/category.repository.js"
+import { getClientById } from "../repositories/clients.repository.js"
 import { ObjectId } from "mongodb"
+import categorizeTransaction from "../../categorizeTransaction.js"
+
+function normalizeObjectIdString(value) {
+  const raw = String(value || "").trim()
+  if (!raw || !ObjectId.isValid(raw)) return null
+  return new ObjectId(raw).toString()
+}
+
+function getDefaultUncategorizedLabelByAmount(amount = 0) {
+  const numericAmount = Number(amount || 0)
+  return numericAmount >= 0 ? "Uncategorized income" : "Uncategorized expenses"
+}
 
 export async function createTransactionsBatchService(transactions) {
   if (!Array.isArray(transactions)) {
@@ -17,7 +34,23 @@ export async function createTransactionsBatchService(transactions) {
     throw new Error("transactions cannot be empty")
   }
 
-  return insertTransactionsInBatches(transactions)
+  const normalizedTransactions = transactions.map((transaction) => {
+    const amount = Number(transaction?.amount || 0)
+    const hasCategoryId = transaction?.categoryId !== undefined && transaction?.categoryId !== null && transaction?.categoryId !== ""
+    const hasCategoryName = Boolean(String(transaction?.category || "").trim())
+
+    if (hasCategoryId || hasCategoryName) {
+      return transaction
+    }
+
+    return {
+      ...transaction,
+      categoryId: null,
+      category: getDefaultUncategorizedLabelByAmount(amount),
+    }
+  })
+
+  return insertTransactionsInBatches(normalizedTransactions)
 }
 
 export async function updateTransactionByIdService(id, patch) {
@@ -41,6 +74,34 @@ export async function updateTransactionByIdService(id, patch) {
   if (typeof patch.amount === "number") safePatch.amount = patch.amount
   if (patch.categoryId !== undefined) safePatch.categoryId = patch.categoryId
   if (patch.category !== undefined) safePatch.category = patch.category
+  if (patch.llmProcessed !== undefined) safePatch.llmProcessed = Boolean(patch.llmProcessed)
+
+  if (patch.llmStatus !== undefined) {
+    const llmStatus = String(patch.llmStatus || "").trim().toLowerCase()
+    const allowedLlmStatuses = ["not_processed", "suggested", "empty", "error"]
+    if (!allowedLlmStatuses.includes(llmStatus)) {
+      throw new Error("llmStatus is invalid")
+    }
+    safePatch.llmStatus = llmStatus
+  }
+
+  if (patch.llmProcessedAt !== undefined) {
+    if (patch.llmProcessedAt === null || patch.llmProcessedAt === "") {
+      safePatch.llmProcessedAt = null
+    } else {
+      const processedDate = new Date(patch.llmProcessedAt)
+      if (Number.isNaN(processedDate.getTime())) throw new Error("llmProcessedAt is invalid")
+      safePatch.llmProcessedAt = processedDate
+    }
+  }
+
+  if (patch.llmCategorySuggestionId !== undefined) {
+    safePatch.llmCategorySuggestionId = patch.llmCategorySuggestionId || null
+  }
+
+  if (patch.llmCategorySuggestionName !== undefined) {
+    safePatch.llmCategorySuggestionName = patch.llmCategorySuggestionName || null
+  }
 
   if (patch.splits !== undefined) {
     if (!Array.isArray(patch.splits)) {
@@ -116,7 +177,8 @@ export async function listTransactionsPaginatedService(query) {
   const search = String(query?.search || "").trim().slice(0, 100)
   const accountIds = parseCsv(query?.accountIds)
   const categoryIds = parseCsv(query?.categoryIds)
-  const includeUncategorized = String(query?.includeUncategorized || "").toLowerCase() === "true"
+  const includeUncategorizedIncome = String(query?.includeUncategorizedIncome || "").toLowerCase() === "true"
+  const includeUncategorizedExpenses = String(query?.includeUncategorizedExpenses || "").toLowerCase() === "true"
   const splitMode = String(query?.splitMode || "all").trim().toLowerCase()
   const years = parseCsv(query?.years)
   const months = parseCsv(query?.months)
@@ -124,6 +186,7 @@ export async function listTransactionsPaginatedService(query) {
   const toDate = String(query?.toDate || "").trim()
   const minAmountRaw = String(query?.minAmount ?? "").trim()
   const maxAmountRaw = String(query?.maxAmount ?? "").trim()
+  const llmProcessed = String(query?.llmProcessed || "all").trim().toLowerCase()
   const minAmount = minAmountRaw === "" ? null : Number(minAmountRaw)
   const maxAmount = maxAmountRaw === "" ? null : Number(maxAmountRaw)
 
@@ -133,15 +196,19 @@ export async function listTransactionsPaginatedService(query) {
   }
   if (minAmountRaw !== "" && Number.isNaN(minAmount)) throw new Error("minAmount must be a number")
   if (maxAmountRaw !== "" && Number.isNaN(maxAmount)) throw new Error("maxAmount must be a number")
+  if (!["all", "processed", "not_processed"].includes(llmProcessed)) {
+    throw new Error("llmProcessed must be one of: all, processed, not_processed")
+  }
 
-  return listTransactionsPaginated({
+  const result = await listTransactionsPaginated({
     clientId,
     page,
     limit,
     search,
     accountIds,
     categoryIds,
-    includeUncategorized,
+    includeUncategorizedIncome,
+    includeUncategorizedExpenses,
     splitMode,
     years,
     months,
@@ -149,7 +216,55 @@ export async function listTransactionsPaginatedService(query) {
     toDate,
     minAmount,
     maxAmount,
+    llmProcessed,
   })
+
+  const items = Array.isArray(result?.items) ? result.items : []
+  const missingCategoryNameIds = [
+    ...new Set(
+      items
+        .filter((item) => {
+          const hasCategoryId = Boolean(String(item?.categoryId || "").trim())
+          const hasCategoryName = Boolean(String(item?.category || "").trim())
+          return hasCategoryId && !hasCategoryName
+        })
+        .map((item) => normalizeObjectIdString(item.categoryId))
+        .filter(Boolean)
+    ),
+  ]
+
+  const categories = missingCategoryNameIds.length > 0
+    ? await listCategoriesByIds(missingCategoryNameIds)
+    : []
+  const categoryNameById = new Map(
+    categories.map((category) => [String(category._id), String(category.name || "")])
+  )
+
+  const patchedItems = items.map((item) => {
+    const normalizedCategoryId = normalizeObjectIdString(item?.categoryId)
+    const currentCategoryName = String(item?.category || "").trim()
+    if (!normalizedCategoryId) {
+      if (currentCategoryName) return item
+      return {
+        ...item,
+        category: getDefaultUncategorizedLabelByAmount(item?.amount),
+      }
+    }
+    if (currentCategoryName) return item
+
+    const categoryName = categoryNameById.get(normalizedCategoryId)
+    if (!categoryName) return item
+
+    return {
+      ...item,
+      category: categoryName,
+    }
+  })
+
+  return {
+    ...result,
+    items: patchedItems,
+  }
 }
 
 export async function listTransactionPeriodOptionsService(query) {
@@ -161,4 +276,105 @@ export async function listTransactionPeriodOptionsService(query) {
 export async function deleteTransactionByIdService(id) {
   if (!id) throw new Error("id is required")
   return deleteTransactionById(id)
+}
+
+export async function categorizeTransactionsWithLlmService(input) {
+  const clientId = String(input?.clientId || "").trim()
+  const mode = String(input?.mode || "").trim().toLowerCase()
+  const transactionIds = Array.isArray(input?.transactionIds)
+    ? input.transactionIds.map((id) => String(id || "").trim()).filter(Boolean)
+    : []
+
+  if (!clientId) throw new Error("clientId is required")
+  if (!ObjectId.isValid(clientId)) throw new Error("clientId is invalid")
+  if (!["selected", "all_client"].includes(mode)) {
+    throw new Error("mode must be one of: selected, all_client")
+  }
+  if (mode === "selected") {
+    if (transactionIds.length === 0) {
+      throw new Error("transactionIds is required for selected mode")
+    }
+    if (transactionIds.some((id) => !ObjectId.isValid(id))) {
+      throw new Error("transactionIds has invalid ObjectId values")
+    }
+  }
+
+  const [client, categories] = await Promise.all([
+    getClientById(clientId),
+    listCategoriesByClientId(clientId),
+  ])
+
+  if (!client) throw new Error("client not found")
+  if (!Array.isArray(categories) || categories.length === 0) {
+    throw new Error("No categories available for this client")
+  }
+
+  const eligibleTransactions = mode === "selected"
+    ? await listEligibleTransactionsForLlmByIds(clientId, transactionIds)
+    : await listEligibleTransactionsForLlmByClientId(clientId)
+
+  if (eligibleTransactions.length === 0) {
+    return {
+      mode,
+      requestedCount: mode === "selected" ? transactionIds.length : 0,
+      eligibleCount: 0,
+      processedCount: 0,
+      categorizedCount: 0,
+      emptyCount: 0,
+    }
+  }
+
+  const llmResults = await categorizeTransaction(
+    categories.map((category) => ({
+      id: String(category._id),
+      name: category.name,
+      type: category.type,
+      description: category.description,
+    })),
+    eligibleTransactions.map((transaction) => ({
+      id: String(transaction._id),
+      description: transaction.description || "",
+      amount: Number(transaction.amount || 0),
+    })),
+    {
+      name: client.name || "",
+      businessType: client.businessType || "",
+      mainActivity: client.mainActivity || "",
+      description: client.description || "",
+    }
+  )
+
+  const categoryById = new Map(
+    categories.map((category) => [String(category._id), category.name])
+  )
+  const now = new Date()
+
+  const updates = llmResults.map((result) => {
+    const categoryId = normalizeObjectIdString(result?.categoryId)
+    const categoryName = categoryId ? categoryById.get(categoryId) || null : null
+    const isCategorized = Boolean(categoryId && categoryName)
+
+    return {
+      id: String(result.id),
+      categoryId: isCategorized ? categoryId : null,
+      category: isCategorized ? categoryName : null,
+      llmStatus: isCategorized ? "suggested" : "empty",
+      llmProcessedAt: now,
+      llmCategorySuggestionId: isCategorized ? categoryId : null,
+      llmCategorySuggestionName: isCategorized ? categoryName : null,
+    }
+  })
+
+  const writeResult = await applyLlmCategorizationUpdates(updates)
+  const categorizedCount = updates.filter((item) => item.llmStatus === "suggested").length
+  const emptyCount = updates.filter((item) => item.llmStatus === "empty").length
+
+  return {
+    mode,
+    requestedCount: mode === "selected" ? transactionIds.length : 0,
+    eligibleCount: eligibleTransactions.length,
+    processedCount: writeResult.modifiedCount,
+    categorizedCount,
+    emptyCount,
+  }
 }

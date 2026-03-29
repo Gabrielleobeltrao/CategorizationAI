@@ -5,11 +5,13 @@ import {
   listTransactionsPaginatedController,
   listTransactionPeriodOptionsController,
   deleteTransactionByIdController,
+  categorizeTransactionsWithLlmController,
 } from "../controllers/transactions.controller.js"
 import { requireAuth } from "../middlewares/requireAuth.js"
 import {
   validateObjectIdParam,
   validateObjectIdQuery,
+  validateObjectIdBody,
   validateTransactionsBatchIds,
 } from "../middlewares/validateObjectId.js"
 import { ensureResourceExists } from "../middlewares/authorizeScope.js"
@@ -23,6 +25,15 @@ router.post(
   requirePermission("transactions:create"),
   validateTransactionsBatchIds,
   createTransactionsBatchController
+)
+
+router.post(
+  "/transactions/categorize-llm",
+  requireAuth,
+  requirePermission("transactions:update"),
+  validateObjectIdBody("clientId"),
+  ensureResourceExists({ collection: "clients", from: "body", field: "clientId", assignKey: "client" }),
+  categorizeTransactionsWithLlmController
 )
 
 router.patch(
