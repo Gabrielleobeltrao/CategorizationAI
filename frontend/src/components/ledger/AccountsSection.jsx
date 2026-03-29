@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 
 function formatOptionLabel(value = "") {
     return String(value || "")
@@ -7,11 +7,18 @@ function formatOptionLabel(value = "") {
         .join(" ")
 }
 
-function AccountsSection({ accounts, onCreate, onSaveEdit, onDelete }) {
+function AccountsSection({ accounts, onCreate, onSaveEdit, onDelete, onDeleteMany }) {
     const [editingId, setEditingId] = useState("")
     const [draftName, setDraftName] = useState("")
     const [draftType, setDraftType] = useState("")
     const [isSaving, setIsSaving] = useState(false)
+    const [selectedIds, setSelectedIds] = useState([])
+    const selectAllRef = useRef(null)
+
+    useEffect(() => {
+        const validIds = new Set((Array.isArray(accounts) ? accounts : []).map((account) => account.id))
+        setSelectedIds((current) => current.filter((id) => validIds.has(id)))
+    }, [accounts])
 
     const accountTypeOptions = useMemo(() => {
         const defaults = ["checking", "savings", "credit_card", "cash", "loan", "other"]
@@ -47,6 +54,44 @@ function AccountsSection({ accounts, onCreate, onSaveEdit, onDelete }) {
         }
     }
 
+    const accountIds = useMemo(
+        () => (Array.isArray(accounts) ? accounts.map((account) => account.id) : []),
+        [accounts]
+    )
+
+    const allSelected = useMemo(
+        () => accountIds.length > 0 && accountIds.every((id) => selectedIds.includes(id)),
+        [accountIds, selectedIds]
+    )
+
+    const someSelected = useMemo(
+        () => !allSelected && accountIds.some((id) => selectedIds.includes(id)),
+        [accountIds, selectedIds, allSelected]
+    )
+
+    useEffect(() => {
+        if (!selectAllRef.current) return
+        selectAllRef.current.indeterminate = someSelected
+    }, [someSelected])
+
+    const toggleSelectAll = (isChecked) => {
+        if (!isChecked) {
+            setSelectedIds([])
+            return
+        }
+        setSelectedIds(accountIds)
+    }
+
+    const toggleOne = (id, isChecked) => {
+        setSelectedIds((current) => {
+            if (isChecked) {
+                if (current.includes(id)) return current
+                return [...current, id]
+            }
+            return current.filter((item) => item !== id)
+        })
+    }
+
     return (
         <section className="min-h-0 h-full p-1 flex flex-col gap-3">
             <div className="flex items-center justify-between">
@@ -60,6 +105,18 @@ function AccountsSection({ accounts, onCreate, onSaveEdit, onDelete }) {
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto flex flex-col gap-2">
+                <div className="flex items-center gap-2 px-1">
+                    <input
+                        ref={selectAllRef}
+                        type="checkbox"
+                        className="h-4 w-4"
+                        checked={allSelected}
+                        onChange={(e) => toggleSelectAll(e.target.checked)}
+                    />
+                    <span className="text-xs text-gray-600">
+                        Select all {selectedIds.length > 0 ? `(${selectedIds.length} selected)` : ""}
+                    </span>
+                </div>
                 {accounts.map((account, index) => (
                     <article
                         key={account.id}
@@ -131,7 +188,16 @@ function AccountsSection({ accounts, onCreate, onSaveEdit, onDelete }) {
                             </div>
                         ) : (
                         <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
+                            <div className="pt-1">
+                                <input
+                                    type="checkbox"
+                                    className="h-4 w-4"
+                                    checked={selectedIds.includes(account.id)}
+                                    onChange={(e) => toggleOne(account.id, e.target.checked)}
+                                    aria-label={`Select account ${account.name}`}
+                                />
+                            </div>
+                            <div className="min-w-0 flex-1 text-left">
                                 <h3 className="text-sm font-semibold truncate">{account.name}</h3>
                                 <p className="text-xs text-gray-500">{account.type}</p>
                             </div>
@@ -151,7 +217,13 @@ function AccountsSection({ accounts, onCreate, onSaveEdit, onDelete }) {
                                 <button
                                     type="button"
                                     className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-rose-600"
-                                    onClick={() => onDelete(account)}
+                                    onClick={() => {
+                                        if (selectedIds.includes(account.id) && selectedIds.length > 0) {
+                                            onDeleteMany?.(selectedIds)
+                                            return
+                                        }
+                                        onDelete(account)
+                                    }}
                                     title="Delete account"
                                     aria-label="Delete account"
                                 >

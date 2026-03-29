@@ -45,7 +45,11 @@ function App() {
             <Route path="/clients" element={<ClientsPage />} />
             <Route path="/employees" element={<EmployeesPage />} />
             <Route path="/ledger" element={<LedgerPage />} />
+            <Route path="/ledger/accounts" element={<LedgerPage />} />
+            <Route path="/ledger/categories" element={<LedgerPage />} />
             <Route path="/clients/:clientId/ledger" element={<LedgerPage />} />
+            <Route path="/clients/:clientId/ledger/accounts" element={<LedgerPage />} />
+            <Route path="/clients/:clientId/ledger/categories" element={<LedgerPage />} />
             <Route path="/clients/:clientId/profit-loss" element={<ProfitLossPage />} />
           </Route>
 

@@ -123,3 +123,14 @@ export async function categorizeTransactionsWithLlm(payload) {
     body: JSON.stringify(payload),
   })
 }
+
+export async function categorizeZelleTransactions(payload) {
+  if (!payload || typeof payload !== "object") {
+    throw new Error("payload is required")
+  }
+
+  return api("/api/transactions/categorize-zelle", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}

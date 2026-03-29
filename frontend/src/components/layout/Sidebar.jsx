@@ -79,6 +79,43 @@ function Sidebar({ isCollapsed, onToggleCollapse }) {
       ]
     : []
 
+  const ledgerSubItems = clientId
+    ? [
+        {
+          to: `/clients/${clientId}/ledger`,
+          label: "Transactions",
+          icon: (
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 6h16" />
+              <path d="M4 12h16" />
+              <path d="M4 18h10" />
+            </svg>
+          ),
+        },
+        {
+          to: `/clients/${clientId}/ledger/accounts`,
+          label: "Accounts",
+          icon: (
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="5" width="18" height="14" rx="2" />
+              <path d="M3 10h18" />
+            </svg>
+          ),
+        },
+        {
+          to: `/clients/${clientId}/ledger/categories`,
+          label: "Categories",
+          icon: (
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 7h10" />
+              <path d="M4 12h16" />
+              <path d="M4 17h12" />
+            </svg>
+          ),
+        },
+      ]
+    : []
+
   const handleLogout = async () => {
     try {
       await signOut()
@@ -169,21 +206,46 @@ function Sidebar({ isCollapsed, onToggleCollapse }) {
 
             <nav className="flex flex-col gap-2">
               {clientMenuItems.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  className={({ isActive }) =>
-                    `flex items-center rounded-lg py-2 text-sm font-medium transition-colors ${
-                      isCollapsed ? "justify-center px-2" : "gap-2 px-3"
-                    } ${
-                      isActive ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
-                    }`
-                  }
-                  title={isCollapsed ? item.label : undefined}
-                >
-                  <span>{item.icon}</span>
-                  {!isCollapsed && <span>{item.label}</span>}
-                </NavLink>
+                <div key={item.to}>
+                  <NavLink
+                    to={item.to}
+                    end={item.label !== "Ledger"}
+                    className={({ isActive }) =>
+                      `flex items-center rounded-lg py-2 text-sm font-medium transition-colors ${
+                        isCollapsed ? "justify-center px-2" : "gap-2 px-3"
+                      } ${
+                        isActive ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
+                      }`
+                    }
+                    title={isCollapsed ? item.label : undefined}
+                  >
+                    <span>{item.icon}</span>
+                    {!isCollapsed && <span>{item.label}</span>}
+                  </NavLink>
+
+                  {item.label === "Ledger" && (
+                    <div className={`mt-1 flex flex-col gap-1 ${isCollapsed ? "items-center" : "ml-9"}`}>
+                      {ledgerSubItems.map((subItem) => (
+                        <NavLink
+                          key={subItem.to}
+                          to={subItem.to}
+                          end={subItem.to.endsWith("/ledger")}
+                          title={isCollapsed ? subItem.label : undefined}
+                          className={({ isActive }) =>
+                            `rounded-md font-medium transition-colors ${
+                              isCollapsed ? "flex h-10 w-10 items-center justify-center" : "flex items-center gap-2 px-2 py-2 text-xs"
+                            } ${
+                              isActive ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                            }`
+                          }
+                        >
+                          <span>{subItem.icon}</span>
+                          {!isCollapsed && <span>{subItem.label}</span>}
+                        </NavLink>
+                      ))}
+                    </div>
+                  )}
+                </div>
               ))}
             </nav>
           </div>

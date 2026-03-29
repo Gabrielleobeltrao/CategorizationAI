@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { useParams, useSearchParams } from "react-router-dom"
+import { useLocation, useParams, useSearchParams } from "react-router-dom"
 import LedgerEntriesTable from "../components/ledger/LedgerEntriesTable"
 import LedgerHeader from "../components/ledger/LedgerHeader"
 import AccountsSection from "../components/ledger/AccountsSection"
@@ -26,6 +26,7 @@ import {
     deleteTransactionById,
     createTransactionsBatch,
     categorizeTransactionsWithLlm,
+    categorizeZelleTransactions,
 } from "../services/transactions.service"
 import { useNotification } from "../contexts/notification.context"
 
@@ -42,6 +43,49 @@ const DEFAULT_TRANSACTIONS_FILTERS = {
     toDate: "",
     minAmount: "",
     maxAmount: "",
+}
+
+function getLedgerFiltersStorageKey(clientId = "") {
+    return `ledger-filters:${clientId || "global"}`
+}
+
+function normalizeTransactionsFilters(raw = {}) {
+    return {
+        accountIds: Array.isArray(raw?.accountIds) ? raw.accountIds : [],
+        categoryIds: Array.isArray(raw?.categoryIds) ? raw.categoryIds : [],
+        includeUncategorizedIncome: Boolean(raw?.includeUncategorizedIncome),
+        includeUncategorizedExpenses: Boolean(raw?.includeUncategorizedExpenses),
+        splitMode: String(raw?.splitMode || "all"),
+        llmProcessed: String(raw?.llmProcessed || "all"),
+        years: Array.isArray(raw?.years) ? raw.years : [],
+        months: Array.isArray(raw?.months) ? raw.months : [],
+        fromDate: String(raw?.fromDate || ""),
+        toDate: String(raw?.toDate || ""),
+        minAmount: String(raw?.minAmount || ""),
+        maxAmount: String(raw?.maxAmount || ""),
+    }
+}
+
+function readPersistedLedgerState(clientId = "") {
+    const fallback = {
+        searchTerm: "",
+        filters: { ...DEFAULT_TRANSACTIONS_FILTERS },
+    }
+
+    if (typeof window === "undefined") return fallback
+
+    try {
+        const raw = window.sessionStorage.getItem(getLedgerFiltersStorageKey(clientId))
+        if (!raw) return fallback
+        const parsed = JSON.parse(raw)
+
+        return {
+            searchTerm: String(parsed?.searchTerm || ""),
+            filters: normalizeTransactionsFilters(parsed?.filters || {}),
+        }
+    } catch {
+        return fallback
+    }
 }
 
 function mapAccount(item = {}) {
@@ -93,11 +137,12 @@ function mapTransaction(item = {}) {
 function LedgerPage() {
     const { clientId: routeClientId } = useParams()
     const [searchParams] = useSearchParams()
+    const location = useLocation()
     const clientId = routeClientId || searchParams.get("clientId")
+    const persistedState = readPersistedLedgerState(clientId)
     const preselectedCategoryName = String(searchParams.get("category") || "").trim()
     const { success, error } = useNotification()
 
-    const [activeSection, setActiveSection] = useState("ledger")
     const [client, setClient] = useState(null)
     const [accounts, setAccounts] = useState([])
     const [categoryList, setCategoryList] = useState([])
@@ -107,8 +152,9 @@ function LedgerPage() {
     const [isLoadingTransactions, setIsLoadingTransactions] = useState(false)
     const [isLoadingMoreTransactions, setIsLoadingMoreTransactions] = useState(false)
     const [isCategorizingWithLlm, setIsCategorizingWithLlm] = useState(false)
-    const [transactionsSearchTerm, setTransactionsSearchTerm] = useState("")
-    const [transactionsFilters, setTransactionsFilters] = useState(DEFAULT_TRANSACTIONS_FILTERS)
+    const [isCategorizingZelle, setIsCategorizingZelle] = useState(false)
+    const [transactionsSearchTerm, setTransactionsSearchTerm] = useState(persistedState.searchTerm)
+    const [transactionsFilters, setTransactionsFilters] = useState(persistedState.filters)
     const [transactionsPeriodOptions, setTransactionsPeriodOptions] = useState({
         years: [],
         months: [],
@@ -129,10 +175,17 @@ function LedgerPage() {
 
     const [accountToDelete, setAccountToDelete] = useState(null)
     const [categoryToDelete, setCategoryToDelete] = useState(null)
+    const [accountIdsToDelete, setAccountIdsToDelete] = useState([])
+    const [categoryIdsToDelete, setCategoryIdsToDelete] = useState([])
     const pageScrollRef = useRef(null)
     const loadingMoreRef = useRef(false)
     const pageRef = useRef(1)
     const lastScrollTopRef = useRef(0)
+    const activeSection = location.pathname.endsWith("/ledger/accounts")
+        ? "accounts"
+        : location.pathname.endsWith("/ledger/categories")
+            ? "categories"
+            : "ledger"
 
     useEffect(() => {
         let active = true
@@ -177,6 +230,28 @@ function LedgerPage() {
     }, [clientId, error])
 
     useEffect(() => {
+        const persisted = readPersistedLedgerState(clientId)
+        setTransactionsSearchTerm(persisted.searchTerm)
+        setTransactionsFilters(persisted.filters)
+        pageRef.current = 1
+    }, [clientId])
+
+    useEffect(() => {
+        if (typeof window === "undefined") return
+        try {
+            window.sessionStorage.setItem(
+                getLedgerFiltersStorageKey(clientId),
+                JSON.stringify({
+                    searchTerm: transactionsSearchTerm,
+                    filters: normalizeTransactionsFilters(transactionsFilters),
+                })
+            )
+        } catch {
+            // ignore storage write errors
+        }
+    }, [clientId, transactionsSearchTerm, transactionsFilters])
+
+    useEffect(() => {
         setHasAppliedPreselectedCategory(false)
     }, [clientId, preselectedCategoryName])
 
@@ -194,7 +269,6 @@ function LedgerPage() {
             (item) => String(item?.name || "").trim().toLowerCase() === lowerCategory
         )
 
-        setActiveSection("ledger")
         setTransactionsFilters({
             ...DEFAULT_TRANSACTIONS_FILTERS,
             categoryIds: matchedCategory?.id ? [matchedCategory.id] : [],
@@ -347,20 +421,7 @@ function LedgerPage() {
     }
 
     const handleApplyTransactionsFilters = (nextFilters = DEFAULT_TRANSACTIONS_FILTERS) => {
-        setTransactionsFilters({
-            accountIds: Array.isArray(nextFilters.accountIds) ? nextFilters.accountIds : [],
-            categoryIds: Array.isArray(nextFilters.categoryIds) ? nextFilters.categoryIds : [],
-            includeUncategorizedIncome: Boolean(nextFilters.includeUncategorizedIncome),
-            includeUncategorizedExpenses: Boolean(nextFilters.includeUncategorizedExpenses),
-            splitMode: String(nextFilters.splitMode || "all"),
-            llmProcessed: String(nextFilters.llmProcessed || "all"),
-            years: Array.isArray(nextFilters.years) ? nextFilters.years : [],
-            months: Array.isArray(nextFilters.months) ? nextFilters.months : [],
-            fromDate: String(nextFilters.fromDate || ""),
-            toDate: String(nextFilters.toDate || ""),
-            minAmount: String(nextFilters.minAmount || ""),
-            maxAmount: String(nextFilters.maxAmount || ""),
-        })
+        setTransactionsFilters(normalizeTransactionsFilters(nextFilters))
         pageRef.current = 1
     }
 
@@ -445,6 +506,31 @@ function LedgerPage() {
         setTransactionsFilters((current) => ({ ...current }))
     }
 
+    const refreshLedgerAfterCategorization = async () => {
+        if (!clientId) return
+
+        const [categoriesData, payload] = await Promise.all([
+            listCategoriesByClientId(clientId),
+            listTransactionsByClientId(clientId, {
+                page: 1,
+                limit: 30,
+                search: transactionsSearchTerm,
+                ...transactionsFilters,
+                silentLoading: true,
+            }),
+        ])
+
+        const items = Array.isArray(payload?.items) ? payload.items : []
+        const mapped = items.map(mapTransaction)
+        const page = Number(payload?.page || 1)
+        const totalPages = Number(payload?.totalPages || 1)
+
+        setCategoryList(Array.isArray(categoriesData) ? categoriesData.map(mapCategory) : [])
+        setLedgerEntries(mapped)
+        setTransactionsHasMore(page < totalPages)
+        pageRef.current = page
+    }
+
     const handleCategorizeWithLlmPreview = (payload = {}) => {
         const mode = payload?.mode === "selected" ? "selected" : "all_client"
         const targetIds = Array.isArray(payload?.targetIds) ? payload.targetIds : []
@@ -475,6 +561,9 @@ function LedgerPage() {
                 success(
                     `LLM done: ${processedCount} processed, ${categorizedCount} categorized, ${emptyCount} empty.`
                 )
+                return refreshLedgerAfterCategorization()
+            })
+            .then(() => {
                 pageRef.current = 1
                 setTransactionsFilters((current) => ({ ...current }))
             })
@@ -483,6 +572,52 @@ function LedgerPage() {
             })
             .finally(() => {
                 setIsCategorizingWithLlm(false)
+            })
+    }
+
+    const handleCategorizeZellePreview = (payload = {}) => {
+        const mode = payload?.mode === "selected" ? "selected" : "all_client"
+        const targetIds = Array.isArray(payload?.targetIds) ? payload.targetIds : []
+        const targetCount = Number(payload?.targetCount || 0)
+
+        if (mode === "selected" && targetCount <= 0) {
+            error("No eligible selected Zelle transactions.")
+            return
+        }
+
+        setIsCategorizingZelle(true)
+
+        categorizeZelleTransactions({
+            clientId,
+            mode,
+            transactionIds: mode === "selected" ? targetIds : [],
+        })
+            .then((result) => {
+                const processedCount = Number(result?.processedCount || 0)
+                const createdCategoriesCount = Number(result?.createdCategoriesCount || 0)
+                const ownerIncomeCount = Number(result?.ownerIncomeCount || 0)
+                const incomeZelleCount = Number(result?.incomeZelleCount || 0)
+                const subCount = Number(result?.subCount || 0)
+
+                if (processedCount <= 0) {
+                    error("No eligible Zelle transactions found.")
+                    return
+                }
+
+                success(
+                    `Zelle done: ${processedCount} processed, ${createdCategoriesCount} categories created, ${ownerIncomeCount} owner income, ${incomeZelleCount} income zelle, ${subCount} sub.`
+                )
+                return refreshLedgerAfterCategorization()
+            })
+            .then(() => {
+                pageRef.current = 1
+                setTransactionsFilters((current) => ({ ...current }))
+            })
+            .catch((err) => {
+                error(err.message || "Failed to categorize Zelle transactions")
+            })
+            .finally(() => {
+                setIsCategorizingZelle(false)
             })
     }
 
@@ -590,6 +725,28 @@ function LedgerPage() {
         }
     }
 
+    const handleDeleteAccountsBulk = async () => {
+        const targetIds = Array.isArray(accountIdsToDelete) ? accountIdsToDelete.filter(Boolean) : []
+        if (targetIds.length === 0) return
+
+        try {
+            setIsSubmitting(true)
+            await Promise.all(targetIds.map((id) => deleteAccountById(id)))
+            const targetSet = new Set(targetIds)
+            setAccounts((current) => current.filter((item) => !targetSet.has(item.id)))
+            setAccountIdsToDelete([])
+            success(
+                targetIds.length === 1
+                    ? "Account deleted successfully"
+                    : `${targetIds.length} accounts deleted successfully`
+            )
+        } catch (err) {
+            error(err.message || "Failed to delete selected accounts")
+        } finally {
+            setIsSubmitting(false)
+        }
+    }
+
     const handleDeleteCategory = async () => {
         if (!categoryToDelete?.id) return
 
@@ -606,6 +763,28 @@ function LedgerPage() {
         }
     }
 
+    const handleDeleteCategoriesBulk = async () => {
+        const targetIds = Array.isArray(categoryIdsToDelete) ? categoryIdsToDelete.filter(Boolean) : []
+        if (targetIds.length === 0) return
+
+        try {
+            setIsSubmitting(true)
+            await Promise.all(targetIds.map((id) => deleteCategoryById(id)))
+            const targetSet = new Set(targetIds)
+            setCategoryList((current) => current.filter((item) => !targetSet.has(item.id)))
+            setCategoryIdsToDelete([])
+            success(
+                targetIds.length === 1
+                    ? "Category deleted successfully"
+                    : `${targetIds.length} categories deleted successfully`
+            )
+        } catch (err) {
+            error(err.message || "Failed to delete selected categories")
+        } finally {
+            setIsSubmitting(false)
+        }
+    }
+
     return (
         <section
             ref={pageScrollRef}
@@ -615,8 +794,6 @@ function LedgerPage() {
             <div className="min-h-full flex flex-col gap-4 pb-4">
                 <LedgerHeader
                     clientName={client?.name || ""}
-                    activeSection={activeSection}
-                    onChangeSection={setActiveSection}
                 />
 
                 <section className={`min-h-[460px] rounded-lg border border-gray-200 bg-white p-4 flex flex-col ${activeSection === "ledger" ? "overflow-visible" : "overflow-hidden"}`}>
@@ -654,7 +831,9 @@ function LedgerPage() {
                                     onDeleteEntries={handleDeleteTransactionsBulk}
                                     onImportTransactions={handleImportTransactions}
                                     onCategorizeWithLlm={handleCategorizeWithLlmPreview}
+                                    onCategorizeZelle={handleCategorizeZellePreview}
                                     isCategorizingWithLlm={isCategorizingWithLlm}
+                                    isCategorizingZelle={isCategorizingZelle}
                                     isLoading={isLoadingTransactions}
                                     isLoadingMore={isLoadingMoreTransactions}
                                     showUploadModal={showUploadModal}
@@ -670,6 +849,7 @@ function LedgerPage() {
                             onCreate={() => setShowAccountForm(true)}
                             onSaveEdit={handleSaveAccountEdit}
                             onDelete={setAccountToDelete}
+                            onDeleteMany={setAccountIdsToDelete}
                         />
                     )}
 
@@ -679,6 +859,7 @@ function LedgerPage() {
                             onCreate={() => setShowCategoryForm(true)}
                             onSaveEdit={handleSaveCategoryEdit}
                             onDelete={setCategoryToDelete}
+                            onDeleteMany={setCategoryIdsToDelete}
                         />
                     )}
                 </section>
@@ -760,6 +941,26 @@ function LedgerPage() {
                 confirmLabel="Delete Category"
                 onConfirm={handleDeleteCategory}
                 onClose={() => setCategoryToDelete(null)}
+                isLoading={isSubmitting}
+            />
+
+            <ConfirmModal
+                isOpen={accountIdsToDelete.length > 0}
+                title="Delete Accounts"
+                message={`This action will permanently delete ${accountIdsToDelete.length} selected account(s).`}
+                confirmLabel={accountIdsToDelete.length > 1 ? "Delete Accounts" : "Delete Account"}
+                onConfirm={handleDeleteAccountsBulk}
+                onClose={() => setAccountIdsToDelete([])}
+                isLoading={isSubmitting}
+            />
+
+            <ConfirmModal
+                isOpen={categoryIdsToDelete.length > 0}
+                title="Delete Categories"
+                message={`This action will permanently delete ${categoryIdsToDelete.length} selected category(ies).`}
+                confirmLabel={categoryIdsToDelete.length > 1 ? "Delete Categories" : "Delete Category"}
+                onConfirm={handleDeleteCategoriesBulk}
+                onClose={() => setCategoryIdsToDelete([])}
                 isLoading={isSubmitting}
             />
         </section>

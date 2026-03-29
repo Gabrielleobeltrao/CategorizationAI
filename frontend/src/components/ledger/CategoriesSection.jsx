@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 
 function formatOptionLabel(value = "") {
     return String(value || "")
@@ -7,12 +7,19 @@ function formatOptionLabel(value = "") {
         .join(" ")
 }
 
-function CategoriesSection({ categories, onCreate, onSaveEdit, onDelete }) {
+function CategoriesSection({ categories, onCreate, onSaveEdit, onDelete, onDeleteMany }) {
     const [editingId, setEditingId] = useState("")
     const [draftName, setDraftName] = useState("")
     const [draftType, setDraftType] = useState("")
     const [draftDescription, setDraftDescription] = useState("")
     const [isSaving, setIsSaving] = useState(false)
+    const [selectedIds, setSelectedIds] = useState([])
+    const selectAllRef = useRef(null)
+
+    useEffect(() => {
+        const validIds = new Set((Array.isArray(categories) ? categories : []).map((category) => category.id))
+        setSelectedIds((current) => current.filter((id) => validIds.has(id)))
+    }, [categories])
 
     const categoryTypeOptions = useMemo(() => {
         const defaults = ["income", "cost_of_goods_sold", "expense", "other"]
@@ -51,6 +58,44 @@ function CategoriesSection({ categories, onCreate, onSaveEdit, onDelete }) {
         }
     }
 
+    const categoryIds = useMemo(
+        () => (Array.isArray(categories) ? categories.map((category) => category.id) : []),
+        [categories]
+    )
+
+    const allSelected = useMemo(
+        () => categoryIds.length > 0 && categoryIds.every((id) => selectedIds.includes(id)),
+        [categoryIds, selectedIds]
+    )
+
+    const someSelected = useMemo(
+        () => !allSelected && categoryIds.some((id) => selectedIds.includes(id)),
+        [categoryIds, selectedIds, allSelected]
+    )
+
+    useEffect(() => {
+        if (!selectAllRef.current) return
+        selectAllRef.current.indeterminate = someSelected
+    }, [someSelected])
+
+    const toggleSelectAll = (isChecked) => {
+        if (!isChecked) {
+            setSelectedIds([])
+            return
+        }
+        setSelectedIds(categoryIds)
+    }
+
+    const toggleOne = (id, isChecked) => {
+        setSelectedIds((current) => {
+            if (isChecked) {
+                if (current.includes(id)) return current
+                return [...current, id]
+            }
+            return current.filter((item) => item !== id)
+        })
+    }
+
     return (
         <section className="min-h-0 h-full p-1 flex flex-col gap-3">
             <div className="flex items-center justify-between">
@@ -64,6 +109,18 @@ function CategoriesSection({ categories, onCreate, onSaveEdit, onDelete }) {
             </div>
             {categories.length > 0 ? (
                 <div className="min-h-0 flex-1 overflow-y-auto flex flex-col gap-3">
+                    <div className="flex items-center gap-2 px-1">
+                        <input
+                            ref={selectAllRef}
+                            type="checkbox"
+                            className="h-4 w-4"
+                            checked={allSelected}
+                            onChange={(e) => toggleSelectAll(e.target.checked)}
+                        />
+                        <span className="text-xs text-gray-600">
+                            Select all {selectedIds.length > 0 ? `(${selectedIds.length} selected)` : ""}
+                        </span>
+                    </div>
                     {categories.map((category, index) => (
                         <article
                             key={category.id}
@@ -142,7 +199,16 @@ function CategoriesSection({ categories, onCreate, onSaveEdit, onDelete }) {
                                 </div>
                             ) : (
                             <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0">
+                                <div className="pt-1">
+                                    <input
+                                        type="checkbox"
+                                        className="h-4 w-4"
+                                        checked={selectedIds.includes(category.id)}
+                                        onChange={(e) => toggleOne(category.id, e.target.checked)}
+                                        aria-label={`Select category ${category.name}`}
+                                    />
+                                </div>
+                                <div className="min-w-0 flex-1 text-left">
                                     <h3 className="text-sm font-semibold truncate">{category.name}</h3>
                                     <p className="text-xs text-gray-500">{category.type}</p>
                                     <p className="text-xs text-gray-400 truncate">{category.description}</p>
@@ -163,7 +229,13 @@ function CategoriesSection({ categories, onCreate, onSaveEdit, onDelete }) {
                                     <button
                                         type="button"
                                         className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-rose-600"
-                                        onClick={() => onDelete(category)}
+                                        onClick={() => {
+                                            if (selectedIds.includes(category.id) && selectedIds.length > 0) {
+                                                onDeleteMany?.(selectedIds)
+                                                return
+                                            }
+                                            onDelete(category)
+                                        }}
                                         title="Delete category"
                                         aria-label="Delete category"
                                     >
