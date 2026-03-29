@@ -26,6 +26,9 @@ export async function createClient(input) {
   const description = String(input?.description || "").trim()
   const mainActivity = String(input?.mainActivity || "").trim()
   const state = String(input?.state || "").trim()
+  const owners = Array.isArray(input?.owners)
+    ? input.owners.map((owner) => String(owner || "").trim()).filter(Boolean)
+    : []
 
   if (!officeId) throw new Error("officeId is required")
   if (!name) throw new Error("name is required")
@@ -43,6 +46,7 @@ export async function createClient(input) {
       description,
       mainActivity,
       state,
+      owners,
     }),
   })
 }

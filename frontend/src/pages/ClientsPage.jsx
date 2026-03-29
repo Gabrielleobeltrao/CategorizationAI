@@ -11,6 +11,14 @@ import {
     updateClientById,
 } from "../services/clients.service"
 
+function normalizeOwnersList(owners = []) {
+    if (!Array.isArray(owners)) return []
+    const normalized = owners
+        .map((item) => String(item || "").trim())
+        .filter(Boolean)
+    return [...new Set(normalized)]
+}
+
 function getEmptyClientDraft() {
     return {
         name: "",
@@ -18,6 +26,7 @@ function getEmptyClientDraft() {
         description: "",
         mainActivity: "",
         state: "",
+        owners: [""],
     }
 }
 
@@ -43,6 +52,7 @@ function ClientsPage() {
     const [newClientDescription, setNewClientDescription] = useState("")
     const [newClientMainActivity, setNewClientMainActivity] = useState("")
     const [newClientState, setNewClientState] = useState("")
+    const [newClientOwners, setNewClientOwners] = useState([""])
 
     const [editingClientId, setEditingClientId] = useState("")
     const [editingClientDraft, setEditingClientDraft] = useState(getEmptyClientDraft())
@@ -107,6 +117,7 @@ function ClientsPage() {
                         description: item?.description || "",
                         mainActivity: item?.mainActivity || "",
                         state: item?.state || "",
+                        owners: Array.isArray(item?.owners) ? item.owners : [],
                     }))
                     : []
                 setClients(mapped)
@@ -143,6 +154,7 @@ function ClientsPage() {
                 description: newClientDescription,
                 mainActivity: newClientMainActivity,
                 state: newClientState,
+                owners: normalizeOwnersList(newClientOwners),
             })
 
             success("Client created successfully")
@@ -151,6 +163,7 @@ function ClientsPage() {
             setNewClientDescription("")
             setNewClientMainActivity("")
             setNewClientState("")
+            setNewClientOwners([""])
             setShowClientForm(false)
             setPage(1)
             setRefreshKey((current) => current + 1)
@@ -169,6 +182,9 @@ function ClientsPage() {
             description: client.description || "",
             mainActivity: client.mainActivity || "",
             state: client.state || "",
+            owners: Array.isArray(client.owners) && client.owners.length > 0
+                ? [...client.owners]
+                : [""],
         })
         setExpandedClientIds((current) =>
             current.includes(client.id) ? current : [...current, client.id]
@@ -192,6 +208,7 @@ function ClientsPage() {
                 description: editingClientDraft.description,
                 mainActivity: editingClientDraft.mainActivity,
                 state: editingClientDraft.state,
+                owners: normalizeOwnersList(editingClientDraft.owners),
             }
             const updated = await updateClientById(editingClientId, payload)
 
@@ -205,6 +222,7 @@ function ClientsPage() {
                             description: updated?.description ?? payload.description,
                             mainActivity: updated?.mainActivity ?? payload.mainActivity,
                             state: updated?.state ?? payload.state,
+                            owners: Array.isArray(updated?.owners) ? updated.owners : payload.owners,
                         }
                         : item
                 )
@@ -224,6 +242,50 @@ function ClientsPage() {
             ...current,
             ...patch,
         }))
+    }
+
+    const handleChangeNewOwner = (index, value) => {
+        setNewClientOwners((current) =>
+            current.map((item, currentIndex) => (currentIndex === index ? value : item))
+        )
+    }
+
+    const addNewOwnerInput = () => {
+        setNewClientOwners((current) => [...current, ""])
+    }
+
+    const removeNewOwnerInput = (index) => {
+        setNewClientOwners((current) => {
+            if (current.length <= 1) return current
+            return current.filter((_, currentIndex) => currentIndex !== index)
+        })
+    }
+
+    const handleChangeEditingOwner = (index, value) => {
+        setEditingClientDraft((current) => ({
+            ...current,
+            owners: Array.isArray(current.owners)
+                ? current.owners.map((item, currentIndex) => (currentIndex === index ? value : item))
+                : [value],
+        }))
+    }
+
+    const addEditingOwnerInput = () => {
+        setEditingClientDraft((current) => ({
+            ...current,
+            owners: Array.isArray(current.owners) ? [...current.owners, ""] : [""],
+        }))
+    }
+
+    const removeEditingOwnerInput = (index) => {
+        setEditingClientDraft((current) => {
+            const owners = Array.isArray(current.owners) ? current.owners : [""]
+            if (owners.length <= 1) return current
+            return {
+                ...current,
+                owners: owners.filter((_, currentIndex) => currentIndex !== index),
+            }
+        })
     }
 
     const handleDeleteClient = async () => {
@@ -385,6 +447,44 @@ function ClientsPage() {
                                                             />
                                                         ) : (
                                                             <p className="text-gray-700">{client.description || "-"}</p>
+                                                        )}
+
+                                                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 md:pt-1">Owners</p>
+                                                        {isEditing ? (
+                                                            <div className="flex flex-col gap-2">
+                                                                {(Array.isArray(editingClientDraft.owners) ? editingClientDraft.owners : [""]).map((owner, index) => (
+                                                                    <div key={`editing-owner-${client.id}-${index}`} className="flex items-center gap-2">
+                                                                        <input
+                                                                            type="text"
+                                                                            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm"
+                                                                            placeholder={`Owner ${index + 1}`}
+                                                                            value={owner}
+                                                                            onChange={(e) => handleChangeEditingOwner(index, e.target.value)}
+                                                                        />
+                                                                        <button
+                                                                            type="button"
+                                                                            className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 disabled:opacity-50"
+                                                                            disabled={(Array.isArray(editingClientDraft.owners) ? editingClientDraft.owners.length : 1) <= 1}
+                                                                            onClick={() => removeEditingOwnerInput(index)}
+                                                                        >
+                                                                            Remove
+                                                                        </button>
+                                                                    </div>
+                                                                ))}
+                                                                <button
+                                                                    type="button"
+                                                                    className="w-fit rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
+                                                                    onClick={addEditingOwnerInput}
+                                                                >
+                                                                    + Add owner
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <p className="text-gray-700">
+                                                                {Array.isArray(client.owners) && client.owners.length > 0
+                                                                    ? client.owners.join(", ")
+                                                                    : "-"}
+                                                            </p>
                                                         )}
                                                     </div>
                                                 </div>
@@ -565,6 +665,35 @@ function ClientsPage() {
                             value={newClientState}
                             onChange={(e) => setNewClientState(e.target.value)}
                         />
+                        <div className="flex flex-col gap-2">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Owners</p>
+                            {newClientOwners.map((owner, index) => (
+                                <div key={`new-owner-${index}`} className="flex items-center gap-2">
+                                    <input
+                                        className="w-full border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
+                                        type="text"
+                                        placeholder={`Owner ${index + 1}`}
+                                        value={owner}
+                                        onChange={(e) => handleChangeNewOwner(index, e.target.value)}
+                                    />
+                                    <button
+                                        type="button"
+                                        className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 disabled:opacity-50"
+                                        disabled={newClientOwners.length <= 1}
+                                        onClick={() => removeNewOwnerInput(index)}
+                                    >
+                                        Remove
+                                    </button>
+                                </div>
+                            ))}
+                            <button
+                                type="button"
+                                className="w-fit rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
+                                onClick={addNewOwnerInput}
+                            >
+                                + Add owner
+                            </button>
+                        </div>
                         <button className="bg-gray-100 rounded-full p-2" type="submit" disabled={isSubmitting || !officeId}>
                             {isSubmitting ? "Saving..." : "Save Client"}
                         </button>
