@@ -225,7 +225,15 @@ function ProfitLossPage() {
     const safeClientId = String(clientId || "").trim()
     const categoryLabel = String(line?.label || "").trim()
     if (!safeClientId || !categoryLabel) return
-    navigate(`/clients/${safeClientId}/ledger?category=${encodeURIComponent(categoryLabel)}`)
+    const lowerLabel = categoryLabel.toLowerCase()
+    const normalizedCategory = lowerLabel.includes("uncategorized income")
+      ? "uncategorized income"
+      : lowerLabel.includes("uncategorized expenses")
+        ? "uncategorized expenses"
+        : lowerLabel.includes("uncategorized")
+          ? "uncategorized"
+          : categoryLabel
+    navigate(`/clients/${safeClientId}/ledger?category=${encodeURIComponent(normalizedCategory)}`)
   }
 
   const handleDownloadPdf = () => {
