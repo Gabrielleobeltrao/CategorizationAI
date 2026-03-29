@@ -13,6 +13,9 @@ function statementId(value) {
     .replace(/^_+|_+$/g, "")
 }
 
+const UNCATEGORIZED_INCOME_LABEL = "Uncategorized income"
+const UNCATEGORIZED_EXPENSES_LABEL = "Uncategorized expenses"
+
 function isCogsCategory(type) {
   const normalized = String(type || "").toLowerCase()
   return normalized.includes("cost") || normalized.includes("cogs")
@@ -20,6 +23,22 @@ function isCogsCategory(type) {
 
 function normalizeAmount(value) {
   return Math.round(Number(value || 0))
+}
+
+function normalizeCategoryId(value) {
+  if (!value) return null
+  if (typeof value === "string") {
+    if (!ObjectId.isValid(value)) return null
+    return new ObjectId(value).toString()
+  }
+  if (value instanceof ObjectId) {
+    return value.toString()
+  }
+  if (typeof value === "object" && typeof value?.toString === "function") {
+    const normalized = value.toString()
+    if (ObjectId.isValid(normalized)) return new ObjectId(normalized).toString()
+  }
+  return null
 }
 
 function buildExpenseItems(mapByCategory) {
@@ -122,6 +141,7 @@ export async function getProfitLossByClientAndRange({ clientId, startDate, endDa
   let cogs = 0
   let operatingExpenses = 0
 
+  const revenueByCategory = new Map()
   const cogsByCategory = new Map()
   const operatingByCategory = new Map()
   const netByMonth = new Map()
@@ -140,18 +160,35 @@ export async function getProfitLossByClientAndRange({ clientId, startDate, endDa
 
     for (const splitItem of splitItems) {
       const amount = Number(splitItem?.amount) || 0
-      const categoryRef = splitItem?.categoryId ? categoryMap.get(String(splitItem.categoryId)) : null
+      const normalizedCategoryId = normalizeCategoryId(splitItem?.categoryId)
+      const categoryRef = normalizedCategoryId ? categoryMap.get(normalizedCategoryId) : null
       const categoryName = splitItem?.category || categoryRef?.name || "Uncategorized"
       const categoryType = categoryRef?.type || ""
+      const isUncategorized =
+        !normalizedCategoryId &&
+        !String(splitItem?.category || "").trim() &&
+        !String(categoryRef?.name || "").trim()
 
-      if (amount < 0) {
+      if (amount > 0) {
         const income = Math.abs(amount)
         revenue += income
+        const incomeCategoryLabel = isUncategorized ? UNCATEGORIZED_INCOME_LABEL : categoryName
+        revenueByCategory.set(incomeCategoryLabel, (revenueByCategory.get(incomeCategoryLabel) || 0) + income)
         netByMonth.set(keyMonth, (netByMonth.get(keyMonth) || 0) + income)
         continue
       }
 
       const expense = Math.abs(amount)
+      if (isUncategorized) {
+        operatingExpenses += expense
+        operatingByCategory.set(
+          UNCATEGORIZED_EXPENSES_LABEL,
+          (operatingByCategory.get(UNCATEGORIZED_EXPENSES_LABEL) || 0) + expense
+        )
+        netByMonth.set(keyMonth, (netByMonth.get(keyMonth) || 0) - expense)
+        continue
+      }
+
       if (isCogsCategory(categoryType)) {
         cogs += expense
         cogsByCategory.set(categoryName, (cogsByCategory.get(categoryName) || 0) + expense)
@@ -167,12 +204,22 @@ export async function getProfitLossByClientAndRange({ clientId, startDate, endDa
   const operatingIncome = grossProfit - operatingExpenses
   const netIncome = operatingIncome
 
+  const revenueItems = Array.from(revenueByCategory.entries())
+    .map(([label, amount]) => ({
+      id: statementId(label),
+      label,
+      amount: normalizeAmount(amount),
+      level: 1,
+      type: "item",
+    }))
+    .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
+
   const cogsItems = buildExpenseItems(cogsByCategory)
   const operatingItems = buildExpenseItems(operatingByCategory)
 
   const statement = [
     { id: "revenue", label: "Revenue", amount: normalizeAmount(revenue), level: 0, type: "group" },
-    { id: "service_income", label: "Service Income", amount: normalizeAmount(revenue), level: 1, type: "item" },
+    ...revenueItems,
     { id: "cogs", label: "Cost of Goods Sold", amount: -normalizeAmount(cogs), level: 0, type: "group" },
     ...cogsItems,
     { id: "gross_total", label: "Gross Profit", amount: normalizeAmount(grossProfit), level: 0, type: "total" },
