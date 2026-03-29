@@ -6,6 +6,7 @@ import {
   listTransactionPeriodOptionsController,
   deleteTransactionByIdController,
   categorizeTransactionsWithLlmController,
+  categorizeZelleTransactionsController,
 } from "../controllers/transactions.controller.js"
 import { requireAuth } from "../middlewares/requireAuth.js"
 import {
@@ -34,6 +35,15 @@ router.post(
   validateObjectIdBody("clientId"),
   ensureResourceExists({ collection: "clients", from: "body", field: "clientId", assignKey: "client" }),
   categorizeTransactionsWithLlmController
+)
+
+router.post(
+  "/transactions/categorize-zelle",
+  requireAuth,
+  requirePermission("transactions:update"),
+  validateObjectIdBody("clientId"),
+  ensureResourceExists({ collection: "clients", from: "body", field: "clientId", assignKey: "client" }),
+  categorizeZelleTransactionsController
 )
 
 router.patch(

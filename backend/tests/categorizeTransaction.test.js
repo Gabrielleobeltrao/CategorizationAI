@@ -1,4 +1,4 @@
-import categorizeTransaction from "./categorizeTransaction.js"
+import categorizeTransaction from "../src/lib/ai/categorizeTransaction.js"
 import bd from "./bd.js"
 
 async function main() {

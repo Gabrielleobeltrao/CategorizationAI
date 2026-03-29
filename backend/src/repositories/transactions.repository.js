@@ -105,6 +105,7 @@ export async function listEligibleTransactionsForLlmByIds(clientId, transactionI
     .find({
       clientId,
       _id: { $in: objectIds },
+      description: { $not: /zelle/i },
       $nor: [
         { isSplit: true },
         { "splits.1": { $exists: true } },
@@ -126,6 +127,7 @@ export async function listEligibleTransactionsForLlmByClientId(clientId) {
   return collection
     .find({
       clientId,
+      description: { $not: /zelle/i },
       $nor: [
         { isSplit: true },
         { "splits.1": { $exists: true } },
@@ -161,6 +163,82 @@ export async function applyLlmCategorizationUpdates(updates = []) {
           llmProcessedAt: item.llmProcessedAt,
           llmCategorySuggestionId: item.llmCategorySuggestionId ?? null,
           llmCategorySuggestionName: item.llmCategorySuggestionName ?? null,
+          updatedAt: new Date(),
+        },
+      },
+    },
+  }))
+
+  const result = await collection.bulkWrite(operations, { ordered: false })
+  return { modifiedCount: result.modifiedCount || 0 }
+}
+
+export async function listEligibleTransactionsForZelleByIds(clientId, transactionIds = []) {
+  const db = getDB()
+  const collection = db.collection("transactions")
+  const objectIds = transactionIds.map((id) => new ObjectId(id))
+
+  return collection
+    .find({
+      clientId,
+      _id: { $in: objectIds },
+      description: /zelle/i,
+      $nor: [
+        { isSplit: true },
+        { "splits.1": { $exists: true } },
+      ],
+      $or: [
+        { categoryId: null },
+        { categoryId: "" },
+        { category: null },
+        { category: "" },
+        { category: "Uncategorized income" },
+        { category: "Uncategorized expenses" },
+      ],
+    })
+    .toArray()
+}
+
+export async function listEligibleTransactionsForZelleByClientId(clientId) {
+  const db = getDB()
+  const collection = db.collection("transactions")
+
+  return collection
+    .find({
+      clientId,
+      description: /zelle/i,
+      $nor: [
+        { isSplit: true },
+        { "splits.1": { $exists: true } },
+      ],
+      $or: [
+        { categoryId: null },
+        { categoryId: "" },
+        { category: null },
+        { category: "" },
+        { category: "Uncategorized income" },
+        { category: "Uncategorized expenses" },
+      ],
+    })
+    .sort({ date: -1, _id: -1 })
+    .toArray()
+}
+
+export async function applyCategoryUpdates(updates = []) {
+  const db = getDB()
+  const collection = db.collection("transactions")
+
+  if (!Array.isArray(updates) || updates.length === 0) {
+    return { modifiedCount: 0 }
+  }
+
+  const operations = updates.map((item) => ({
+    updateOne: {
+      filter: { _id: new ObjectId(item.id) },
+      update: {
+        $set: {
+          categoryId: item.categoryId ?? null,
+          category: item.category ?? null,
           updatedAt: new Date(),
         },
       },

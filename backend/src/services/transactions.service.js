@@ -7,12 +7,16 @@ import {
   deleteTransactionById,
   listEligibleTransactionsForLlmByIds,
   listEligibleTransactionsForLlmByClientId,
+  listEligibleTransactionsForZelleByIds,
+  listEligibleTransactionsForZelleByClientId,
   applyLlmCategorizationUpdates,
+  applyCategoryUpdates,
 } from "../repositories/transactions.repository.js"
-import { listCategoriesByClientId, listCategoriesByIds } from "../repositories/category.repository.js"
+import { createCategory, listCategoriesByClientId, listCategoriesByIds } from "../repositories/category.repository.js"
 import { getClientById } from "../repositories/clients.repository.js"
 import { ObjectId } from "mongodb"
-import categorizeTransaction from "../../categorizeTransaction.js"
+import categorizeTransaction from "../lib/ai/categorizeTransaction.js"
+import categorizeZelle from "../lib/ai/categorizeZelle.js"
 
 function normalizeObjectIdString(value) {
   const raw = String(value || "").trim()
@@ -23,6 +27,50 @@ function normalizeObjectIdString(value) {
 function getDefaultUncategorizedLabelByAmount(amount = 0) {
   const numericAmount = Number(amount || 0)
   return numericAmount >= 0 ? "Uncategorized income" : "Uncategorized expenses"
+}
+
+function normalizeNameKey(value = "") {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+}
+
+function toDisplayName(value = "") {
+  const normalized = String(value || "")
+    .replace(/[^a-zA-Z0-9\s'-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+  if (!normalized) return "Unknown"
+
+  return normalized
+    .split(" ")
+    .map((token) => token.charAt(0).toUpperCase() + token.slice(1).toLowerCase())
+    .join(" ")
+}
+
+function extractZelleCounterpartyName(description = "") {
+  const source = String(description || "")
+  if (!source) return "Unknown"
+
+  const cleaned = source
+    .replace(/[_\-]+/g, " ")
+    .replace(/\b(zelle|payment|transfer|online|banking|from|to|memo|ref|reference|id|confirmation|sent|received)\b/gi, " ")
+    .replace(/\d+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+
+  if (!cleaned) return "Unknown"
+  return toDisplayName(cleaned.split(" ").slice(0, 4).join(" "))
+}
+
+function isZelleRelatedCategoryName(name = "") {
+  const normalized = String(name || "").trim().toLowerCase()
+  if (!normalized) return false
+  if (normalized.startsWith("sub -")) return true
+  if (normalized.startsWith("no service income -")) return true
+  if (normalized === "income zelle") return true
+  return false
 }
 
 export async function createTransactionsBatchService(transactions) {
@@ -324,8 +372,16 @@ export async function categorizeTransactionsWithLlmService(input) {
     }
   }
 
+  const categoriesForLlm = categories.filter(
+    (category) => !isZelleRelatedCategoryName(category?.name)
+  )
+
+  if (categoriesForLlm.length === 0) {
+    throw new Error("No non-Zelle categories available for LLM")
+  }
+
   const llmResults = await categorizeTransaction(
-    categories.map((category) => ({
+    categoriesForLlm.map((category) => ({
       id: String(category._id),
       name: category.name,
       type: category.type,
@@ -376,5 +432,166 @@ export async function categorizeTransactionsWithLlmService(input) {
     processedCount: writeResult.modifiedCount,
     categorizedCount,
     emptyCount,
+  }
+}
+
+export async function categorizeZelleTransactionsService(input) {
+  const clientId = String(input?.clientId || "").trim()
+  const mode = String(input?.mode || "").trim().toLowerCase()
+  const transactionIds = Array.isArray(input?.transactionIds)
+    ? input.transactionIds.map((id) => String(id || "").trim()).filter(Boolean)
+    : []
+
+  if (!clientId) throw new Error("clientId is required")
+  if (!ObjectId.isValid(clientId)) throw new Error("clientId is invalid")
+  if (!["selected", "all_client"].includes(mode)) {
+    throw new Error("mode must be one of: selected, all_client")
+  }
+  if (mode === "selected") {
+    if (transactionIds.length === 0) throw new Error("transactionIds is required for selected mode")
+    if (transactionIds.some((id) => !ObjectId.isValid(id))) {
+      throw new Error("transactionIds has invalid ObjectId values")
+    }
+  }
+
+  const [client, categories] = await Promise.all([
+    getClientById(clientId),
+    listCategoriesByClientId(clientId),
+  ])
+
+  if (!client) throw new Error("client not found")
+
+  const eligibleTransactions = mode === "selected"
+    ? await listEligibleTransactionsForZelleByIds(clientId, transactionIds)
+    : await listEligibleTransactionsForZelleByClientId(clientId)
+
+  if (eligibleTransactions.length === 0) {
+    return {
+      mode,
+      requestedCount: mode === "selected" ? transactionIds.length : 0,
+      eligibleCount: 0,
+      processedCount: 0,
+      createdCategoriesCount: 0,
+      ownerIncomeCount: 0,
+      incomeZelleCount: 0,
+      subCount: 0,
+    }
+  }
+
+  const categoryByNameKey = new Map(
+    (Array.isArray(categories) ? categories : []).map((category) => [
+      normalizeNameKey(category.name),
+      category,
+    ])
+  )
+  const llmOutput = await categorizeZelle(
+    eligibleTransactions.map((transaction) => ({
+      id: String(transaction._id),
+      description: transaction.description || "",
+      amount: Number(transaction.amount || 0),
+    })),
+    {
+      name: client.name || "",
+      businessType: client.businessType || "",
+      mainActivity: client.mainActivity || "",
+      description: client.description || "",
+      owners: Array.isArray(client?.owners) ? client.owners : [],
+    }
+  )
+
+  const llmCategories = Array.isArray(llmOutput?.categories) ? llmOutput.categories : []
+  const llmResults = Array.isArray(llmOutput?.results) ? llmOutput.results : []
+
+  const categoriesToEnsure = new Map()
+  llmCategories.forEach((item) => {
+    const name = String(item?.name || "").trim()
+    if (!name) return
+    const key = normalizeNameKey(name)
+    if (categoryByNameKey.has(key)) return
+    categoriesToEnsure.set(key, {
+      name,
+      type: String(item?.type || "").trim().toLowerCase() === "expense" ? "expense" : "income",
+    })
+  })
+
+  llmResults.forEach((item) => {
+    const name = String(item?.categoryName || "").trim()
+    if (!name) return
+    const key = normalizeNameKey(name)
+    if (!key || categoryByNameKey.has(key) || categoriesToEnsure.has(key)) return
+    const normalizedName = name.toLowerCase()
+    const inferredType = normalizedName.startsWith("sub -") ? "expense" : "income"
+    categoriesToEnsure.set(key, {
+      name,
+      type: inferredType,
+    })
+  })
+
+  for (const categoryPayload of categoriesToEnsure.values()) {
+    const created = await createCategory({
+      clientId,
+      name: categoryPayload.name,
+      type: categoryPayload.type,
+      description: "",
+    })
+    categoryByNameKey.set(normalizeNameKey(created.name), created)
+  }
+
+  const resultByTxId = new Map(
+    llmResults.map((item) => [String(item?.id || ""), String(item?.categoryName || "").trim()])
+  )
+
+  const classificationRows = eligibleTransactions
+    .map((transaction) => {
+      const txId = String(transaction._id)
+      const categoryName = resultByTxId.get(txId) || ""
+      const categoryNameKey = normalizeNameKey(categoryName)
+      if (!categoryNameKey) return null
+      return {
+        id: txId,
+        categoryName,
+        categoryNameKey,
+      }
+    })
+    .filter(Boolean)
+
+  const now = new Date()
+
+  const updates = classificationRows
+    .map((row) => {
+      const categoryDoc = categoryByNameKey.get(row.categoryNameKey)
+      if (!categoryDoc?._id) return null
+      return {
+        id: row.id,
+        categoryId: String(categoryDoc._id),
+        category: categoryDoc.name,
+        llmStatus: "suggested",
+        llmProcessedAt: now,
+        llmCategorySuggestionId: String(categoryDoc._id),
+        llmCategorySuggestionName: categoryDoc.name,
+      }
+    })
+    .filter(Boolean)
+
+  const result = await applyLlmCategorizationUpdates(updates)
+  const ownerIncomeCount = classificationRows.filter((row) =>
+    String(row.categoryName || "").toLowerCase().startsWith("no service income -")
+  ).length
+  const incomeZelleCount = classificationRows.filter(
+    (row) => String(row.categoryName || "").trim().toLowerCase() === "income zelle"
+  ).length
+  const subCount = classificationRows.filter((row) =>
+    String(row.categoryName || "").toLowerCase().startsWith("sub -")
+  ).length
+
+  return {
+    mode,
+    requestedCount: mode === "selected" ? transactionIds.length : 0,
+    eligibleCount: eligibleTransactions.length,
+    processedCount: result.modifiedCount,
+    createdCategoriesCount: categoriesToEnsure.size,
+    ownerIncomeCount,
+    incomeZelleCount,
+    subCount,
   }
 }
