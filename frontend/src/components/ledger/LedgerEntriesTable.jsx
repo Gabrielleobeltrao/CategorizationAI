@@ -3,7 +3,8 @@ import LedgerEntryRow from "./LedgerEntryRow"
 import ConfirmModal from "../ui/ConfirmModal"
 import PopupModal from "../ui/PopupModal"
 
-const UNCATEGORIZED_FILTER_VALUE = "__uncategorized__"
+const UNCATEGORIZED_INCOME_FILTER_VALUE = "__uncategorized_income__"
+const UNCATEGORIZED_EXPENSES_FILTER_VALUE = "__uncategorized_expenses__"
 const CSV_TARGET_FIELDS = [
     { value: "date", label: "Date" },
     { value: "description", label: "Description" },
@@ -25,6 +26,11 @@ const MONTH_LABELS = {
     "12": "Dec",
 }
 const REQUIRED_UPLOAD_FIELDS = ["date", "description", "amount"]
+const LLM_PROCESSED_OPTIONS = [
+    { id: "all", label: "All" },
+    { id: "processed", label: "LLM processed" },
+    { id: "not_processed", label: "Not processed" },
+]
 
 function formatPreviewDate(value = "") {
     const safeValue = String(value || "")
@@ -248,6 +254,11 @@ function parseAmountToNumber(value = "") {
     return amount
 }
 
+function getDefaultUncategorizedLabelByAmount(amount = 0) {
+    const numericAmount = Number(amount || 0)
+    return numericAmount >= 0 ? "Uncategorized income" : "Uncategorized expenses"
+}
+
 function LedgerEntriesTable({
     ledgerEntries,
     accounts,
@@ -261,11 +272,14 @@ function LedgerEntriesTable({
     onSearchTermChange,
     onUpdateEntry,
     onDeleteEntry,
+    onDeleteEntries,
     onImportTransactions,
     isLoading = false,
     isLoadingMore,
+    isCategorizingWithLlm = false,
     showUploadModal = false,
     onCloseUploadModal,
+    onCategorizeWithLlm,
 }) {
     const [editingTargetIds, setEditingTargetIds] = useState([])
     const [editingDraft, setEditingDraft] = useState(null)
@@ -273,6 +287,7 @@ function LedgerEntriesTable({
     const [selectedEntryIds, setSelectedEntryIds] = useState([])
     const [isApplyingCategoryBulk, setIsApplyingCategoryBulk] = useState(false)
     const [pendingDeleteIds, setPendingDeleteIds] = useState([])
+    const [pendingLlmPayload, setPendingLlmPayload] = useState(null)
     const [isDeletingEntries, setIsDeletingEntries] = useState(false)
     const [splittingEntryId, setSplittingEntryId] = useState("")
     const [splitDraftRows, setSplitDraftRows] = useState([])
@@ -286,8 +301,10 @@ function LedgerEntriesTable({
     const appliedFilters = useMemo(() => ({
         accountIds: [],
         categoryIds: [],
-        includeUncategorized: false,
+        includeUncategorizedIncome: false,
+        includeUncategorizedExpenses: false,
         splitMode: "all",
+        llmProcessed: "all",
         fromDate: "",
         toDate: "",
         years: [],
@@ -314,6 +331,25 @@ function LedgerEntriesTable({
         () => selectedEntryIds.filter((id) => visibleEntryIdsSet.has(id)),
         [selectedEntryIds, visibleEntryIdsSet]
     )
+    const eligibleEntryIds = useMemo(
+        () =>
+            ledgerEntries
+                .filter((entry) => {
+                    const hasCategory = Boolean(String(entry?.categoryId || "").trim())
+                    const hasSplit = Boolean(entry?.isSplit) || (Array.isArray(entry?.splits) && entry.splits.length > 1)
+                    const hasLlmProcessed =
+                        Boolean(entry?.llmProcessed) ||
+                        Boolean(entry?.llmProcessedAt) ||
+                        ["suggested", "empty", "error"].includes(String(entry?.llmStatus || "").toLowerCase())
+                    return !hasCategory && !hasSplit && !hasLlmProcessed
+                })
+                .map((entry) => entry.id),
+        [ledgerEntries]
+    )
+    const eligibleEntryIdSet = useMemo(
+        () => new Set(eligibleEntryIds),
+        [eligibleEntryIds]
+    )
 
     const allVisibleSelected = useMemo(
         () =>
@@ -334,11 +370,46 @@ function LedgerEntriesTable({
         () => ledgerEntries.filter((entry) => pendingDeleteIds.includes(entry.id)),
         [ledgerEntries, pendingDeleteIds]
     )
+    const pendingLlmPreviewEntries = useMemo(() => {
+        if (!pendingLlmPayload) return []
+
+        if (pendingLlmPayload.mode === "selected") {
+            const targetIdsSet = new Set(pendingLlmPayload.targetIds || [])
+            return ledgerEntries.filter((entry) => targetIdsSet.has(entry.id)).slice(0, 8)
+        }
+
+        return ledgerEntries.filter((entry) => eligibleEntryIdSet.has(entry.id)).slice(0, 8)
+    }, [pendingLlmPayload, ledgerEntries, eligibleEntryIdSet])
 
     useEffect(() => {
         if (!selectAllRef.current) return
         selectAllRef.current.indeterminate = someVisibleSelected
     }, [someVisibleSelected])
+
+    const handleCategorizeWithLlmClick = () => {
+        const hasSelection = effectiveSelectedEntryIds.length > 0
+        const selectedEligibleIds = effectiveSelectedEntryIds.filter((id) => eligibleEntryIdSet.has(id))
+        const targetIds = hasSelection ? selectedEligibleIds : []
+        const skippedCount = hasSelection
+            ? effectiveSelectedEntryIds.length - selectedEligibleIds.length
+            : 0
+
+        setPendingLlmPayload({
+            mode: hasSelection ? "selected" : "all_client",
+            targetIds,
+            targetCount: targetIds.length,
+            selectedCount: effectiveSelectedEntryIds.length,
+            eligibleCount: eligibleEntryIds.length,
+            totalCount: ledgerEntries.length,
+            skippedCount,
+        })
+    }
+
+    const confirmCategorizeWithLlm = () => {
+        if (!pendingLlmPayload) return
+        onCategorizeWithLlm?.(pendingLlmPayload)
+        setPendingLlmPayload(null)
+    }
 
     const toggleSelectAllVisible = (isChecked) => {
         if (!isChecked) {
@@ -401,11 +472,15 @@ function LedgerEntriesTable({
     const activeFiltersCount = useMemo(() => {
         const selectedAccounts = Array.isArray(appliedFilters.accountIds) ? appliedFilters.accountIds : []
         const selectedCategories = Array.isArray(appliedFilters.categoryIds) ? appliedFilters.categoryIds : []
+        const selectedUncategorizedCount =
+            (appliedFilters.includeUncategorizedIncome ? 1 : 0) +
+            (appliedFilters.includeUncategorizedExpenses ? 1 : 0)
 
         let count = 0
         if (selectedAccounts.length > 0) count += 1
-        if (selectedCategories.length > 0 || appliedFilters.includeUncategorized) count += 1
+        if (selectedCategories.length > 0 || selectedUncategorizedCount > 0) count += 1
         if (String(appliedFilters.splitMode || "all") !== "all") count += 1
+        if (String(appliedFilters.llmProcessed || "all") !== "all") count += 1
         if (Array.isArray(appliedFilters.years) && appliedFilters.years.length > 0) count += 1
         if (Array.isArray(appliedFilters.months) && appliedFilters.months.length > 0) count += 1
         if (appliedFilters.fromDate !== "") count += 1
@@ -539,7 +614,11 @@ function LedgerEntriesTable({
         if (pendingDeleteIds.length === 0) return
         try {
             setIsDeletingEntries(true)
-            await Promise.all(pendingDeleteIds.map((targetId) => onDeleteEntry?.(targetId)))
+            if (pendingDeleteIds.length > 1 && onDeleteEntries) {
+                await onDeleteEntries(pendingDeleteIds)
+            } else {
+                await Promise.all(pendingDeleteIds.map((targetId) => onDeleteEntry?.(targetId)))
+            }
             setPendingDeleteIds([])
             setSelectedEntryIds([])
         } catch (err) {
@@ -852,7 +931,7 @@ function LedgerEntriesTable({
                         description: normalizedDescription,
                         amount: normalizedAmount,
                         categoryId: null,
-                        category: null,
+                        category: getDefaultUncategorizedLabelByAmount(normalizedAmount),
                     },
                 ]
             })
@@ -899,19 +978,24 @@ function LedgerEntriesTable({
 
     return (
         <div className="flex h-full min-h-0 gap-3">
-            <div className="flex min-w-0 flex-1 flex-col">
-                <div>
+            <div className="flex min-w-0 flex-1 flex-col overflow-x-auto">
+                <div className="min-w-[1060px]">
                     <div className="grid grid-cols-[minmax(140px,max-content)_1fr] items-center gap-4 rounded-t-lg bg-gray-100 px-3 py-2.5">
-                        <div className="flex items-center gap-2 text-sm">
-                            <input
-                                ref={selectAllRef}
-                                type="checkbox"
-                                className="h-4 w-4"
-                                checked={allVisibleSelected}
-                                onChange={(e) => toggleSelectAllVisible(e.target.checked)}
-                            />
-                            <h4 className="font-medium text-gray-700">Select All</h4>
-                        </div>
+                            <div className="flex items-center gap-2 text-sm">
+                                <input
+                                    ref={selectAllRef}
+                                    type="checkbox"
+                                    className="h-4 w-4"
+                                    checked={allVisibleSelected}
+                                    onChange={(e) => toggleSelectAllVisible(e.target.checked)}
+                                />
+                                <h4 className="font-medium text-gray-700">
+                                    Select All
+                                    {effectiveSelectedEntryIds.length > 0
+                                        ? ` (${effectiveSelectedEntryIds.length} selected)`
+                                        : ""}
+                                </h4>
+                            </div>
                         <div className="relative flex items-center gap-3" ref={filterPanelRef}>
                             <div className="relative min-w-[220px] flex-1">
                                 <input
@@ -953,6 +1037,23 @@ function LedgerEntriesTable({
                                     <path d="M4 6h16l-6 7v5l-4 2v-7L4 6z" />
                                 </svg>
                                 <span>Filter{activeFiltersCount > 0 ? ` (${activeFiltersCount})` : ""}</span>
+                            </button>
+
+                            <button
+                                type="button"
+                                className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-2 text-sm font-medium ${
+                                    isCategorizingWithLlm
+                                        ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
+                                        : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                                }`}
+                                onClick={handleCategorizeWithLlmClick}
+                                disabled={isCategorizingWithLlm}
+                            >
+                                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M12 3v18" />
+                                    <path d="M3 12h18" />
+                                </svg>
+                                <span>{isCategorizingWithLlm ? "Categorizing..." : "Categorize with LLM"}</span>
                             </button>
 
                             {showFilterModal && (
@@ -1005,16 +1106,29 @@ function LedgerEntriesTable({
 
                                             <section className="space-y-2">
                                                 <p className="text-sm font-medium text-gray-700">
-                                                    Category {Array.isArray(draftFilters.categoryIds) && draftFilters.categoryIds.length > 0 ? `(${draftFilters.categoryIds.length + (draftFilters.includeUncategorized ? 1 : 0)})` : draftFilters.includeUncategorized ? "(1)" : ""}
+                                                    Category {Array.isArray(draftFilters.categoryIds) && draftFilters.categoryIds.length > 0
+                                                        ? `(${draftFilters.categoryIds.length + (draftFilters.includeUncategorizedIncome ? 1 : 0) + (draftFilters.includeUncategorizedExpenses ? 1 : 0)})`
+                                                        : (draftFilters.includeUncategorizedIncome || draftFilters.includeUncategorizedExpenses)
+                                                            ? `(${(draftFilters.includeUncategorizedIncome ? 1 : 0) + (draftFilters.includeUncategorizedExpenses ? 1 : 0)})`
+                                                            : ""}
                                                 </p>
                                                 <div className="flex flex-wrap gap-2">
-                                                    {["all", UNCATEGORIZED_FILTER_VALUE, ...categories.map((category) => category.id)].map((categoryId) => (
+                                                    {[
+                                                        "all",
+                                                        UNCATEGORIZED_INCOME_FILTER_VALUE,
+                                                        UNCATEGORIZED_EXPENSES_FILTER_VALUE,
+                                                        ...categories.map((category) => category.id),
+                                                    ].map((categoryId) => (
                                                         <button
                                                             key={categoryId}
                                                             type="button"
                                                             className={`rounded-md border px-2.5 py-1.5 text-xs ${
-                                                                (categoryId === "all" && (!Array.isArray(draftFilters.categoryIds) || draftFilters.categoryIds.length === 0) && !draftFilters.includeUncategorized) ||
-                                                                (categoryId === UNCATEGORIZED_FILTER_VALUE && draftFilters.includeUncategorized) ||
+                                                                (categoryId === "all" &&
+                                                                    (!Array.isArray(draftFilters.categoryIds) || draftFilters.categoryIds.length === 0) &&
+                                                                    !draftFilters.includeUncategorizedIncome &&
+                                                                    !draftFilters.includeUncategorizedExpenses) ||
+                                                                (categoryId === UNCATEGORIZED_INCOME_FILTER_VALUE && draftFilters.includeUncategorizedIncome) ||
+                                                                (categoryId === UNCATEGORIZED_EXPENSES_FILTER_VALUE && draftFilters.includeUncategorizedExpenses) ||
                                                                 (Array.isArray(draftFilters.categoryIds) && draftFilters.categoryIds.includes(categoryId))
                                                                     ? "border-gray-900 bg-gray-900 text-white"
                                                                     : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
@@ -1022,9 +1136,25 @@ function LedgerEntriesTable({
                                                             onClick={() =>
                                                                 setDraftFilters((current) => {
                                                                     const currentCategories = Array.isArray(current.categoryIds) ? current.categoryIds : []
-                                                                    if (categoryId === "all") return { ...current, categoryIds: [], includeUncategorized: false }
-                                                                    if (categoryId === UNCATEGORIZED_FILTER_VALUE) {
-                                                                        return { ...current, includeUncategorized: !current.includeUncategorized }
+                                                                    if (categoryId === "all") {
+                                                                        return {
+                                                                            ...current,
+                                                                            categoryIds: [],
+                                                                            includeUncategorizedIncome: false,
+                                                                            includeUncategorizedExpenses: false,
+                                                                        }
+                                                                    }
+                                                                    if (categoryId === UNCATEGORIZED_INCOME_FILTER_VALUE) {
+                                                                        return {
+                                                                            ...current,
+                                                                            includeUncategorizedIncome: !current.includeUncategorizedIncome,
+                                                                        }
+                                                                    }
+                                                                    if (categoryId === UNCATEGORIZED_EXPENSES_FILTER_VALUE) {
+                                                                        return {
+                                                                            ...current,
+                                                                            includeUncategorizedExpenses: !current.includeUncategorizedExpenses,
+                                                                        }
                                                                     }
                                                                     const exists = currentCategories.includes(categoryId)
                                                                     return {
@@ -1038,8 +1168,10 @@ function LedgerEntriesTable({
                                                         >
                                                             {categoryId === "all"
                                                                 ? "All categories"
-                                                                : categoryId === UNCATEGORIZED_FILTER_VALUE
-                                                                    ? "Uncategorized"
+                                                                : categoryId === UNCATEGORIZED_INCOME_FILTER_VALUE
+                                                                    ? "Uncategorized income"
+                                                                    : categoryId === UNCATEGORIZED_EXPENSES_FILTER_VALUE
+                                                                        ? "Uncategorized expenses"
                                                                     : categories.find((item) => item.id === categoryId)?.name || categoryId}
                                                         </button>
                                                     ))}
@@ -1066,6 +1198,31 @@ function LedgerEntriesTable({
                                                                 setDraftFilters((current) => ({
                                                                     ...current,
                                                                     splitMode: option.id,
+                                                                }))
+                                                            }
+                                                        >
+                                                            {option.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </section>
+
+                                            <section className="space-y-2">
+                                                <p className="text-sm font-medium text-gray-700">LLM</p>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {LLM_PROCESSED_OPTIONS.map((option) => (
+                                                        <button
+                                                            key={option.id}
+                                                            type="button"
+                                                            className={`rounded-md border px-2.5 py-1.5 text-xs ${
+                                                                String(draftFilters.llmProcessed || "all") === option.id
+                                                                    ? "border-gray-900 bg-gray-900 text-white"
+                                                                    : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                                                            }`}
+                                                            onClick={() =>
+                                                                setDraftFilters((current) => ({
+                                                                    ...current,
+                                                                    llmProcessed: option.id,
                                                                 }))
                                                             }
                                                         >
@@ -1215,8 +1372,10 @@ function LedgerEntriesTable({
                                                 const reset = {
                                                     accountIds: [],
                                                     categoryIds: [],
-                                                    includeUncategorized: false,
+                                                    includeUncategorizedIncome: false,
+                                                    includeUncategorizedExpenses: false,
                                                     splitMode: "all",
+                                                    llmProcessed: "all",
                                                     fromDate: "",
                                                     toDate: "",
                                                     years: [],
@@ -1248,12 +1407,13 @@ function LedgerEntriesTable({
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-[24px_minmax(110px,0.7fr)_minmax(180px,2fr)_minmax(120px,1fr)_minmax(160px,1.3fr)_100px_96px] items-center gap-4 bg-white px-2 py-3 text-sm font-semibold">
+                    <div className="grid grid-cols-[24px_minmax(110px,0.7fr)_minmax(180px,2fr)_minmax(120px,1fr)_minmax(160px,1.3fr)_16px_78px_92px] items-center gap-4 bg-white px-2 py-3 text-sm font-semibold">
                         <span className="block h-4 w-4" aria-hidden="true" />
                         <h4>Date</h4>
                         <h4>Description</h4>
                         <h4>Account</h4>
                         <h4>Category</h4>
+                        <span className="block h-4 w-4" aria-hidden="true" />
                         <div className="flex justify-end">
                             <h4>Amount</h4>
                         </div>
@@ -1265,7 +1425,7 @@ function LedgerEntriesTable({
 
                 <div
                     ref={scrollContainerRef}
-                    className="min-h-0 flex-1 overflow-y-auto rounded-b-lg border-b-4 border-gray-100"
+                    className="min-h-0 min-w-[1060px] flex-1 overflow-y-auto rounded-b-lg border-b-4 border-gray-100"
                 >
                     {ledgerEntries.map((entry, index) => (
                         <div key={entry.id}>
@@ -1282,6 +1442,9 @@ function LedgerEntriesTable({
                                 splitCount={Array.isArray(entry.splits) ? entry.splits.length : 0}
                                 category={entry.category}
                                 amount={entry.amount}
+                                llmProcessed={entry.llmProcessed}
+                                llmStatus={entry.llmStatus}
+                                llmProcessedAt={entry.llmProcessedAt}
                                 isEditing={editingTargetIds.includes(entry.id)}
                                 editingDraft={editingDraft}
                                 onStartEdit={() => startEditEntry(entry)}
@@ -1320,7 +1483,7 @@ function LedgerEntriesTable({
                                     {splitDraftRows.map((row, rowIndex) => (
                                         <div
                                             key={row.localId}
-                                            className={`grid grid-cols-[24px_minmax(110px,0.7fr)_minmax(180px,2fr)_minmax(120px,1fr)_minmax(160px,1.3fr)_100px_96px] items-center gap-4 px-2 py-2 text-sm ${
+                                            className={`grid grid-cols-[24px_minmax(110px,0.7fr)_minmax(180px,2fr)_minmax(120px,1fr)_minmax(160px,1.3fr)_16px_78px_92px] items-center gap-4 px-2 py-2 text-sm ${
                                                 index % 2 === 0
                                                     ? rowIndex % 2 === 0
                                                         ? "bg-zinc-50"
@@ -1359,6 +1522,7 @@ function LedgerEntriesTable({
                                                     <path d="M6 9l6 6 6-6" />
                                                 </svg>
                                             </div>
+                                            <span />
                                             <input
                                                 type="number"
                                                 step="0.01"
@@ -1387,7 +1551,7 @@ function LedgerEntriesTable({
                                     ))}
 
                                     <div
-                                        className={`grid grid-cols-[24px_minmax(110px,0.7fr)_minmax(180px,2fr)_minmax(120px,1fr)_minmax(160px,1.3fr)_100px_96px] items-center gap-4 px-2 py-3 text-xs ${
+                                        className={`grid grid-cols-[24px_minmax(110px,0.7fr)_minmax(180px,2fr)_minmax(120px,1fr)_minmax(160px,1.3fr)_16px_78px_92px] items-center gap-4 px-2 py-3 text-xs ${
                                             index % 2 === 0 ? "bg-gray-100" : "bg-white"
                                         }`}
                                     >
@@ -1418,11 +1582,12 @@ function LedgerEntriesTable({
                                             ).toFixed(2)}
                                         </span>
                                         <span />
+                                        <span />
                                     </div>
 
                                     {splitError && (
                                         <div
-                                            className={`grid grid-cols-[24px_minmax(110px,0.7fr)_minmax(180px,2fr)_minmax(120px,1fr)_minmax(160px,1.3fr)_100px_96px] items-center gap-4 px-2 pb-2 text-xs ${
+                                            className={`grid grid-cols-[24px_minmax(110px,0.7fr)_minmax(180px,2fr)_minmax(120px,1fr)_minmax(160px,1.3fr)_16px_78px_92px] items-center gap-4 px-2 pb-2 text-xs ${
                                                 index % 2 === 0
                                                     ? (splitDraftRows.length + 1) % 2 === 0
                                                         ? "bg-zinc-50"
@@ -1433,8 +1598,7 @@ function LedgerEntriesTable({
                                             }`}
                                         >
                                             <span className="block h-4 w-4" />
-                                            <span />
-                                            <span className="col-span-4 font-medium text-rose-700">{splitError}</span>
+                                            <span className="col-span-5 font-medium text-rose-700">{splitError}</span>
                                             <span />
                                         </div>
                                     )}
@@ -1446,7 +1610,7 @@ function LedgerEntriesTable({
                                     {entry.splits.map((split, splitIndex) => (
                                         <div
                                             key={split.id || `${entry.id}-split-${splitIndex}`}
-                                            className={`grid grid-cols-[24px_minmax(110px,0.7fr)_minmax(180px,2fr)_minmax(120px,1fr)_minmax(160px,1.3fr)_100px_96px] items-center gap-4 px-2 py-2 text-sm ${
+                                            className={`grid grid-cols-[24px_minmax(110px,0.7fr)_minmax(180px,2fr)_minmax(120px,1fr)_minmax(160px,1.3fr)_16px_78px_92px] items-center gap-4 px-2 py-2 text-sm ${
                                                 index % 2 === 0
                                                     ? splitIndex % 2 === 0
                                                         ? "bg-zinc-50"
@@ -1487,6 +1651,7 @@ function LedgerEntriesTable({
                                                     <path d="M6 9l6 6 6-6" />
                                                 </svg>
                                             </div>
+                                            <span />
                                             <span className="text-right">${Number(split.amount || 0).toFixed(2)}</span>
                                             <span />
                                         </div>
@@ -1589,6 +1754,90 @@ function LedgerEntriesTable({
                     )}
                 </div>
             </ConfirmModal>
+
+            <PopupModal
+                isOpen={Boolean(pendingLlmPayload)}
+                title="Confirm LLM Categorization"
+                onClose={() => {
+                    if (isCategorizingWithLlm) return
+                    setPendingLlmPayload(null)
+                }}
+                maxWidthClass="max-w-3xl"
+            >
+                <div className="flex flex-col gap-4">
+                    {pendingLlmPayload?.mode === "selected" ? (
+                        <p className="text-sm text-gray-700">
+                            You selected <b>{pendingLlmPayload.selectedCount}</b> transaction(s). LLM will process{" "}
+                            <b>{pendingLlmPayload.targetCount}</b> eligible transaction(s) and skip{" "}
+                            <b>{pendingLlmPayload.skippedCount}</b>.
+                        </p>
+                    ) : (
+                        <p className="text-sm text-gray-700">
+                            LLM will process all eligible transactions for this client (uncategorized and non-split).
+                        </p>
+                    )}
+
+                    <div className="max-h-56 overflow-y-auto rounded-md border border-gray-200 bg-white">
+                        <div className="overflow-x-auto">
+                            <div className="min-w-[760px]">
+                                <div className="grid grid-cols-[96px_1.7fr_1fr_100px] gap-3 border-b border-gray-200 bg-gray-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-600">
+                                    <span>Date</span>
+                                    <span>Description</span>
+                                    <span>Account</span>
+                                    <span className="text-right">Amount</span>
+                                </div>
+                                <ul>
+                                    {pendingLlmPreviewEntries.map((entry, index) => (
+                                        <li
+                                            key={`llm-preview-${entry.id}`}
+                                            className={`grid grid-cols-[96px_1.7fr_1fr_100px] gap-3 px-3 py-2 text-xs text-gray-700 ${
+                                                index % 2 === 0 ? "bg-white" : "bg-gray-50"
+                                            }`}
+                                        >
+                                            <span className="whitespace-nowrap">{String(entry.date || "").split("-").reverse().join("/")}</span>
+                                            <span className="truncate">{entry.description || "No description"}</span>
+                                            <span className="truncate">{entry.account || "No account"}</span>
+                                            <span className="text-right tabular-nums">${Number(entry.amount || 0).toFixed(2)}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        </div>
+                        {pendingLlmPayload?.mode === "all_client" && (
+                            <p className="border-t border-gray-200 px-3 py-2 text-xs text-gray-500">
+                                Preview from current page only. Backend will process all eligible transactions for this client.
+                            </p>
+                        )}
+                        {pendingLlmPreviewEntries.length === 0 && (
+                            <p className="px-3 py-4 text-center text-sm text-gray-500">
+                                No eligible transactions in this preview.
+                            </p>
+                        )}
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2">
+                        <button
+                            type="button"
+                            className="rounded-md border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                            onClick={() => setPendingLlmPayload(null)}
+                            disabled={isCategorizingWithLlm}
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            className="rounded-md border border-gray-900 bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-black disabled:opacity-60"
+                            onClick={confirmCategorizeWithLlm}
+                            disabled={
+                                isCategorizingWithLlm ||
+                                (pendingLlmPayload?.mode === "selected" && Number(pendingLlmPayload?.targetCount || 0) <= 0)
+                            }
+                        >
+                            {isCategorizingWithLlm ? "Categorizing..." : "Confirm"}
+                        </button>
+                    </div>
+                </div>
+            </PopupModal>
 
             <PopupModal
                 isOpen={showUploadModal}

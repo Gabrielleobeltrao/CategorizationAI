@@ -9,6 +9,9 @@ function LedgerEntryRow({
     account,
     category,
     amount,
+    llmProcessed = false,
+    llmStatus = "not_processed",
+    llmProcessedAt = null,
     isSplit = false,
     splitCount = 0,
     isEditing = false,
@@ -42,9 +45,13 @@ function LedgerEntryRow({
     const selectedAccountId = currentAccountId || fallbackAccount?.id || ""
     const currentCategory = shouldUseDraftCategory ? editingDraft?.category ?? category : category
     const currentAmount = isEditing && !isBatchEditing ? editingDraft?.amount ?? String(amount) : amount
+    const isLlmProcessed =
+        Boolean(llmProcessed) ||
+        Boolean(llmProcessedAt) ||
+        ["suggested", "empty", "error"].includes(String(llmStatus || "").toLowerCase())
 
     return (
-        <div className={`grid grid-cols-[24px_minmax(110px,0.7fr)_minmax(180px,2fr)_minmax(120px,1fr)_minmax(160px,1.3fr)_100px_96px] items-center gap-4 px-2 py-3 text-sm ${index % 2 === 0 ? 'bg-gray-100' : 'bg-white'}`}>
+        <div className={`grid grid-cols-[24px_minmax(110px,0.7fr)_minmax(180px,2fr)_minmax(120px,1fr)_minmax(160px,1.3fr)_16px_78px_92px] items-center gap-4 px-2 py-3 text-sm ${index % 2 === 0 ? 'bg-gray-100' : 'bg-white'}`}>
             <input
                 className="h-4 w-4 self-center m-0"
                 type="checkbox"
@@ -104,6 +111,7 @@ function LedgerEntryRow({
             ) : (
                 <h4>{account || "No account"}</h4>
             )}
+
             {isSplit ? (
                 <h4 className="text-xs font-semibold">
                     Split ({splitCount})
@@ -124,6 +132,8 @@ function LedgerEntryRow({
                         }}
                     >
                         <option value="">Uncategorized</option>
+                        <option value="Uncategorized income">Uncategorized income</option>
+                        <option value="Uncategorized expenses">Uncategorized expenses</option>
                         {categories.map((c) => (
                             <option key={c.id} value={c.name}>
                                 {c.name}
@@ -143,6 +153,20 @@ function LedgerEntryRow({
                     </svg>
                 </div>
             )}
+            <div className="flex justify-center">
+                {isLlmProcessed && (
+                    <span
+                        className="inline-flex items-center justify-center rounded-full bg-sky-100 p-1 text-sky-700"
+                        title="Processed by LLM"
+                        aria-label="Processed by LLM"
+                    >
+                        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="9" />
+                            <path d="m9 12 2 2 4-4" />
+                        </svg>
+                    </span>
+                )}
+            </div>
             {isEditing && !isBatchEditing ? (
                 <input
                     type="number"

@@ -10,12 +10,14 @@ export async function listTransactionsByClientId(clientId, options = {}) {
   const silentLoading = Boolean(options.silentLoading)
   const accountIds = Array.isArray(options.accountIds) ? options.accountIds : []
   const categoryIds = Array.isArray(options.categoryIds) ? options.categoryIds : []
-  const includeUncategorized = Boolean(options.includeUncategorized)
+  const includeUncategorizedIncome = Boolean(options.includeUncategorizedIncome)
+  const includeUncategorizedExpenses = Boolean(options.includeUncategorizedExpenses)
   const splitMode = String(options.splitMode || "all").trim().toLowerCase()
   const fromDate = String(options.fromDate || "").trim()
   const toDate = String(options.toDate || "").trim()
   const years = Array.isArray(options.years) ? options.years : []
   const months = Array.isArray(options.months) ? options.months : []
+  const llmProcessed = String(options.llmProcessed || "all").trim().toLowerCase()
   const minAmount = options.minAmount !== undefined ? String(options.minAmount).trim() : ""
   const maxAmount = options.maxAmount !== undefined ? String(options.maxAmount).trim() : ""
 
@@ -34,8 +36,11 @@ export async function listTransactionsByClientId(clientId, options = {}) {
   if (categoryIds.length > 0) {
     params.set("categoryIds", categoryIds.join(","))
   }
-  if (includeUncategorized) {
-    params.set("includeUncategorized", "true")
+  if (includeUncategorizedIncome) {
+    params.set("includeUncategorizedIncome", "true")
+  }
+  if (includeUncategorizedExpenses) {
+    params.set("includeUncategorizedExpenses", "true")
   }
   if (splitMode && splitMode !== "all") {
     params.set("splitMode", splitMode)
@@ -51,6 +56,9 @@ export async function listTransactionsByClientId(clientId, options = {}) {
   }
   if (months.length > 0) {
     params.set("months", months.join(","))
+  }
+  if (llmProcessed !== "all") {
+    params.set("llmProcessed", llmProcessed)
   }
   if (minAmount !== "") {
     params.set("minAmount", minAmount)
@@ -102,5 +110,16 @@ export async function createTransactionsBatch(transactions) {
   return api("/api/transactions/batch", {
     method: "POST",
     body: JSON.stringify({ transactions }),
+  })
+}
+
+export async function categorizeTransactionsWithLlm(payload) {
+  if (!payload || typeof payload !== "object") {
+    throw new Error("payload is required")
+  }
+
+  return api("/api/transactions/categorize-llm", {
+    method: "POST",
+    body: JSON.stringify(payload),
   })
 }

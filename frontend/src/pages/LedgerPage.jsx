@@ -25,14 +25,17 @@ import {
     updateTransactionById,
     deleteTransactionById,
     createTransactionsBatch,
+    categorizeTransactionsWithLlm,
 } from "../services/transactions.service"
 import { useNotification } from "../contexts/notification.context"
 
 const DEFAULT_TRANSACTIONS_FILTERS = {
     accountIds: [],
     categoryIds: [],
-    includeUncategorized: false,
+    includeUncategorizedIncome: false,
+    includeUncategorizedExpenses: false,
     splitMode: "all",
+    llmProcessed: "all",
     years: [],
     months: [],
     fromDate: "",
@@ -71,6 +74,11 @@ function mapTransaction(item = {}) {
         category: item?.category || "",
         amount: Number(item?.amount || 0),
         isSplit: Boolean(item?.isSplit),
+        llmProcessed: Boolean(item?.llmProcessed),
+        llmStatus: String(item?.llmStatus || "not_processed").trim().toLowerCase(),
+        llmProcessedAt: item?.llmProcessedAt || null,
+        llmCategorySuggestionId: item?.llmCategorySuggestionId || null,
+        llmCategorySuggestionName: item?.llmCategorySuggestionName || null,
         splits: Array.isArray(item?.splits)
             ? item.splits.map((split, index) => ({
                 id: split?.id || `${item?._id || item?.id || "tx"}-split-${index}`,
@@ -98,6 +106,7 @@ function LedgerPage() {
     const [transactionsHasMore, setTransactionsHasMore] = useState(false)
     const [isLoadingTransactions, setIsLoadingTransactions] = useState(false)
     const [isLoadingMoreTransactions, setIsLoadingMoreTransactions] = useState(false)
+    const [isCategorizingWithLlm, setIsCategorizingWithLlm] = useState(false)
     const [transactionsSearchTerm, setTransactionsSearchTerm] = useState("")
     const [transactionsFilters, setTransactionsFilters] = useState(DEFAULT_TRANSACTIONS_FILTERS)
     const [transactionsPeriodOptions, setTransactionsPeriodOptions] = useState({
@@ -189,7 +198,8 @@ function LedgerPage() {
         setTransactionsFilters({
             ...DEFAULT_TRANSACTIONS_FILTERS,
             categoryIds: matchedCategory?.id ? [matchedCategory.id] : [],
-            includeUncategorized: lowerCategory === "uncategorized",
+            includeUncategorizedIncome: lowerCategory === "uncategorized" || lowerCategory === "uncategorized income",
+            includeUncategorizedExpenses: lowerCategory === "uncategorized" || lowerCategory === "uncategorized expenses",
         })
         pageRef.current = 1
         setHasAppliedPreselectedCategory(true)
@@ -340,8 +350,10 @@ function LedgerPage() {
         setTransactionsFilters({
             accountIds: Array.isArray(nextFilters.accountIds) ? nextFilters.accountIds : [],
             categoryIds: Array.isArray(nextFilters.categoryIds) ? nextFilters.categoryIds : [],
-            includeUncategorized: Boolean(nextFilters.includeUncategorized),
+            includeUncategorizedIncome: Boolean(nextFilters.includeUncategorizedIncome),
+            includeUncategorizedExpenses: Boolean(nextFilters.includeUncategorizedExpenses),
             splitMode: String(nextFilters.splitMode || "all"),
+            llmProcessed: String(nextFilters.llmProcessed || "all"),
             years: Array.isArray(nextFilters.years) ? nextFilters.years : [],
             months: Array.isArray(nextFilters.months) ? nextFilters.months : [],
             fromDate: String(nextFilters.fromDate || ""),
@@ -390,6 +402,30 @@ function LedgerPage() {
         }
     }
 
+    const handleDeleteTransactionsBulk = async (ids = []) => {
+        const targetIds = Array.isArray(ids) ? ids.filter(Boolean) : []
+        if (targetIds.length === 0) return
+
+        try {
+            await Promise.all(targetIds.map((id) => deleteTransactionById(id)))
+            const targetSet = new Set(targetIds)
+            setLedgerEntries((current) => current.filter((item) => !targetSet.has(item.id)))
+            const periodOptions = await listTransactionPeriodOptions(clientId, { silentLoading: true })
+            setTransactionsPeriodOptions({
+                years: Array.isArray(periodOptions?.years) ? periodOptions.years : [],
+                months: Array.isArray(periodOptions?.months) ? periodOptions.months : [],
+            })
+            success(
+                targetIds.length === 1
+                    ? "Transaction deleted successfully"
+                    : `${targetIds.length} transactions deleted successfully`
+            )
+        } catch (err) {
+            error(err.message || "Failed to delete transactions")
+            throw err
+        }
+    }
+
     const handleImportTransactions = async (transactions, summary = null) => {
         const result = await createTransactionsBatch(transactions)
         const insertedCount = Number(result?.insertedCount || 0)
@@ -407,6 +443,47 @@ function LedgerPage() {
             months: Array.isArray(periodOptions?.months) ? periodOptions.months : [],
         })
         setTransactionsFilters((current) => ({ ...current }))
+    }
+
+    const handleCategorizeWithLlmPreview = (payload = {}) => {
+        const mode = payload?.mode === "selected" ? "selected" : "all_client"
+        const targetIds = Array.isArray(payload?.targetIds) ? payload.targetIds : []
+        const targetCount = Number(payload?.targetCount || 0)
+
+        if (mode === "selected" && targetCount <= 0) {
+            error("No eligible selected transactions. Split and categorized entries are skipped.")
+            return
+        }
+
+        setIsCategorizingWithLlm(true)
+
+        categorizeTransactionsWithLlm({
+            clientId,
+            mode,
+            transactionIds: mode === "selected" ? targetIds : [],
+        })
+            .then((result) => {
+                const processedCount = Number(result?.processedCount || 0)
+                const categorizedCount = Number(result?.categorizedCount || 0)
+                const emptyCount = Number(result?.emptyCount || 0)
+
+                if (processedCount <= 0) {
+                    error("No eligible transactions found to send to LLM.")
+                    return
+                }
+
+                success(
+                    `LLM done: ${processedCount} processed, ${categorizedCount} categorized, ${emptyCount} empty.`
+                )
+                pageRef.current = 1
+                setTransactionsFilters((current) => ({ ...current }))
+            })
+            .catch((err) => {
+                error(err.message || "Failed to categorize transactions with LLM")
+            })
+            .finally(() => {
+                setIsCategorizingWithLlm(false)
+            })
     }
 
     const handleCreateAccount = async (e) => {
@@ -574,7 +651,10 @@ function LedgerPage() {
                                     onSearchTermChange={setTransactionsSearchTerm}
                                     onUpdateEntry={handleUpdateTransaction}
                                     onDeleteEntry={handleDeleteTransaction}
+                                    onDeleteEntries={handleDeleteTransactionsBulk}
                                     onImportTransactions={handleImportTransactions}
+                                    onCategorizeWithLlm={handleCategorizeWithLlmPreview}
+                                    isCategorizingWithLlm={isCategorizingWithLlm}
                                     isLoading={isLoadingTransactions}
                                     isLoadingMore={isLoadingMoreTransactions}
                                     showUploadModal={showUploadModal}
