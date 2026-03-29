@@ -6,6 +6,15 @@ import {
   deleteClientById,
 } from "../repositories/clients.repository.js"
 
+function normalizeOwners(value) {
+  if (!Array.isArray(value)) return []
+  return [...new Set(
+    value
+      .map((item) => String(item || "").trim())
+      .filter(Boolean)
+  )]
+}
+
 export async function createClientService(input) {
   if (!input?.officeId) throw new Error("officeId is required")
   if (!input?.name) throw new Error("name is required")
@@ -13,6 +22,9 @@ export async function createClientService(input) {
   if (!input?.description) throw new Error("description is required")
   if (!input?.mainActivity) throw new Error("mainActivity is required")
   if (!input?.state) throw new Error("state is required")
+  if (input?.owners !== undefined && !Array.isArray(input.owners)) {
+    throw new Error("owners must be an array")
+  }
 
   return createClient({
     officeId: input.officeId,
@@ -21,6 +33,7 @@ export async function createClientService(input) {
     description: input.description.trim(),
     mainActivity: input.mainActivity.trim(),
     state: input.state.trim(),
+    owners: normalizeOwners(input.owners),
   })
 }
 
@@ -58,6 +71,13 @@ export async function updateClientByIdService(id, patch) {
     const state = patch.state.trim()
     if (!state) throw new Error("state cannot be empty")
     safePatch.state = state
+  }
+
+  if (patch.owners !== undefined) {
+    if (!Array.isArray(patch.owners)) {
+      throw new Error("owners must be an array")
+    }
+    safePatch.owners = normalizeOwners(patch.owners)
   }
 
   if (Object.keys(safePatch).length === 0) {

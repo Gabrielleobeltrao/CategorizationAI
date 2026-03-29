@@ -18,6 +18,7 @@ export async function createClient(input) {
         description: input.description,
         mainActivity: input.mainActivity,
         state: input.state,
+        owners: Array.isArray(input.owners) ? input.owners : [],
         createdAt: new Date(),
         updatedAt: new Date(),
     }
@@ -38,6 +39,7 @@ export async function updateClientById(id, patch) {
         description: patch.description,
         mainActivity: patch.mainActivity,
         state: patch.state,
+        owners: patch.owners,
         updatedAt: new Date(),
     }
 
@@ -72,6 +74,7 @@ export async function listClientsByOfficeId(officeId, options = {}) {
             { description: searchRegex },
             { mainActivity: searchRegex },
             { state: searchRegex },
+            { owners: searchRegex },
         ]
     }
 
