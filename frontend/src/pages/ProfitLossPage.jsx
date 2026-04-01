@@ -296,6 +296,14 @@ function ProfitLossPage() {
               <p className="text-sm text-gray-500 mt-1">
                 Period: {profitLoss ? formatPeriodLabel(profitLoss.period) : (isLoadingProfitLoss ? "Loading..." : "-")}
               </p>
+              <button
+                type="button"
+                className="mt-3 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-sm font-semibold text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={handleDownloadPdf}
+                disabled={!profitLoss}
+              >
+                Download PDF
+              </button>
             </div>
 
             <div className="w-full md:w-1/2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
@@ -456,14 +464,6 @@ function ProfitLossPage() {
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="text-lg font-semibold">Statement</h2>
                   <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      className="rounded-md border border-gray-200 bg-white px-2.5 py-1 text-sm font-semibold text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
-                      onClick={handleDownloadPdf}
-                      disabled={!profitLoss}
-                    >
-                      Download PDF
-                    </button>
                     <button
                       type="button"
                       className={`rounded-md border px-2.5 py-1 text-sm font-semibold ${
