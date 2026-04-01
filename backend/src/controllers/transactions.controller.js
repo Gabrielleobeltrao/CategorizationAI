@@ -6,6 +6,7 @@ import {
   deleteTransactionByIdService,
   categorizeTransactionsWithLlmService,
   categorizeZelleTransactionsService,
+  categorizeAllTransactionsWithLlmService,
 } from "../services/transactions.service.js"
 
 export async function createTransactionsBatchController(req, res) {
@@ -79,6 +80,17 @@ export async function categorizeTransactionsWithLlmController(req, res) {
 export async function categorizeZelleTransactionsController(req, res) {
   try {
     const result = await categorizeZelleTransactionsService(req.body)
+    return res.status(200).json(result)
+  } catch (error) {
+    return res.status(400).json({
+      message: error.message,
+    })
+  }
+}
+
+export async function categorizeAllTransactionsWithLlmController(req, res) {
+  try {
+    const result = await categorizeAllTransactionsWithLlmService(req.body)
     return res.status(200).json(result)
   } catch (error) {
     return res.status(400).json({

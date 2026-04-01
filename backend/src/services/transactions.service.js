@@ -595,3 +595,16 @@ export async function categorizeZelleTransactionsService(input) {
     subCount,
   }
 }
+
+export async function categorizeAllTransactionsWithLlmService(input) {
+  const zelle = await categorizeZelleTransactionsService(input)
+  const llm = await categorizeTransactionsWithLlmService(input)
+
+  return {
+    mode: llm.mode || zelle.mode || String(input?.mode || "all_client"),
+    requestedCount: Number(llm.requestedCount || zelle.requestedCount || 0),
+    totalProcessedCount: Number(zelle.processedCount || 0) + Number(llm.processedCount || 0),
+    zelle,
+    llm,
+  }
+}

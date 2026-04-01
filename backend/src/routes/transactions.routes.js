@@ -7,7 +7,13 @@ import {
   deleteTransactionByIdController,
   categorizeTransactionsWithLlmController,
   categorizeZelleTransactionsController,
+  categorizeAllTransactionsWithLlmController,
 } from "../controllers/transactions.controller.js"
+import {
+  createCategorizationJobController,
+  getCategorizationJobByIdController,
+  listCategorizationJobsController,
+} from "../controllers/categorizationJob.controller.js"
 import { requireAuth } from "../middlewares/requireAuth.js"
 import {
   validateObjectIdParam,
@@ -35,6 +41,39 @@ router.post(
   validateObjectIdBody("clientId"),
   ensureResourceExists({ collection: "clients", from: "body", field: "clientId", assignKey: "client" }),
   categorizeTransactionsWithLlmController
+)
+
+router.post(
+  "/transactions/categorize-all-llm",
+  requireAuth,
+  requirePermission("transactions:update"),
+  validateObjectIdBody("clientId"),
+  ensureResourceExists({ collection: "clients", from: "body", field: "clientId", assignKey: "client" }),
+  categorizeAllTransactionsWithLlmController
+)
+
+router.post(
+  "/transactions/categorize-all-llm/jobs",
+  requireAuth,
+  requirePermission("transactions:update"),
+  validateObjectIdBody("clientId"),
+  ensureResourceExists({ collection: "clients", from: "body", field: "clientId", assignKey: "client" }),
+  createCategorizationJobController
+)
+
+router.get(
+  "/transactions/categorize-all-llm/jobs",
+  requireAuth,
+  requirePermission("transactions:read"),
+  listCategorizationJobsController
+)
+
+router.get(
+  "/transactions/categorize-all-llm/jobs/:jobId",
+  requireAuth,
+  requirePermission("transactions:read"),
+  validateObjectIdParam("jobId"),
+  getCategorizationJobByIdController
 )
 
 router.post(
