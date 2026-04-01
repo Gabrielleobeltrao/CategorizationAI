@@ -23,3 +23,14 @@ export function signOut() {
     method: "POST",
   })
 }
+
+export function getMyProfile() {
+  return api("/api/user-profiles/me")
+}
+
+export function completeMyPasswordReset(newPassword) {
+  return api("/api/user-profiles/me/complete-password-reset", {
+    method: "POST",
+    body: JSON.stringify({ newPassword }),
+  })
+}

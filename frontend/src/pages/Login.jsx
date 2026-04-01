@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { signIn } from "../services/auth.service"
+import { getMyProfile, signIn } from "../services/auth.service"
 import { useNotification } from "../contexts/notification.context"
 
 function Login() {
@@ -16,6 +16,11 @@ function Login() {
             try {
                 await signIn(email, password)
                 success("Login successful")
+                const profile = await getMyProfile().catch(() => null)
+                if (profile?.mustChangePassword) {
+                    navigate("/update-password")
+                    return
+                }
                 navigate("/home")
             } catch (err) {
                 error(err.message || "Failed to login")

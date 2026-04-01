@@ -8,6 +8,7 @@ import LedgerPage from './pages/LedgerPage.jsx'
 import ClientsPage from './pages/ClientsPage.jsx'
 import EmployeesPage from './pages/EmployeesPage.jsx'
 import ProfitLossPage from './pages/ProfitLossPage.jsx'
+import UpdatePassword from './pages/UpdatePassword.jsx'
 import AppShell from './components/layout/AppShell.jsx'
 import { NotificationProvider } from './contexts/notification.context.jsx'
 import { CategorizationJobsProvider } from './contexts/categorizationJobs.context.jsx'
@@ -34,6 +35,15 @@ function App() {
           <Route
             path="/register"
             element={<Register />}
+          />
+
+          <Route
+            path="/update-password"
+            element={
+              <ProtectedRoute>
+                <UpdatePassword />
+              </ProtectedRoute>
+            }
           />
 
           <Route

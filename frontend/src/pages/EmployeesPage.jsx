@@ -7,6 +7,7 @@ import {
     getMyUserProfile,
     listAvailableRoles,
     listEmployeesByOfficeId,
+    resetEmployeePasswordById,
     updateEmployeeById,
 } from "../services/employees.service"
 import { useNotification } from "../contexts/notification.context"
@@ -37,6 +38,8 @@ function EmployeesPage() {
     const [searchTerm, setSearchTerm] = useState("")
     const [roleFilter, setRoleFilter] = useState("all")
     const [employeeToDelete, setEmployeeToDelete] = useState(null)
+    const [employeeToResetPassword, setEmployeeToResetPassword] = useState(null)
+    const [resetPasswordResult, setResetPasswordResult] = useState(null)
     const [employees, setEmployees] = useState([])
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [isLoadingEmployees, setIsLoadingEmployees] = useState(false)
@@ -278,6 +281,38 @@ function EmployeesPage() {
         }
     }
 
+    const handleResetEmployeePassword = async () => {
+        if (!employeeToResetPassword?.id) return
+        try {
+            setIsSubmitting(true)
+            const result = await resetEmployeePasswordById(employeeToResetPassword.id)
+            setEmployeeToResetPassword(null)
+            setResetPasswordResult({
+                name: employeeToResetPassword.name,
+                email: result?.email || employeeToResetPassword.email,
+                temporaryPassword: result?.temporaryPassword || "",
+            })
+            success("Temporary password generated")
+            setRefreshKey((current) => current + 1)
+        } catch (err) {
+            error(err.message || "Failed to reset employee password")
+        } finally {
+            setIsSubmitting(false)
+        }
+    }
+
+    const handleCopyTemporaryPassword = async () => {
+        const temp = String(resetPasswordResult?.temporaryPassword || "")
+        if (!temp) return
+
+        try {
+            await navigator.clipboard.writeText(temp)
+            success("Temporary password copied")
+        } catch {
+            error("Failed to copy temporary password")
+        }
+    }
+
     const isCurrentUser = (employeeItem) => {
         const currentEmail = String(currentUserProfile?.email || "").toLowerCase()
         const itemEmail = String(employeeItem.email || "").toLowerCase()
@@ -458,6 +493,7 @@ function EmployeesPage() {
                                                 <div className="flex items-center gap-2 opacity-0" aria-hidden="true">
                                                     <span className="h-4 w-4" />
                                                     <span className="h-4 w-4" />
+                                                    <span className="h-4 w-4" />
                                                 </div>
                                             )}
                                             {!isCurrent && (
@@ -502,6 +538,18 @@ function EmployeesPage() {
                                                                 <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                                                     <path d="M12 20h9" />
                                                                     <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5z" />
+                                                                </svg>
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-amber-700"
+                                                                onClick={() => setEmployeeToResetPassword(employeeItem)}
+                                                                title="Reset password"
+                                                                aria-label="Reset password"
+                                                            >
+                                                                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                                    <rect x="3" y="11" width="18" height="10" rx="2" ry="2" />
+                                                                    <path d="M7 11V8a5 5 0 0 1 10 0v3" />
                                                                 </svg>
                                                             </button>
                                                             <button
@@ -620,6 +668,54 @@ function EmployeesPage() {
                     onClose={() => setEmployeeToDelete(null)}
                     isLoading={isSubmitting}
                 />
+
+                <ConfirmModal
+                    isOpen={Boolean(employeeToResetPassword)}
+                    title="Reset Employee Password"
+                    message={`Generate a temporary password for ${employeeToResetPassword?.name || "this employee"}?`}
+                    confirmLabel="Generate Temporary Password"
+                    onConfirm={handleResetEmployeePassword}
+                    onClose={() => setEmployeeToResetPassword(null)}
+                    isLoading={isSubmitting}
+                />
+
+                <PopupModal
+                    isOpen={Boolean(resetPasswordResult)}
+                    title="Temporary Password"
+                    onClose={() => setResetPasswordResult(null)}
+                    maxWidthClass="max-w-lg"
+                >
+                    <div className="flex flex-col gap-4">
+                        <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm">
+                            <p className="font-medium text-gray-900">{resetPasswordResult?.name}</p>
+                            <p className="text-gray-600">{resetPasswordResult?.email}</p>
+                        </div>
+                        <div className="rounded-xl border border-gray-200 bg-white p-3">
+                            <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">Temporary password</p>
+                            <div className="flex items-start justify-between gap-2">
+                                <p className="break-all font-mono text-base text-gray-900">
+                                    {resetPasswordResult?.temporaryPassword}
+                                </p>
+                                <button
+                                    type="button"
+                                    className="shrink-0 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
+                                    onClick={handleCopyTemporaryPassword}
+                                >
+                                    Copy
+                                </button>
+                            </div>
+                        </div>
+                        <div className="flex items-center justify-end gap-2">
+                            <button
+                                type="button"
+                                className="rounded-md border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+                                onClick={() => setResetPasswordResult(null)}
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </PopupModal>
             </div>
         </section>
     )

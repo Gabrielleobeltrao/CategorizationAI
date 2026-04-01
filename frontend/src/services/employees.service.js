@@ -73,3 +73,12 @@ export async function deleteEmployeeById(employeeId) {
     method: "DELETE",
   })
 }
+
+export async function resetEmployeePasswordById(employeeId) {
+  const id = String(employeeId || "").trim()
+  if (!id) throw new Error("employeeId is required")
+
+  return api(`/api/user-profiles/${id}/reset-password-temp`, {
+    method: "POST",
+  })
+}
