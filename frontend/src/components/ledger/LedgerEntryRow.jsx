@@ -12,6 +12,7 @@ function LedgerEntryRow({
     llmProcessed = false,
     llmStatus = "not_processed",
     llmProcessedAt = null,
+    isLlmProcessing = false,
     isSplit = false,
     splitCount = 0,
     isEditing = false,
@@ -154,7 +155,17 @@ function LedgerEntryRow({
                 </div>
             )}
             <div className="flex justify-center">
-                {isLlmProcessed && (
+                {isLlmProcessing ? (
+                    <span
+                        className="inline-flex items-center justify-center rounded-full bg-amber-100 p-1 text-amber-700"
+                        title="Processing by LLM"
+                        aria-label="Processing by LLM"
+                    >
+                        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 animate-spin" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M21 12a9 9 0 1 1-9-9" />
+                        </svg>
+                    </span>
+                ) : isLlmProcessed && (
                     <span
                         className="inline-flex items-center justify-center rounded-full bg-sky-100 p-1 text-sky-700"
                         title="Processed by LLM"

@@ -281,6 +281,7 @@ function LedgerEntriesTable({
     isLoading = false,
     isLoadingMore,
     isCategorizingWithLlm = false,
+    pendingLlmEntryIds = [],
     showUploadModal = false,
     onCloseUploadModal,
     onCategorizeWithLlm,
@@ -322,6 +323,10 @@ function LedgerEntriesTable({
     const scrollContainerRef = useRef(null)
     const selectAllRef = useRef(null)
     const csvFileInputRef = useRef(null)
+    const pendingLlmEntryIdSet = useMemo(
+        () => new Set(Array.isArray(pendingLlmEntryIds) ? pendingLlmEntryIds : []),
+        [pendingLlmEntryIds]
+    )
 
     const visibleEntryIds = useMemo(
         () => ledgerEntries.map((entry) => entry.id),
@@ -1469,6 +1474,7 @@ function LedgerEntriesTable({
                                 llmProcessed={entry.llmProcessed}
                                 llmStatus={entry.llmStatus}
                                 llmProcessedAt={entry.llmProcessedAt}
+                                isLlmProcessing={pendingLlmEntryIdSet.has(entry.id)}
                                 isEditing={editingTargetIds.includes(entry.id)}
                                 editingDraft={editingDraft}
                                 onStartEdit={() => startEditEntry(entry)}

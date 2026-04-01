@@ -133,6 +133,29 @@ function mapTransaction(item = {}) {
     }
 }
 
+function isUncategorizedEntry(entry = {}) {
+    const categoryId = String(entry?.categoryId || "").trim()
+    const categoryName = String(entry?.category || "").trim().toLowerCase()
+    if (!categoryId) return true
+    return categoryName === "uncategorized income" || categoryName === "uncategorized expenses"
+}
+
+function isSplitEntry(entry = {}) {
+    return Boolean(entry?.isSplit) || (Array.isArray(entry?.splits) && entry.splits.length > 1)
+}
+
+function isLlmAlreadyProcessed(entry = {}) {
+    return (
+        Boolean(entry?.llmProcessed) ||
+        Boolean(entry?.llmProcessedAt) ||
+        ["suggested", "empty", "error"].includes(String(entry?.llmStatus || "").toLowerCase())
+    )
+}
+
+function isEligibleForAiProcessing(entry = {}) {
+    return !isSplitEntry(entry) && !isLlmAlreadyProcessed(entry) && isUncategorizedEntry(entry)
+}
+
 function LedgerPage() {
     const { clientId: routeClientId } = useParams()
     const [searchParams] = useSearchParams()
@@ -152,6 +175,7 @@ function LedgerPage() {
     const [isLoadingTransactions, setIsLoadingTransactions] = useState(false)
     const [isLoadingMoreTransactions, setIsLoadingMoreTransactions] = useState(false)
     const [isCategorizingWithLlm, setIsCategorizingWithLlm] = useState(false)
+    const [pendingLlmEntryIds, setPendingLlmEntryIds] = useState([])
     const [transactionsSearchTerm, setTransactionsSearchTerm] = useState(persistedState.searchTerm)
     const [transactionsFilters, setTransactionsFilters] = useState(persistedState.filters)
     const [transactionsPeriodOptions, setTransactionsPeriodOptions] = useState({
@@ -543,6 +567,15 @@ function LedgerPage() {
 
         setIsCategorizingWithLlm(true)
 
+        if (mode === "selected") {
+            setPendingLlmEntryIds(targetIds)
+        } else {
+            const visibleEligibleIds = ledgerEntries
+                .filter((entry) => isEligibleForAiProcessing(entry))
+                .map((entry) => entry.id)
+            setPendingLlmEntryIds(visibleEligibleIds)
+        }
+
         startCategorizationJob({
             clientId,
             mode,
@@ -553,11 +586,51 @@ function LedgerPage() {
             })
             .catch((err) => {
                 error(err.message || "Failed to enqueue AI categorization")
+                setPendingLlmEntryIds([])
             })
             .finally(() => {
                 setIsCategorizingWithLlm(false)
             })
     }
+
+    useEffect(() => {
+        if (!clientId || !Array.isArray(jobs)) {
+            setPendingLlmEntryIds([])
+            return
+        }
+
+        const activeClientJobs = jobs.filter((job) => {
+            const status = String(job?.status || "")
+            const jobClientId = String(job?.clientId || "")
+            return (
+                jobClientId === String(clientId) &&
+                (status === "queued" || status === "running")
+            )
+        })
+
+        if (activeClientJobs.length === 0) {
+            setPendingLlmEntryIds([])
+            return
+        }
+
+        const nextIds = new Set()
+
+        activeClientJobs.forEach((job) => {
+            const mode = String(job?.mode || "all_client")
+            const transactionIds = Array.isArray(job?.transactionIds) ? job.transactionIds : []
+
+            if (mode === "selected" && transactionIds.length > 0) {
+                transactionIds.forEach((id) => nextIds.add(String(id)))
+                return
+            }
+
+            ledgerEntries
+                .filter((entry) => isEligibleForAiProcessing(entry))
+                .forEach((entry) => nextIds.add(String(entry.id)))
+        })
+
+        setPendingLlmEntryIds(Array.from(nextIds))
+    }, [jobs, clientId, ledgerEntries])
 
     useEffect(() => {
         if (!clientId || !Array.isArray(jobs) || jobs.length === 0) return
@@ -792,6 +865,7 @@ function LedgerPage() {
                                     onImportTransactions={handleImportTransactions}
                                     onCategorizeWithLlm={handleCategorizeWithLlmPreview}
                                     isCategorizingWithLlm={isCategorizingWithLlm}
+                                    pendingLlmEntryIds={pendingLlmEntryIds}
                                     isLoading={isLoadingTransactions}
                                     isLoadingMore={isLoadingMoreTransactions}
                                     showUploadModal={showUploadModal}
