@@ -6,6 +6,7 @@ import {
   getCategorizationJobById,
   listCategorizationJobs,
 } from "../services/categorizationJobs.service"
+import { getClientById } from "../services/clients.service"
 
 const CategorizationJobsContext = createContext(null)
 
@@ -49,11 +50,14 @@ function upsertJobs(currentJobs, incomingJobs) {
     .slice(0, 20)
 }
 
-function CategorizationJobsQueue({ jobs = [] }) {
-  if (!jobs.length) return null
+function CategorizationJobsQueue({ jobs = [], clientNameById = {} }) {
+  const activeJobs = jobs.filter(
+    (job) => !TERMINAL_STATUSES.has(String(job?.status || ""))
+  )
+  if (!activeJobs.length) return null
 
   return (
-    <div className="fixed right-4 top-20 z-[1000] w-[340px] max-w-[calc(100vw-24px)]">
+    <div className="fixed right-4 top-4 z-[1000] w-[340px] max-w-[calc(100vw-24px)]">
       <div className="rounded-xl border border-gray-200 bg-white shadow-xl">
         <div className="border-b border-gray-100 px-3 py-2">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-600">
@@ -62,19 +66,20 @@ function CategorizationJobsQueue({ jobs = [] }) {
         </div>
         <div className="max-h-[48vh] overflow-y-auto p-2">
           <ul className="space-y-2">
-            {jobs.map((job) => {
+            {activeJobs.map((job) => {
               const id = getJobId(job)
               const status = String(job?.status || "")
               const total = Number(job?.total || 0)
               const processed = Number(job?.processed || 0)
               const pct = Number(job?.progressPct || 0)
               const clientId = String(job?.clientId || "").trim()
+              const clientName = String(clientNameById[clientId] || "").trim()
 
               return (
                 <li key={id} className="rounded-lg border border-gray-100 bg-gray-50 p-2">
                   <div className="flex items-center justify-between gap-2">
                     <p className="truncate text-xs font-medium text-gray-700">
-                      Categorizing client {clientId || "n/a"}
+                      Categorizing {clientName || "Client"}
                     </p>
                     <span
                       className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
@@ -115,7 +120,9 @@ function CategorizationJobsQueue({ jobs = [] }) {
 export function CategorizationJobsProvider({ children }) {
   const { success, error } = useNotification()
   const [jobs, setJobs] = useState([])
+  const [clientNameById, setClientNameById] = useState({})
   const notifiedIdsRef = useRef(new Set())
+  const loadingClientIdsRef = useRef(new Set())
 
   const refreshJobs = useCallback(async () => {
     try {
@@ -185,6 +192,42 @@ export function CategorizationJobsProvider({ children }) {
     })
   }, [jobs, success, error])
 
+  useEffect(() => {
+    const missingClientIds = [...new Set(
+      jobs
+        .map((job) => String(job?.clientId || "").trim())
+        .filter(Boolean)
+        .filter((clientId) => !clientNameById[clientId] && !loadingClientIdsRef.current.has(clientId))
+    )]
+
+    if (missingClientIds.length === 0) return
+
+    missingClientIds.forEach((clientId) => loadingClientIdsRef.current.add(clientId))
+
+    Promise.all(
+      missingClientIds.map(async (clientId) => {
+        try {
+          const client = await getClientById(clientId)
+          return { clientId, clientName: String(client?.name || "").trim() || clientId }
+        } catch {
+          return { clientId, clientName: clientId }
+        }
+      })
+    )
+      .then((results) => {
+        setClientNameById((current) => {
+          const next = { ...current }
+          results.forEach(({ clientId, clientName }) => {
+            next[clientId] = clientName
+          })
+          return next
+        })
+      })
+      .finally(() => {
+        missingClientIds.forEach((clientId) => loadingClientIdsRef.current.delete(clientId))
+      })
+  }, [jobs, clientNameById])
+
   const startCategorizationJob = useCallback(async (payload) => {
     const result = await createCategorizationJob(payload)
     const jobId = String(result?.jobId || "")
@@ -222,7 +265,7 @@ export function CategorizationJobsProvider({ children }) {
   return (
     <CategorizationJobsContext.Provider value={value}>
       {children}
-      <CategorizationJobsQueue jobs={jobs} />
+      <CategorizationJobsQueue jobs={jobs} clientNameById={clientNameById} />
     </CategorizationJobsContext.Provider>
   )
 }

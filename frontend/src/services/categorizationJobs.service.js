@@ -8,6 +8,7 @@ export async function createCategorizationJob(payload) {
   return api("/api/transactions/categorize-all-llm/jobs", {
     method: "POST",
     body: JSON.stringify(payload),
+    silentLoading: true,
   })
 }
 
@@ -30,4 +31,3 @@ export async function listCategorizationJobs(options = {}) {
     silentLoading: true,
   })
 }
-
