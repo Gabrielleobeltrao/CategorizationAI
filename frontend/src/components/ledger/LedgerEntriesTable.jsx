@@ -281,11 +281,9 @@ function LedgerEntriesTable({
     isLoading = false,
     isLoadingMore,
     isCategorizingWithLlm = false,
-    isCategorizingZelle = false,
     showUploadModal = false,
     onCloseUploadModal,
     onCategorizeWithLlm,
-    onCategorizeZelle,
 }) {
     const [editingTargetIds, setEditingTargetIds] = useState([])
     const [editingDraft, setEditingDraft] = useState(null)
@@ -294,7 +292,6 @@ function LedgerEntriesTable({
     const [isApplyingCategoryBulk, setIsApplyingCategoryBulk] = useState(false)
     const [pendingDeleteIds, setPendingDeleteIds] = useState([])
     const [pendingLlmPayload, setPendingLlmPayload] = useState(null)
-    const [pendingZellePayload, setPendingZellePayload] = useState(null)
     const [isDeletingEntries, setIsDeletingEntries] = useState(false)
     const [splittingEntryId, setSplittingEntryId] = useState("")
     const [splitDraftRows, setSplitDraftRows] = useState([])
@@ -369,13 +366,13 @@ function LedgerEntriesTable({
                 .map((entry) => entry.id),
         [ledgerEntries]
     )
-    const eligibleEntryIdSet = useMemo(
-        () => new Set(eligibleEntryIds),
-        [eligibleEntryIds]
+    const combinedEligibleEntryIds = useMemo(
+        () => [...new Set([...eligibleEntryIds, ...eligibleZelleEntryIds])],
+        [eligibleEntryIds, eligibleZelleEntryIds]
     )
-    const eligibleZelleEntryIdSet = useMemo(
-        () => new Set(eligibleZelleEntryIds),
-        [eligibleZelleEntryIds]
+    const combinedEligibleEntryIdSet = useMemo(
+        () => new Set(combinedEligibleEntryIds),
+        [combinedEligibleEntryIds]
     )
 
     const allVisibleSelected = useMemo(
@@ -405,18 +402,8 @@ function LedgerEntriesTable({
             return ledgerEntries.filter((entry) => targetIdsSet.has(entry.id)).slice(0, 8)
         }
 
-        return ledgerEntries.filter((entry) => eligibleEntryIdSet.has(entry.id)).slice(0, 8)
-    }, [pendingLlmPayload, ledgerEntries, eligibleEntryIdSet])
-    const pendingZellePreviewEntries = useMemo(() => {
-        if (!pendingZellePayload) return []
-
-        if (pendingZellePayload.mode === "selected") {
-            const targetIdsSet = new Set(pendingZellePayload.targetIds || [])
-            return ledgerEntries.filter((entry) => targetIdsSet.has(entry.id)).slice(0, 8)
-        }
-
-        return ledgerEntries.filter((entry) => eligibleZelleEntryIdSet.has(entry.id)).slice(0, 8)
-    }, [pendingZellePayload, ledgerEntries, eligibleZelleEntryIdSet])
+        return ledgerEntries.filter((entry) => combinedEligibleEntryIdSet.has(entry.id)).slice(0, 8)
+    }, [pendingLlmPayload, ledgerEntries, combinedEligibleEntryIdSet])
 
     useEffect(() => {
         if (!selectAllRef.current) return
@@ -425,7 +412,7 @@ function LedgerEntriesTable({
 
     const handleCategorizeWithLlmClick = () => {
         const hasSelection = effectiveSelectedEntryIds.length > 0
-        const selectedEligibleIds = effectiveSelectedEntryIds.filter((id) => eligibleEntryIdSet.has(id))
+        const selectedEligibleIds = effectiveSelectedEntryIds.filter((id) => combinedEligibleEntryIdSet.has(id))
         const targetIds = hasSelection ? selectedEligibleIds : []
         const skippedCount = hasSelection
             ? effectiveSelectedEntryIds.length - selectedEligibleIds.length
@@ -436,7 +423,7 @@ function LedgerEntriesTable({
             targetIds,
             targetCount: targetIds.length,
             selectedCount: effectiveSelectedEntryIds.length,
-            eligibleCount: eligibleEntryIds.length,
+            eligibleCount: combinedEligibleEntryIds.length,
             totalCount: ledgerEntries.length,
             skippedCount,
         })
@@ -446,31 +433,6 @@ function LedgerEntriesTable({
         if (!pendingLlmPayload) return
         onCategorizeWithLlm?.(pendingLlmPayload)
         setPendingLlmPayload(null)
-    }
-
-    const handleCategorizeZelleClick = () => {
-        const hasSelection = effectiveSelectedEntryIds.length > 0
-        const selectedEligibleIds = effectiveSelectedEntryIds.filter((id) => eligibleZelleEntryIdSet.has(id))
-        const targetIds = hasSelection ? selectedEligibleIds : []
-        const skippedCount = hasSelection
-            ? effectiveSelectedEntryIds.length - selectedEligibleIds.length
-            : 0
-
-        setPendingZellePayload({
-            mode: hasSelection ? "selected" : "all_client",
-            targetIds,
-            targetCount: targetIds.length,
-            selectedCount: effectiveSelectedEntryIds.length,
-            eligibleCount: eligibleZelleEntryIds.length,
-            totalCount: ledgerEntries.length,
-            skippedCount,
-        })
-    }
-
-    const confirmCategorizeZelle = () => {
-        if (!pendingZellePayload) return
-        onCategorizeZelle?.(pendingZellePayload)
-        setPendingZellePayload(null)
     }
 
     const toggleSelectAllVisible = (isChecked) => {
@@ -1115,25 +1077,7 @@ function LedgerEntriesTable({
                                     <path d="M12 3v18" />
                                     <path d="M3 12h18" />
                                 </svg>
-                                <span>{isCategorizingWithLlm ? "Categorizing..." : "Categorize with LLM"}</span>
-                            </button>
-
-                            <button
-                                type="button"
-                                className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-2 text-sm font-medium ${
-                                    isCategorizingZelle
-                                        ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
-                                        : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-                                }`}
-                                onClick={handleCategorizeZelleClick}
-                                disabled={isCategorizingZelle}
-                            >
-                                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M3 7h18" />
-                                    <path d="M3 12h18" />
-                                    <path d="M3 17h18" />
-                                </svg>
-                                <span>{isCategorizingZelle ? "Categorizing..." : "Categorize Zelle"}</span>
+                                <span>{isCategorizingWithLlm ? "Categorizing..." : "Categorize with AI"}</span>
                             </button>
 
                             {showFilterModal && (
@@ -1837,7 +1781,7 @@ function LedgerEntriesTable({
 
             <PopupModal
                 isOpen={Boolean(pendingLlmPayload)}
-                title="Confirm LLM Categorization"
+                title="Confirm AI Categorization"
                 onClose={() => {
                     if (isCategorizingWithLlm) return
                     setPendingLlmPayload(null)
@@ -1847,13 +1791,13 @@ function LedgerEntriesTable({
                 <div className="flex flex-col gap-4">
                     {pendingLlmPayload?.mode === "selected" ? (
                         <p className="text-sm text-gray-700">
-                            You selected <b>{pendingLlmPayload.selectedCount}</b> transaction(s). LLM will process{" "}
+                            You selected <b>{pendingLlmPayload.selectedCount}</b> transaction(s). AI flow will process{" "}
                             <b>{pendingLlmPayload.targetCount}</b> eligible transaction(s) and skip{" "}
                             <b>{pendingLlmPayload.skippedCount}</b>.
                         </p>
                     ) : (
                         <p className="text-sm text-gray-700">
-                            LLM will process all eligible transactions for this client (uncategorized and non-split).
+                            AI flow will process all eligible transactions for this client (Zelle + regular uncategorized, non-split).
                         </p>
                     )}
 
@@ -1914,90 +1858,6 @@ function LedgerEntriesTable({
                             }
                         >
                             {isCategorizingWithLlm ? "Categorizing..." : "Confirm"}
-                        </button>
-                    </div>
-                </div>
-            </PopupModal>
-
-            <PopupModal
-                isOpen={Boolean(pendingZellePayload)}
-                title="Confirm Zelle Categorization"
-                onClose={() => {
-                    if (isCategorizingZelle) return
-                    setPendingZellePayload(null)
-                }}
-                maxWidthClass="max-w-3xl"
-            >
-                <div className="flex flex-col gap-4">
-                    {pendingZellePayload?.mode === "selected" ? (
-                        <p className="text-sm text-gray-700">
-                            You selected <b>{pendingZellePayload.selectedCount}</b> transaction(s). Zelle rule will process{" "}
-                            <b>{pendingZellePayload.targetCount}</b> eligible transaction(s) and skip{" "}
-                            <b>{pendingZellePayload.skippedCount}</b>.
-                        </p>
-                    ) : (
-                        <p className="text-sm text-gray-700">
-                            Zelle rule will process all eligible Zelle transactions for this client.
-                        </p>
-                    )}
-
-                    <div className="max-h-56 overflow-y-auto rounded-md border border-gray-200 bg-white">
-                        <div className="overflow-x-auto">
-                            <div className="min-w-[760px]">
-                                <div className="grid grid-cols-[96px_1.7fr_1fr_100px] gap-3 border-b border-gray-200 bg-gray-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-600">
-                                    <span>Date</span>
-                                    <span>Description</span>
-                                    <span>Account</span>
-                                    <span className="text-right">Amount</span>
-                                </div>
-                                <ul>
-                                    {pendingZellePreviewEntries.map((entry, index) => (
-                                        <li
-                                            key={`zelle-preview-${entry.id}`}
-                                            className={`grid grid-cols-[96px_1.7fr_1fr_100px] gap-3 px-3 py-2 text-xs text-gray-700 ${
-                                                index % 2 === 0 ? "bg-white" : "bg-gray-50"
-                                            }`}
-                                        >
-                                            <span className="whitespace-nowrap">{String(entry.date || "").split("-").reverse().join("/")}</span>
-                                            <span className="truncate">{entry.description || "No description"}</span>
-                                            <span className="truncate">{entry.account || "No account"}</span>
-                                            <span className="text-right tabular-nums">${Number(entry.amount || 0).toFixed(2)}</span>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                        </div>
-                        {pendingZellePayload?.mode === "all_client" && (
-                            <p className="border-t border-gray-200 px-3 py-2 text-xs text-gray-500">
-                                Preview from current page only. Backend will process all eligible Zelle transactions for this client.
-                            </p>
-                        )}
-                        {pendingZellePreviewEntries.length === 0 && (
-                            <p className="px-3 py-4 text-center text-sm text-gray-500">
-                                No eligible Zelle transactions in this preview.
-                            </p>
-                        )}
-                    </div>
-
-                    <div className="flex items-center justify-end gap-2">
-                        <button
-                            type="button"
-                            className="rounded-md border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-                            onClick={() => setPendingZellePayload(null)}
-                            disabled={isCategorizingZelle}
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="button"
-                            className="rounded-md border border-gray-900 bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-black disabled:opacity-60"
-                            onClick={confirmCategorizeZelle}
-                            disabled={
-                                isCategorizingZelle ||
-                                (pendingZellePayload?.mode === "selected" && Number(pendingZellePayload?.targetCount || 0) <= 0)
-                            }
-                        >
-                            {isCategorizingZelle ? "Categorizing..." : "Confirm"}
                         </button>
                     </div>
                 </div>

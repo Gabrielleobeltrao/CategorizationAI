@@ -10,14 +10,16 @@ import EmployeesPage from './pages/EmployeesPage.jsx'
 import ProfitLossPage from './pages/ProfitLossPage.jsx'
 import AppShell from './components/layout/AppShell.jsx'
 import { NotificationProvider } from './contexts/notification.context.jsx'
+import { CategorizationJobsProvider } from './contexts/categorizationJobs.context.jsx'
 import GlobalLoadingOverlay from './components/ui/GlobalLoadingOverlay.jsx'
 
 function App() {
   return (
     <NotificationProvider>
-      <GlobalLoadingOverlay />
-      <BrowserRouter>
-        <Routes>
+      <CategorizationJobsProvider>
+        <GlobalLoadingOverlay />
+        <BrowserRouter>
+          <Routes>
 
           <Route
             path="/"
@@ -53,8 +55,9 @@ function App() {
             <Route path="/clients/:clientId/profit-loss" element={<ProfitLossPage />} />
           </Route>
 
-        </Routes>
-      </BrowserRouter>
+          </Routes>
+        </BrowserRouter>
+      </CategorizationJobsProvider>
     </NotificationProvider>
   )
 }

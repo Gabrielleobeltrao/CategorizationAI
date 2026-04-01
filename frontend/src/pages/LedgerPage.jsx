@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useLocation, useParams, useSearchParams } from "react-router-dom"
 import LedgerEntriesTable from "../components/ledger/LedgerEntriesTable"
 import LedgerHeader from "../components/ledger/LedgerHeader"
@@ -25,10 +25,9 @@ import {
     updateTransactionById,
     deleteTransactionById,
     createTransactionsBatch,
-    categorizeTransactionsWithLlm,
-    categorizeZelleTransactions,
 } from "../services/transactions.service"
 import { useNotification } from "../contexts/notification.context"
+import { useCategorizationJobs } from "../contexts/categorizationJobs.context"
 
 const DEFAULT_TRANSACTIONS_FILTERS = {
     accountIds: [],
@@ -142,6 +141,7 @@ function LedgerPage() {
     const persistedState = readPersistedLedgerState(clientId)
     const preselectedCategoryName = String(searchParams.get("category") || "").trim()
     const { success, error } = useNotification()
+    const { jobs, startCategorizationJob } = useCategorizationJobs()
 
     const [client, setClient] = useState(null)
     const [accounts, setAccounts] = useState([])
@@ -152,7 +152,6 @@ function LedgerPage() {
     const [isLoadingTransactions, setIsLoadingTransactions] = useState(false)
     const [isLoadingMoreTransactions, setIsLoadingMoreTransactions] = useState(false)
     const [isCategorizingWithLlm, setIsCategorizingWithLlm] = useState(false)
-    const [isCategorizingZelle, setIsCategorizingZelle] = useState(false)
     const [transactionsSearchTerm, setTransactionsSearchTerm] = useState(persistedState.searchTerm)
     const [transactionsFilters, setTransactionsFilters] = useState(persistedState.filters)
     const [transactionsPeriodOptions, setTransactionsPeriodOptions] = useState({
@@ -181,6 +180,7 @@ function LedgerPage() {
     const loadingMoreRef = useRef(false)
     const pageRef = useRef(1)
     const lastScrollTopRef = useRef(0)
+    const handledCompletedJobIdsRef = useRef(new Set())
     const activeSection = location.pathname.endsWith("/ledger/accounts")
         ? "accounts"
         : location.pathname.endsWith("/ledger/categories")
@@ -506,7 +506,7 @@ function LedgerPage() {
         setTransactionsFilters((current) => ({ ...current }))
     }
 
-    const refreshLedgerAfterCategorization = async () => {
+    const refreshLedgerAfterCategorization = useCallback(async () => {
         if (!clientId) return
 
         const [categoriesData, payload] = await Promise.all([
@@ -529,7 +529,7 @@ function LedgerPage() {
         setLedgerEntries(mapped)
         setTransactionsHasMore(page < totalPages)
         pageRef.current = page
-    }
+    }, [clientId, transactionsSearchTerm, transactionsFilters])
 
     const handleCategorizeWithLlmPreview = (payload = {}) => {
         const mode = payload?.mode === "selected" ? "selected" : "all_client"
@@ -543,83 +543,43 @@ function LedgerPage() {
 
         setIsCategorizingWithLlm(true)
 
-        categorizeTransactionsWithLlm({
+        startCategorizationJob({
             clientId,
             mode,
             transactionIds: mode === "selected" ? targetIds : [],
         })
             .then((result) => {
-                const processedCount = Number(result?.processedCount || 0)
-                const categorizedCount = Number(result?.categorizedCount || 0)
-                const emptyCount = Number(result?.emptyCount || 0)
-
-                if (processedCount <= 0) {
-                    error("No eligible transactions found to send to LLM.")
-                    return
-                }
-
-                success(
-                    `LLM done: ${processedCount} processed, ${categorizedCount} categorized, ${emptyCount} empty.`
-                )
-                return refreshLedgerAfterCategorization()
-            })
-            .then(() => {
-                pageRef.current = 1
-                setTransactionsFilters((current) => ({ ...current }))
+                success(`AI categorization added to queue. Job ${result.jobId}`)
             })
             .catch((err) => {
-                error(err.message || "Failed to categorize transactions with LLM")
+                error(err.message || "Failed to enqueue AI categorization")
             })
             .finally(() => {
                 setIsCategorizingWithLlm(false)
             })
     }
 
-    const handleCategorizeZellePreview = (payload = {}) => {
-        const mode = payload?.mode === "selected" ? "selected" : "all_client"
-        const targetIds = Array.isArray(payload?.targetIds) ? payload.targetIds : []
-        const targetCount = Number(payload?.targetCount || 0)
+    useEffect(() => {
+        if (!clientId || !Array.isArray(jobs) || jobs.length === 0) return
 
-        if (mode === "selected" && targetCount <= 0) {
-            error("No eligible selected Zelle transactions.")
-            return
-        }
-
-        setIsCategorizingZelle(true)
-
-        categorizeZelleTransactions({
-            clientId,
-            mode,
-            transactionIds: mode === "selected" ? targetIds : [],
+        const completedForClient = jobs.filter((job) => {
+            const jobId = String(job?._id || "")
+            const status = String(job?.status || "")
+            const jobClientId = String(job?.clientId || "")
+            if (!jobId || jobClientId !== String(clientId)) return false
+            if (status !== "done") return false
+            if (handledCompletedJobIdsRef.current.has(jobId)) return false
+            return true
         })
-            .then((result) => {
-                const processedCount = Number(result?.processedCount || 0)
-                const createdCategoriesCount = Number(result?.createdCategoriesCount || 0)
-                const ownerIncomeCount = Number(result?.ownerIncomeCount || 0)
-                const incomeZelleCount = Number(result?.incomeZelleCount || 0)
-                const subCount = Number(result?.subCount || 0)
 
-                if (processedCount <= 0) {
-                    error("No eligible Zelle transactions found.")
-                    return
-                }
+        if (completedForClient.length === 0) return
 
-                success(
-                    `Zelle done: ${processedCount} processed, ${createdCategoriesCount} categories created, ${ownerIncomeCount} owner income, ${incomeZelleCount} income zelle, ${subCount} sub.`
-                )
-                return refreshLedgerAfterCategorization()
-            })
-            .then(() => {
-                pageRef.current = 1
-                setTransactionsFilters((current) => ({ ...current }))
-            })
-            .catch((err) => {
-                error(err.message || "Failed to categorize Zelle transactions")
-            })
-            .finally(() => {
-                setIsCategorizingZelle(false)
-            })
-    }
+        completedForClient.forEach((job) => {
+            handledCompletedJobIdsRef.current.add(String(job._id))
+        })
+
+        refreshLedgerAfterCategorization().catch(() => {})
+    }, [jobs, clientId, refreshLedgerAfterCategorization])
 
     const handleCreateAccount = async (e) => {
         e.preventDefault()
@@ -831,9 +791,7 @@ function LedgerPage() {
                                     onDeleteEntries={handleDeleteTransactionsBulk}
                                     onImportTransactions={handleImportTransactions}
                                     onCategorizeWithLlm={handleCategorizeWithLlmPreview}
-                                    onCategorizeZelle={handleCategorizeZellePreview}
                                     isCategorizingWithLlm={isCategorizingWithLlm}
-                                    isCategorizingZelle={isCategorizingZelle}
                                     isLoading={isLoadingTransactions}
                                     isLoadingMore={isLoadingMoreTransactions}
                                     showUploadModal={showUploadModal}

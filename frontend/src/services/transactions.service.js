@@ -124,6 +124,17 @@ export async function categorizeTransactionsWithLlm(payload) {
   })
 }
 
+export async function categorizeAllTransactionsWithLlm(payload) {
+  if (!payload || typeof payload !== "object") {
+    throw new Error("payload is required")
+  }
+
+  return api("/api/transactions/categorize-all-llm", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
 export async function categorizeZelleTransactions(payload) {
   if (!payload || typeof payload !== "object") {
     throw new Error("payload is required")
