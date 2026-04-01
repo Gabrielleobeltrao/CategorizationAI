@@ -388,12 +388,12 @@ function EmployeesPage() {
                 </div>
 
                 <section>
-                    <div className="grid grid-cols-[1fr_1.2fr_0.8fr_120px_auto] gap-3 border-b border-gray-200 px-1 py-3 text-xs font-semibold uppercase tracking-wide text-gray-600">
+                    <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.8fr)_120px_120px] gap-3 border-b border-gray-200 px-1 py-3 text-xs font-semibold uppercase tracking-wide text-gray-600">
                         <span>Name</span>
                         <span>Email</span>
                         <span>Role</span>
                         <span>Status</span>
-                        <div className="flex min-w-[72px] justify-end">
+                        <div className="flex items-center justify-end">
                             <span>Actions</span>
                         </div>
                     </div>
@@ -404,7 +404,7 @@ function EmployeesPage() {
 
                             return (
                                 <div key={employeeItem.id}>
-                                    <div className="grid grid-cols-[1fr_1.2fr_0.8fr_120px_auto] gap-3 px-1 py-3 hover:bg-gray-50">
+                                    <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.8fr)_120px_120px] gap-3 px-1 py-3 hover:bg-gray-50">
                                         <div className="min-w-0">
                                             {isEditing ? (
                                                 <input
@@ -488,7 +488,7 @@ function EmployeesPage() {
                                             )}
                                         </div>
 
-                                        <div className="flex min-w-[72px] items-center justify-end gap-2">
+                                        <div className="flex items-center justify-end gap-2">
                                             {isCurrent && (
                                                 <div className="flex items-center gap-2 opacity-0" aria-hidden="true">
                                                     <span className="h-4 w-4" />
