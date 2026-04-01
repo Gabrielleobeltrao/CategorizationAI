@@ -5,7 +5,20 @@ import {
   listUserProfilesByOfficeId,
   getUserProfileByEmail,
   deleteUserProfileById,
+  getAuthUserByEmail,
+  setCredentialPasswordByAuthUserId,
 } from "../repositories/userProfile.repository.js"
+import { hashPassword } from "better-auth/crypto"
+
+function generateTemporaryPassword(length = 12) {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$"
+  let result = ""
+  for (let i = 0; i < length; i += 1) {
+    const index = Math.floor(Math.random() * chars.length)
+    result += chars[index]
+  }
+  return result
+}
 
 function normalizeStatus(value) {
   const status = String(value || "").trim().toLowerCase()
@@ -37,6 +50,9 @@ export async function createUserProfileService(input) {
     role,
     email,
     status,
+    authUserId: input?.authUserId || undefined,
+    mustChangePassword: Boolean(input?.mustChangePassword),
+    passwordResetAt: input?.passwordResetAt || null,
   })
 }
 
@@ -112,4 +128,76 @@ export async function deleteUserProfileByIdService(id, actorEmail) {
   }
 
   return deleteUserProfileById(id)
+}
+
+export async function resetEmployeePasswordByIdService(id, actorEmail) {
+  if (!id) throw new Error("id is required")
+
+  const targetProfile = await getUserProfileById(id)
+  if (!targetProfile) throw new Error("User profile not found")
+
+  const normalizedActorEmail = String(actorEmail || "").toLowerCase()
+  const targetEmail = String(targetProfile?.email || "").toLowerCase()
+
+  if (!targetEmail) {
+    throw new Error("Target employee has no email in user profile")
+  }
+
+  if (normalizedActorEmail && targetEmail && normalizedActorEmail === targetEmail) {
+    throw new Error("You cannot reset your own password from this screen")
+  }
+
+  const authUser = await getAuthUserByEmail(targetEmail)
+  if (!authUser?._id) {
+    throw new Error("Auth user not found")
+  }
+
+  const temporaryPassword = generateTemporaryPassword()
+  const hashedPassword = await hashPassword(temporaryPassword)
+
+  const updatedAccount = await setCredentialPasswordByAuthUserId(authUser._id, hashedPassword)
+  if (!updatedAccount) {
+    throw new Error("Credential account not found")
+  }
+
+  await updateUserProfileById(id, {
+    authUserId: String(authUser._id),
+    mustChangePassword: true,
+    passwordResetAt: new Date(),
+  })
+
+  return {
+    email: targetEmail,
+    temporaryPassword,
+    mustChangePassword: true,
+  }
+}
+
+export async function completeMyPasswordResetService(email, newPassword) {
+  const safeEmail = String(email || "").trim().toLowerCase()
+  const safePassword = String(newPassword || "")
+
+  if (!safeEmail) throw new Error("email is required")
+  if (!safePassword) throw new Error("newPassword is required")
+  if (safePassword.length < 8) throw new Error("Password must have at least 8 characters")
+
+  const profile = await getUserProfileByEmail(safeEmail)
+  if (!profile) throw new Error("User profile not found")
+  if (!profile.mustChangePassword) {
+    return { status: true, mustChangePassword: false }
+  }
+
+  const authUser = await getAuthUserByEmail(safeEmail)
+  if (!authUser?._id) throw new Error("Auth user not found")
+
+  const hashedPassword = await hashPassword(safePassword)
+  const updatedAccount = await setCredentialPasswordByAuthUserId(authUser._id, hashedPassword)
+  if (!updatedAccount) throw new Error("Credential account not found")
+
+  await updateUserProfileById(String(profile._id), {
+    mustChangePassword: false,
+    updatedAt: new Date(),
+  })
+
+  return { status: true, mustChangePassword: false }
 }

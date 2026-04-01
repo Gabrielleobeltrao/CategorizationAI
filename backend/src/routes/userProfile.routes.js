@@ -6,6 +6,8 @@ import {
   listUserProfilesByOfficeIdController,
   getMyUserProfileController,
   deleteUserProfileByIdController,
+  resetEmployeePasswordByIdController,
+  completeMyPasswordResetController,
 } from "../controllers/userProfile.controller.js"
 import { requireAuth } from "../middlewares/requireAuth.js"
 import {
@@ -31,6 +33,12 @@ router.get(
   requireAuth,
   requirePermission("userProfiles:read"),
   getMyUserProfileController
+)
+
+router.post(
+  "/user-profiles/me/complete-password-reset",
+  requireAuth,
+  completeMyPasswordResetController
 )
 
 router.get(
@@ -67,6 +75,15 @@ router.delete(
   validateObjectIdParam("id"),
   ensureResourceExists({ collection: "user_profile", from: "params", field: "id", assignKey: "userProfile" }),
   deleteUserProfileByIdController
+)
+
+router.post(
+  "/user-profiles/:id/reset-password-temp",
+  requireAuth,
+  requirePermission("userProfiles:update"),
+  validateObjectIdParam("id"),
+  ensureResourceExists({ collection: "user_profile", from: "params", field: "id", assignKey: "userProfile" }),
+  resetEmployeePasswordByIdController
 )
 
 export default router

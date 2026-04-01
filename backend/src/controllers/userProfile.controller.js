@@ -5,6 +5,8 @@ import {
   listUserProfilesByOfficeIdService,
   getCurrentUserProfileService,
   deleteUserProfileByIdService,
+  resetEmployeePasswordByIdService,
+  completeMyPasswordResetService,
 } from "../services/userProfile.service.js"
 
 export async function createUserProfileController(req, res) {
@@ -87,6 +89,29 @@ export async function deleteUserProfileByIdController(req, res) {
     const { id } = req.params
     const deletedProfile = await deleteUserProfileByIdService(id, req.user?.email)
     return res.status(200).json(deletedProfile)
+  } catch (error) {
+    return res.status(400).json({
+      message: error.message,
+    })
+  }
+}
+
+export async function resetEmployeePasswordByIdController(req, res) {
+  try {
+    const { id } = req.params
+    const result = await resetEmployeePasswordByIdService(id, req.user?.email)
+    return res.status(200).json(result)
+  } catch (error) {
+    return res.status(400).json({
+      message: error.message,
+    })
+  }
+}
+
+export async function completeMyPasswordResetController(req, res) {
+  try {
+    const result = await completeMyPasswordResetService(req.user?.email, req.body?.newPassword)
+    return res.status(200).json(result)
   } catch (error) {
     return res.status(400).json({
       message: error.message,

@@ -12,6 +12,9 @@ export async function createUserProfile(input) {
         role: input.role,
         email: input.email,
         status: input.status,
+        authUserId: input.authUserId,
+        mustChangePassword: input.mustChangePassword ?? false,
+        passwordResetAt: input.passwordResetAt ?? null,
         createdAt: new Date(),
         updatedAt: new Date(),
     }
@@ -52,4 +55,26 @@ export async function getUserProfileByEmail(email) {
 export async function deleteUserProfileById(id) {
     const db = getDB()
     return db.collection("user_profile").findOneAndDelete({ _id: new ObjectId(id) })
+}
+
+export async function getAuthUserByEmail(email) {
+    const db = getDB()
+    return db.collection("user").findOne({ email: String(email).toLowerCase() })
+}
+
+export async function setCredentialPasswordByAuthUserId(authUserId, passwordHash) {
+    const db = getDB()
+    return db.collection("account").findOneAndUpdate(
+        {
+            providerId: "credential",
+            userId: new ObjectId(authUserId),
+        },
+        {
+            $set: {
+                password: passwordHash,
+                updatedAt: new Date(),
+            },
+        },
+        { returnDocument: "after" }
+    )
 }
