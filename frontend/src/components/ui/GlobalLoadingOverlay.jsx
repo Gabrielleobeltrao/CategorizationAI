@@ -1,10 +1,15 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 const SHOW_DELAY_MS = 220
 const MIN_VISIBLE_MS = 280
 
 function GlobalLoadingOverlay() {
     const [isVisible, setIsVisible] = useState(false)
+    const isVisibleRef = useRef(false)
+
+    useEffect(() => {
+        isVisibleRef.current = isVisible
+    }, [isVisible])
 
     useEffect(() => {
         let pendingRequests = 0
@@ -26,6 +31,7 @@ function GlobalLoadingOverlay() {
 
         const showOverlay = () => {
             clearHideTimer()
+            isVisibleRef.current = true
             setIsVisible(true)
             visibleSince = Date.now()
         }
@@ -33,6 +39,7 @@ function GlobalLoadingOverlay() {
         const hideOverlay = () => {
             clearShowTimer()
             clearHideTimer()
+            isVisibleRef.current = false
             setIsVisible(false)
             visibleSince = 0
         }
@@ -42,7 +49,7 @@ function GlobalLoadingOverlay() {
 
             if (pendingRequests > 0) {
                 clearHideTimer()
-                if (showTimerId || isVisible) return
+                if (showTimerId || isVisibleRef.current) return
 
                 showTimerId = setTimeout(() => {
                     showTimerId = null
@@ -52,7 +59,7 @@ function GlobalLoadingOverlay() {
             }
 
             clearShowTimer()
-            if (!isVisible) return
+            if (!isVisibleRef.current) return
 
             const elapsedVisible = Date.now() - visibleSince
             if (elapsedVisible >= MIN_VISIBLE_MS) {
@@ -73,7 +80,7 @@ function GlobalLoadingOverlay() {
             clearHideTimer()
             window.removeEventListener("app:loading-state", handleLoadingStateChange)
         }
-    }, [isVisible])
+    }, [])
 
     if (!isVisible) return null
 

@@ -11,6 +11,7 @@ import { getClientById } from "../services/clients.service"
 const CategorizationJobsContext = createContext(null)
 
 const TERMINAL_STATUSES = new Set(["done", "failed"])
+const DISMISSED_JOBS_STORAGE_KEY = "categorization_jobs_dismissed_ids"
 
 function getJobId(job = {}) {
   return String(job?._id || job?.id || job?.jobId || "")
@@ -22,6 +23,31 @@ function getStatusLabel(status = "") {
   if (status === "done") return "Done"
   if (status === "failed") return "Failed"
   return "Unknown"
+}
+
+function readDismissedJobIdsFromStorage() {
+  if (typeof window === "undefined") return new Set()
+  try {
+    const raw = window.localStorage.getItem(DISMISSED_JOBS_STORAGE_KEY)
+    if (!raw) return new Set()
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return new Set()
+    return new Set(parsed.map((id) => String(id || "").trim()).filter(Boolean))
+  } catch {
+    return new Set()
+  }
+}
+
+function writeDismissedJobIdsToStorage(idsSet = new Set()) {
+  if (typeof window === "undefined") return
+  try {
+    window.localStorage.setItem(
+      DISMISSED_JOBS_STORAGE_KEY,
+      JSON.stringify(Array.from(idsSet))
+    )
+  } catch {
+    // ignore storage errors
+  }
 }
 
 function upsertJobs(currentJobs, incomingJobs) {
@@ -50,11 +76,8 @@ function upsertJobs(currentJobs, incomingJobs) {
     .slice(0, 20)
 }
 
-function CategorizationJobsQueue({ jobs = [], clientNameById = {} }) {
-  const activeJobs = jobs.filter(
-    (job) => !TERMINAL_STATUSES.has(String(job?.status || ""))
-  )
-  if (!activeJobs.length) return null
+function CategorizationJobsQueue({ jobs = [], clientNameById = {}, onDismissJob }) {
+  if (!jobs.length) return null
 
   return (
     <div className="fixed right-4 top-4 z-[1000] w-[340px] max-w-[calc(100vw-24px)]">
@@ -66,7 +89,7 @@ function CategorizationJobsQueue({ jobs = [], clientNameById = {} }) {
         </div>
         <div className="max-h-[48vh] overflow-y-auto p-2">
           <ul className="space-y-2">
-            {activeJobs.map((job) => {
+            {jobs.map((job) => {
               const id = getJobId(job)
               const status = String(job?.status || "")
               const total = Number(job?.total || 0)
@@ -74,6 +97,7 @@ function CategorizationJobsQueue({ jobs = [], clientNameById = {} }) {
               const pct = Number(job?.progressPct || 0)
               const clientId = String(job?.clientId || "").trim()
               const clientName = String(clientNameById[clientId] || "").trim()
+              const isTerminal = TERMINAL_STATUSES.has(status)
 
               return (
                 <li key={id} className="rounded-lg border border-gray-100 bg-gray-50 p-2">
@@ -96,17 +120,31 @@ function CategorizationJobsQueue({ jobs = [], clientNameById = {} }) {
                     </span>
                   </div>
 
-                  <div className="mt-1 text-[11px] text-gray-600">
-                    {processed} / {total || 0} processed
-                  </div>
-                  <div className="mt-1 h-1.5 rounded-full bg-gray-200">
-                    <div
-                      className={`h-1.5 rounded-full ${
-                        status === "failed" ? "bg-rose-500" : "bg-gray-900"
-                      }`}
-                      style={{ width: `${Math.max(0, Math.min(100, pct))}%` }}
-                    />
-                  </div>
+                  {isTerminal ? (
+                    <div className="mt-2 flex justify-end">
+                      <button
+                        type="button"
+                        className="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-700 hover:bg-gray-100"
+                        onClick={() => onDismissJob?.(id)}
+                      >
+                        Fechar
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="mt-1 text-[11px] text-gray-600">
+                        {processed} / {total || 0} processed
+                      </div>
+                      <div className="mt-1 h-1.5 rounded-full bg-gray-200">
+                        <div
+                          className={`h-1.5 rounded-full ${
+                            status === "failed" ? "bg-rose-500" : "bg-gray-900"
+                          }`}
+                          style={{ width: `${Math.max(0, Math.min(100, pct))}%` }}
+                        />
+                      </div>
+                    </>
+                  )}
                 </li>
               )
             })}
@@ -123,11 +161,14 @@ export function CategorizationJobsProvider({ children }) {
   const [clientNameById, setClientNameById] = useState({})
   const notifiedIdsRef = useRef(new Set())
   const loadingClientIdsRef = useRef(new Set())
+  const dismissedJobIdsRef = useRef(readDismissedJobIdsFromStorage())
 
   const refreshJobs = useCallback(async () => {
     try {
       const list = await listCategorizationJobs({ limit: 20 })
-      const safeList = Array.isArray(list) ? list : []
+      const safeList = (Array.isArray(list) ? list : []).filter(
+        (job) => !dismissedJobIdsRef.current.has(getJobId(job))
+      )
       setJobs((current) => upsertJobs(current, safeList))
     } catch {
       // silent refresh
@@ -166,7 +207,10 @@ export function CategorizationJobsProvider({ children }) {
         })
       )
       if (cancelled) return
-      setJobs((current) => upsertJobs(current, results.filter(Boolean)))
+      const safeResults = results.filter(
+        (job) => job && !dismissedJobIdsRef.current.has(getJobId(job))
+      )
+      setJobs((current) => upsertJobs(current, safeResults))
     }, 1500)
 
     return () => {
@@ -232,6 +276,8 @@ export function CategorizationJobsProvider({ children }) {
     const result = await createCategorizationJob(payload)
     const jobId = String(result?.jobId || "")
     if (!jobId) throw new Error("Invalid job response")
+    dismissedJobIdsRef.current.delete(jobId)
+    writeDismissedJobIdsToStorage(dismissedJobIdsRef.current)
 
     setJobs((current) =>
       upsertJobs(current, [{
@@ -256,16 +302,25 @@ export function CategorizationJobsProvider({ children }) {
     return { jobId }
   }, [])
 
+  const dismissJob = useCallback((jobId) => {
+    const target = String(jobId || "").trim()
+    if (!target) return
+    dismissedJobIdsRef.current.add(target)
+    writeDismissedJobIdsToStorage(dismissedJobIdsRef.current)
+    setJobs((current) => current.filter((job) => getJobId(job) !== target))
+  }, [])
+
   const value = useMemo(() => ({
     jobs,
     startCategorizationJob,
     refreshJobs,
-  }), [jobs, startCategorizationJob, refreshJobs])
+    dismissJob,
+  }), [jobs, startCategorizationJob, refreshJobs, dismissJob])
 
   return (
     <CategorizationJobsContext.Provider value={value}>
       {children}
-      <CategorizationJobsQueue jobs={jobs} clientNameById={clientNameById} />
+      <CategorizationJobsQueue jobs={jobs} clientNameById={clientNameById} onDismissJob={dismissJob} />
     </CategorizationJobsContext.Provider>
   )
 }

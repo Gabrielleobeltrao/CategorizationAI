@@ -24,6 +24,7 @@ import {
     listTransactionPeriodOptions,
     updateTransactionById,
     deleteTransactionById,
+    deleteTransactionsByIds,
     createTransactionsBatch,
 } from "../services/transactions.service"
 import { useNotification } from "../contexts/notification.context"
@@ -43,6 +44,7 @@ const DEFAULT_TRANSACTIONS_FILTERS = {
     minAmount: "",
     maxAmount: "",
 }
+const TRANSACTIONS_UPLOAD_CHUNK_SIZE = 400
 
 function getLedgerFiltersStorageKey(clientId = "") {
     return `ledger-filters:${clientId || "global"}`
@@ -492,7 +494,11 @@ function LedgerPage() {
         if (targetIds.length === 0) return
 
         try {
-            await Promise.all(targetIds.map((id) => deleteTransactionById(id)))
+            if (targetIds.length > 1) {
+                await deleteTransactionsByIds(targetIds)
+            } else {
+                await deleteTransactionById(targetIds[0])
+            }
             const targetSet = new Set(targetIds)
             setLedgerEntries((current) => current.filter((item) => !targetSet.has(item.id)))
             const periodOptions = await listTransactionPeriodOptions(clientId, { silentLoading: true })
@@ -511,9 +517,51 @@ function LedgerPage() {
         }
     }
 
-    const handleImportTransactions = async (transactions, summary = null) => {
-        const result = await createTransactionsBatch(transactions)
-        const insertedCount = Number(result?.insertedCount || 0)
+    const handleImportTransactions = async (transactions, summary = null, onProgress) => {
+        const total = Array.isArray(transactions) ? transactions.length : 0
+        if (total === 0) {
+            throw new Error("No transactions to import")
+        }
+
+        const totalChunks = Math.ceil(total / TRANSACTIONS_UPLOAD_CHUNK_SIZE)
+        let insertedCount = 0
+
+        onProgress?.({
+            status: "uploading",
+            currentChunk: 0,
+            totalChunks,
+            processed: 0,
+            total,
+            insertedCount,
+        })
+
+        for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex += 1) {
+            const start = chunkIndex * TRANSACTIONS_UPLOAD_CHUNK_SIZE
+            const end = start + TRANSACTIONS_UPLOAD_CHUNK_SIZE
+            const chunk = transactions.slice(start, end)
+
+            const result = await createTransactionsBatch(chunk, { silentLoading: true })
+            insertedCount += Number(result?.insertedCount || 0)
+
+            onProgress?.({
+                status: "uploading",
+                currentChunk: chunkIndex + 1,
+                totalChunks,
+                processed: Math.min(end, total),
+                total,
+                insertedCount,
+            })
+        }
+
+        onProgress?.({
+            status: "done",
+            currentChunk: totalChunks,
+            totalChunks,
+            processed: total,
+            total,
+            insertedCount,
+        })
+
         const totalRows = Number(summary?.totals?.totalRows || transactions.length)
         const skippedRows = Number(summary?.totals?.skippedRows || Math.max(totalRows - insertedCount, 0))
         const filesCount = Number(summary?.totals?.files || 1)
@@ -832,7 +880,7 @@ function LedgerPage() {
                 <section className={`min-h-[460px] rounded-lg border border-gray-200 bg-white p-4 flex flex-col ${activeSection === "ledger" ? "overflow-visible" : "overflow-hidden"}`}>
                     {activeSection === "ledger" && (
                         <section className="min-h-0 h-full p-1 flex flex-col gap-3">
-                            <div className="flex items-center justify-between">
+                            <div className="relative z-20 flex items-center justify-between bg-white">
                                 <h3 className="text-base font-bold">Transactions</h3>
                                 <button
                                     type="button"

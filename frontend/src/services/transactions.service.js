@@ -102,14 +102,30 @@ export async function deleteTransactionById(transactionId) {
   })
 }
 
-export async function createTransactionsBatch(transactions) {
+export async function deleteTransactionsByIds(ids = []) {
+  const targetIds = Array.isArray(ids) ? ids.map((id) => String(id || "").trim()).filter(Boolean) : []
+  if (targetIds.length === 0) {
+    throw new Error("ids must be a non-empty array")
+  }
+
+  return api("/api/transactions/batch-delete", {
+    method: "POST",
+    body: JSON.stringify({ ids: targetIds }),
+  })
+}
+
+export async function createTransactionsBatch(transactions, options = {}) {
   if (!Array.isArray(transactions) || transactions.length === 0) {
     throw new Error("transactions must be a non-empty array")
   }
+  const silentLoading = options?.silentLoading !== undefined
+    ? Boolean(options.silentLoading)
+    : true
 
   return api("/api/transactions/batch", {
     method: "POST",
     body: JSON.stringify({ transactions }),
+    silentLoading,
   })
 }
 
