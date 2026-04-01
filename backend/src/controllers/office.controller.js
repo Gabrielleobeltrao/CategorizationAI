@@ -1,7 +1,8 @@
 import {
     createOfficeService,
     updateOfficeByIdService,
-    getOfficeByIdService
+    getOfficeByIdService,
+    getOfficeDashboardByIdService,
 } from "../services/office.service.js"
 
 export async function createOfficeController(req, res) {
@@ -39,6 +40,21 @@ export async function getOfficeByIdController(req, res) {
         }
 
         return res.status(200).json(office)
+    } catch (error) {
+        return res.status(400).json({
+            message: error.message,
+        })
+    }
+}
+
+export async function getOfficeDashboardByIdController(req, res) {
+    try {
+        const { id } = req.params
+        const dashboard = await getOfficeDashboardByIdService(id, {
+            month: req.query?.month,
+            actorOfficeId: req.userProfile?.officeId,
+        })
+        return res.status(200).json(dashboard)
     } catch (error) {
         return res.status(400).json({
             message: error.message,
