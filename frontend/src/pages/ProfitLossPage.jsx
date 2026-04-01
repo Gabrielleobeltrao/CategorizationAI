@@ -7,6 +7,7 @@ import {
 } from "../services/profitLoss.service"
 import { useNotification } from "../contexts/notification.context"
 import { downloadProfitLossPdf } from "../utils/pdf"
+import { trackClientOpened } from "../utils/recentClients"
 
 function formatCurrency(value) {
   return new Intl.NumberFormat("en-US", {
@@ -85,6 +86,15 @@ function ProfitLossPage() {
       active = false
     }
   }, [clientId])
+
+  useEffect(() => {
+    if (!clientId || !client?.name) return
+    trackClientOpened({
+      id: clientId,
+      name: client.name,
+      to: `/clients/${clientId}/profit-loss`,
+    })
+  }, [clientId, client?.name])
 
   useEffect(() => {
     let active = true

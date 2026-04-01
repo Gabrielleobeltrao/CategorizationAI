@@ -4,6 +4,7 @@ import PopupModal from "../components/ui/PopupModal"
 import ConfirmModal from "../components/ui/ConfirmModal"
 import { useNotification } from "../contexts/notification.context"
 import { getMyUserProfile } from "../services/employees.service"
+import { trackClientOpened } from "../utils/recentClients"
 import {
     createClient,
     deleteClientById,
@@ -319,6 +320,16 @@ function ClientsPage() {
         )
     }
 
+    const openClientLedger = (client) => {
+        if (!client?.id) return
+        trackClientOpened({
+            id: client.id,
+            name: client.name,
+            to: `/clients/${client.id}/ledger`,
+        })
+        navigate(`/clients/${client.id}/ledger`)
+    }
+
     return (
         <section className="w-full p-8">
             <div className="max-w-5xl mx-auto flex flex-col gap-6">
@@ -373,7 +384,7 @@ function ClientsPage() {
                                         className={`grid w-full grid-cols-[1fr_auto] gap-3 px-1 py-3 hover:bg-gray-50 ${isEditing ? "" : "cursor-pointer"}`}
                                         onClick={() => {
                                             if (isEditing) return
-                                            navigate(`/clients/${client.id}/ledger`)
+                                            openClientLedger(client)
                                         }}
                                     >
                                         <div className="flex min-w-0 flex-col gap-2">
@@ -390,7 +401,7 @@ function ClientsPage() {
                                                     className="w-full max-w-full truncate text-left font-medium text-gray-900"
                                                     onClick={(e) => {
                                                         e.stopPropagation()
-                                                        navigate(`/clients/${client.id}/ledger`)
+                                                        openClientLedger(client)
                                                     }}
                                                     title={client.name}
                                                 >

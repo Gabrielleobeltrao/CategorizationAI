@@ -29,6 +29,7 @@ import {
 } from "../services/transactions.service"
 import { useNotification } from "../contexts/notification.context"
 import { useCategorizationJobs } from "../contexts/categorizationJobs.context"
+import { trackClientOpened } from "../utils/recentClients"
 
 const DEFAULT_TRANSACTIONS_FILTERS = {
     accountIds: [],
@@ -254,6 +255,15 @@ function LedgerPage() {
             active = false
         }
     }, [clientId, error])
+
+    useEffect(() => {
+        if (!clientId || !client?.name) return
+        trackClientOpened({
+            id: clientId,
+            name: client.name,
+            to: `${location.pathname}${location.search || ""}`,
+        })
+    }, [clientId, client?.name, location.pathname, location.search])
 
     useEffect(() => {
         const persisted = readPersistedLedgerState(clientId)
