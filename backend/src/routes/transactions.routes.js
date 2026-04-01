@@ -5,6 +5,7 @@ import {
   listTransactionsPaginatedController,
   listTransactionPeriodOptionsController,
   deleteTransactionByIdController,
+  deleteTransactionsBatchController,
   categorizeTransactionsWithLlmController,
   categorizeZelleTransactionsController,
   categorizeAllTransactionsWithLlmController,
@@ -19,6 +20,7 @@ import {
   validateObjectIdParam,
   validateObjectIdQuery,
   validateObjectIdBody,
+  validateObjectIdBodyArray,
   validateTransactionsBatchIds,
 } from "../middlewares/validateObjectId.js"
 import { ensureResourceExists } from "../middlewares/authorizeScope.js"
@@ -119,6 +121,14 @@ router.delete(
   validateObjectIdParam("id"),
   ensureResourceExists({ collection: "transactions", from: "params", field: "id", assignKey: "transaction" }),
   deleteTransactionByIdController
+)
+
+router.post(
+  "/transactions/batch-delete",
+  requireAuth,
+  requirePermission("transactions:delete"),
+  validateObjectIdBodyArray("ids"),
+  deleteTransactionsBatchController
 )
 
 export default router

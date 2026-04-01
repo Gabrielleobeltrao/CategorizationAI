@@ -96,6 +96,12 @@ export async function deleteTransactionById(id) {
   return db.collection("transactions").deleteOne({ _id: new ObjectId(id) })
 }
 
+export async function deleteTransactionsByIds(ids = []) {
+  const db = getDB()
+  const objectIds = ids.map((id) => new ObjectId(id))
+  return db.collection("transactions").deleteMany({ _id: { $in: objectIds } })
+}
+
 export async function listEligibleTransactionsForLlmByIds(clientId, transactionIds = []) {
   const db = getDB()
   const collection = db.collection("transactions")

@@ -5,6 +5,7 @@ import {
   listTransactionsPaginated,
   listTransactionPeriodOptions,
   deleteTransactionById,
+  deleteTransactionsByIds,
   listEligibleTransactionsForLlmByIds,
   listEligibleTransactionsForLlmByClientId,
   listEligibleTransactionsForZelleByIds,
@@ -319,6 +320,21 @@ export async function listTransactionPeriodOptionsService(query) {
   const clientId = String(query?.clientId || "").trim()
   if (!clientId) throw new Error("clientId is required")
   return listTransactionPeriodOptions(clientId)
+}
+
+export async function deleteTransactionsByIdsService(ids = []) {
+  const targetIds = Array.isArray(ids)
+    ? ids.map((id) => String(id || "").trim()).filter(Boolean)
+    : []
+
+  if (targetIds.length === 0) {
+    throw new Error("ids must be a non-empty array")
+  }
+
+  const result = await deleteTransactionsByIds(targetIds)
+  return {
+    deletedCount: Number(result?.deletedCount || 0),
+  }
 }
 
 export async function deleteTransactionByIdService(id) {

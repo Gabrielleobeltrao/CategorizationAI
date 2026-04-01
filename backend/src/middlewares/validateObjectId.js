@@ -69,3 +69,25 @@ export function validateTransactionsBatchIds(req, res, next) {
 
   next()
 }
+
+export function validateObjectIdBodyArray(field) {
+  return (req, res, next) => {
+    const values = req.body?.[field]
+
+    if (!Array.isArray(values) || values.length === 0) {
+      return res.status(400).json({
+        message: `${field} must be a non-empty array`,
+      })
+    }
+
+    for (let i = 0; i < values.length; i += 1) {
+      if (!isValidObjectId(values[i])) {
+        return res.status(400).json({
+          message: `Invalid ObjectId for '${field}[${i}]'`,
+        })
+      }
+    }
+
+    next()
+  }
+}
