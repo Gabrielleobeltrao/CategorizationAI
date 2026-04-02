@@ -1,3 +1,37 @@
+export const PERMISSION_DEFINITIONS = [
+  { key: "offices:read", group: "Offices", label: "Read offices" },
+  { key: "offices:create", group: "Offices", label: "Create offices" },
+  { key: "offices:update", group: "Offices", label: "Update offices" },
+  { key: "offices:delete", group: "Offices", label: "Delete offices" },
+  { key: "clients:read", group: "Clients", label: "Read clients" },
+  { key: "clients:create", group: "Clients", label: "Create clients" },
+  { key: "clients:update", group: "Clients", label: "Update clients" },
+  { key: "clients:delete", group: "Clients", label: "Delete clients" },
+  { key: "accounts:read", group: "Accounts", label: "Read accounts" },
+  { key: "accounts:create", group: "Accounts", label: "Create accounts" },
+  { key: "accounts:update", group: "Accounts", label: "Update accounts" },
+  { key: "accounts:delete", group: "Accounts", label: "Delete accounts" },
+  { key: "categories:read", group: "Categories", label: "Read categories" },
+  { key: "categories:create", group: "Categories", label: "Create categories" },
+  { key: "categories:update", group: "Categories", label: "Update categories" },
+  { key: "categories:delete", group: "Categories", label: "Delete categories" },
+  { key: "transactions:read", group: "Transactions", label: "Read transactions" },
+  { key: "transactions:create", group: "Transactions", label: "Create transactions" },
+  { key: "transactions:update", group: "Transactions", label: "Update transactions" },
+  { key: "transactions:delete", group: "Transactions", label: "Delete transactions" },
+  { key: "profitLoss:read", group: "Profit & Loss", label: "Read profit & loss" },
+  { key: "userProfiles:read", group: "Employees", label: "Read employees" },
+  { key: "userProfiles:create", group: "Employees", label: "Create employees" },
+  { key: "userProfiles:update", group: "Employees", label: "Update employees" },
+  { key: "userProfiles:delete", group: "Employees", label: "Delete employees" },
+  { key: "roles:read", group: "Roles", label: "Read roles" },
+  { key: "roles:create", group: "Roles", label: "Create roles" },
+  { key: "roles:update", group: "Roles", label: "Update roles" },
+  { key: "roles:delete", group: "Roles", label: "Delete roles" },
+]
+
+export const PERMISSION_KEYS = PERMISSION_DEFINITIONS.map((item) => item.key)
+
 export const ROLE_DEFINITIONS = [
   {
     key: "viewer",
@@ -11,6 +45,7 @@ export const ROLE_DEFINITIONS = [
       "transactions:read",
       "profitLoss:read",
       "userProfiles:read",
+      "roles:read",
     ],
   },
   {
@@ -33,6 +68,7 @@ export const ROLE_DEFINITIONS = [
       "transactions:update",
       "profitLoss:read",
       "userProfiles:read",
+      "roles:read",
     ],
   },
   {
@@ -51,6 +87,7 @@ export const ROLE_DEFINITIONS = [
       "userProfiles:create",
       "userProfiles:update",
       "userProfiles:delete",
+      "roles:*",
     ],
   },
   {
@@ -63,4 +100,8 @@ export const ROLE_DEFINITIONS = [
 
 export const ROLE_PERMISSIONS = Object.fromEntries(
   ROLE_DEFINITIONS.map((role) => [role.key, role.permissions])
+)
+
+export const ROLE_LABELS = Object.fromEntries(
+  ROLE_DEFINITIONS.map((role) => [role.key, role.label])
 )

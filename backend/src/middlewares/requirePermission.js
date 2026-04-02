@@ -1,14 +1,19 @@
 import { getDB } from "../db.js"
 import { ROLE_PERMISSIONS } from "../config/roles.js"
+import { getPermissionsForRoleService } from "../services/roles.service.js"
 
-function hasPermission(role, permission) {
-  const permissions = ROLE_PERMISSIONS[role]
+function hasPermissionFromList(permissions, permission) {
   if (!permissions) return false
   if (permissions.includes("*")) return true
   if (permissions.includes(permission)) return true
 
   const [resource] = permission.split(":")
   return permissions.includes(`${resource}:*`)
+}
+
+function hasPermission(role, permission) {
+  const permissions = ROLE_PERMISSIONS[role]
+  return hasPermissionFromList(permissions, permission)
 }
 
 export function requirePermission(permission) {
@@ -36,12 +41,18 @@ export function requirePermission(permission) {
       }
 
       const role = String(profile.role || "").toLowerCase()
-      if (!hasPermission(role, permission)) {
+      if (hasPermission(role, permission)) {
+        req.userProfile = profile
+        return next()
+      }
+
+      const customRolePermissions = await getPermissionsForRoleService(role, profile.officeId)
+      if (!hasPermissionFromList(customRolePermissions, permission)) {
         return res.status(403).json({ message: "Forbidden" })
       }
 
       req.userProfile = profile
-      next()
+      return next()
     } catch {
       return res.status(403).json({ message: "Forbidden" })
     }

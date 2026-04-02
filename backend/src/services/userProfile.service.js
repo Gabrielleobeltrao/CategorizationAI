@@ -8,6 +8,7 @@ import {
   getAuthUserByEmail,
   setCredentialPasswordByAuthUserId,
 } from "../repositories/userProfile.repository.js"
+import { roleExistsForOfficeService } from "./roles.service.js"
 import { hashPassword } from "better-auth/crypto"
 
 function generateTemporaryPassword(length = 12) {
@@ -35,6 +36,9 @@ export async function createUserProfileService(input) {
 
   const role = String(input.role).trim().toLowerCase()
   if (!role) throw new Error("role cannot be empty")
+
+  const roleExists = await roleExistsForOfficeService(role, input.officeId)
+  if (!roleExists) throw new Error("role is invalid for this office")
 
   let email
   if (input?.email !== undefined) {
@@ -71,6 +75,12 @@ export async function updateUserProfileByIdService(id, patch) {
   if (typeof patch.role === "string") {
     const role = patch.role.trim().toLowerCase()
     if (!role) throw new Error("role cannot be empty")
+
+    const targetProfile = await getUserProfileById(id)
+    if (!targetProfile) throw new Error("User profile not found")
+    const roleExists = await roleExistsForOfficeService(role, targetProfile.officeId)
+    if (!roleExists) throw new Error("role is invalid for this office")
+
     safePatch.role = role
   }
 

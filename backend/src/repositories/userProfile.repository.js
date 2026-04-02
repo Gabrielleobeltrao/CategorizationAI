@@ -47,6 +47,14 @@ export async function listUserProfilesByOfficeId(officeId) {
     return db.collection("user_profile").find({ officeId }).sort({ createdAt: -1 }).toArray()
 }
 
+export async function countUserProfilesByOfficeIdAndRole(officeId, role) {
+    const db = getDB()
+    return db.collection("user_profile").countDocuments({
+        officeId,
+        role: String(role || "").toLowerCase(),
+    })
+}
+
 export async function getUserProfileByEmail(email) {
     const db = getDB()
     return db.collection("user_profile").findOne({ email: String(email).toLowerCase() })
