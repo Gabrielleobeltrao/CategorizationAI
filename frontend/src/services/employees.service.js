@@ -47,8 +47,43 @@ export async function listEmployeesByOfficeId(officeId) {
   return api(`/api/offices/${cleanOfficeId}/user-profiles`)
 }
 
-export async function listAvailableRoles() {
-  return api("/api/roles")
+export async function listAvailableRoles(officeId) {
+  const safeOfficeId = String(officeId || "").trim()
+  const query = new URLSearchParams()
+  if (safeOfficeId) query.set("officeId", safeOfficeId)
+
+  const path = query.toString() ? `/api/roles?${query.toString()}` : "/api/roles"
+  return api(path)
+}
+
+export async function listRolePermissions() {
+  return api("/api/roles/permissions")
+}
+
+export async function createCustomRole(input) {
+  return api("/api/roles/custom", {
+    method: "POST",
+    body: JSON.stringify(input),
+  })
+}
+
+export async function updateCustomRoleById(roleId, patch) {
+  const id = String(roleId || "").trim()
+  if (!id) throw new Error("roleId is required")
+
+  return api(`/api/roles/custom/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  })
+}
+
+export async function deleteCustomRoleById(roleId) {
+  const id = String(roleId || "").trim()
+  if (!id) throw new Error("roleId is required")
+
+  return api(`/api/roles/custom/${id}`, {
+    method: "DELETE",
+  })
 }
 
 export async function getMyUserProfile() {

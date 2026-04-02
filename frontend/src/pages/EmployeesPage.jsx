@@ -2,22 +2,71 @@ import { useEffect, useMemo, useState } from "react"
 import PopupModal from "../components/ui/PopupModal"
 import ConfirmModal from "../components/ui/ConfirmModal"
 import {
+    createCustomRole,
     createEmployeeAccount,
+    deleteCustomRoleById,
     deleteEmployeeById,
     getMyUserProfile,
     listAvailableRoles,
+    listRolePermissions,
     listEmployeesByOfficeId,
     resetEmployeePasswordById,
+    updateCustomRoleById,
     updateEmployeeById,
 } from "../services/employees.service"
 import { useNotification } from "../contexts/notification.context"
 
 const fallbackRoles = [
-    { key: "viewer", label: "Viewer", description: "Can only view data. Cannot create, update or delete records." },
-    { key: "staff", label: "Staff", description: "Can manage operational data, but cannot manage office settings or full team permissions." },
-    { key: "manager", label: "Manager", description: "Can manage most accounting operations and employee profiles, except owner-level full control." },
-    { key: "owner", label: "Owner", description: "Full access to all resources and actions." },
+    { id: "system_viewer", key: "viewer", label: "Viewer", description: "Can only view data. Cannot create, update or delete records.", permissions: [], isSystem: true },
+    { id: "system_staff", key: "staff", label: "Staff", description: "Can manage operational data, but cannot manage office settings or full team permissions.", permissions: [], isSystem: true },
+    { id: "system_manager", key: "manager", label: "Manager", description: "Can manage most accounting operations and employee profiles, except owner-level full control.", permissions: [], isSystem: true },
+    { id: "system_owner", key: "owner", label: "Owner", description: "Full access to all resources and actions.", permissions: ["*"], isSystem: true },
 ]
+
+const fallbackPermissionCatalog = [
+    { key: "offices:read", group: "Offices", label: "Read offices" },
+    { key: "offices:create", group: "Offices", label: "Create offices" },
+    { key: "offices:update", group: "Offices", label: "Update offices" },
+    { key: "clients:read", group: "Clients", label: "Read clients" },
+    { key: "clients:create", group: "Clients", label: "Create clients" },
+    { key: "clients:update", group: "Clients", label: "Update clients" },
+    { key: "clients:delete", group: "Clients", label: "Delete clients" },
+    { key: "accounts:read", group: "Accounts", label: "Read accounts" },
+    { key: "accounts:create", group: "Accounts", label: "Create accounts" },
+    { key: "accounts:update", group: "Accounts", label: "Update accounts" },
+    { key: "accounts:delete", group: "Accounts", label: "Delete accounts" },
+    { key: "categories:read", group: "Categories", label: "Read categories" },
+    { key: "categories:create", group: "Categories", label: "Create categories" },
+    { key: "categories:update", group: "Categories", label: "Update categories" },
+    { key: "categories:delete", group: "Categories", label: "Delete categories" },
+    { key: "transactions:read", group: "Transactions", label: "Read transactions" },
+    { key: "transactions:create", group: "Transactions", label: "Create transactions" },
+    { key: "transactions:update", group: "Transactions", label: "Update transactions" },
+    { key: "transactions:delete", group: "Transactions", label: "Delete transactions" },
+    { key: "profitLoss:read", group: "Profit & Loss", label: "Read profit & loss" },
+    { key: "userProfiles:read", group: "Employees", label: "Read employees" },
+    { key: "userProfiles:create", group: "Employees", label: "Create employees" },
+    { key: "userProfiles:update", group: "Employees", label: "Update employees" },
+    { key: "userProfiles:delete", group: "Employees", label: "Delete employees" },
+    { key: "roles:read", group: "Roles", label: "Read roles" },
+    { key: "roles:create", group: "Roles", label: "Create roles" },
+    { key: "roles:update", group: "Roles", label: "Update roles" },
+    { key: "roles:delete", group: "Roles", label: "Delete roles" },
+]
+
+function normalizePermissions(value) {
+    if (!Array.isArray(value)) return []
+    return [...new Set(value.map((item) => String(item || "").trim()).filter(Boolean))]
+}
+
+function permissionListHasPermission(permissions, permission) {
+    const safePermissions = normalizePermissions(permissions)
+    if (safePermissions.includes("*")) return true
+    if (safePermissions.includes(permission)) return true
+
+    const [resource] = String(permission || "").split(":")
+    return safePermissions.includes(`${resource}:*`)
+}
 
 function EmployeesPage() {
     const [officeId, setOfficeId] = useState("")
@@ -39,14 +88,25 @@ function EmployeesPage() {
     const [roleFilter, setRoleFilter] = useState("all")
     const [employeeToDelete, setEmployeeToDelete] = useState(null)
     const [employeeToResetPassword, setEmployeeToResetPassword] = useState(null)
+    const [roleToDelete, setRoleToDelete] = useState(null)
     const [resetPasswordResult, setResetPasswordResult] = useState(null)
     const [employees, setEmployees] = useState([])
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [isLoadingEmployees, setIsLoadingEmployees] = useState(false)
     const [isLoadingProfile, setIsLoadingProfile] = useState(true)
     const [roles, setRoles] = useState([])
+    const [permissionCatalog, setPermissionCatalog] = useState(fallbackPermissionCatalog)
     const [isLoadingRoles, setIsLoadingRoles] = useState(false)
+    const [isRolesSectionExpanded, setIsRolesSectionExpanded] = useState(false)
+    const [showRoleForm, setShowRoleForm] = useState(false)
+    const [editingRoleId, setEditingRoleId] = useState("")
+    const [roleDraft, setRoleDraft] = useState({
+        label: "",
+        description: "",
+        permissions: [],
+    })
     const [refreshKey, setRefreshKey] = useState(0)
+    const [rolesRefreshKey, setRolesRefreshKey] = useState(0)
     const displayedRoles = roles.length > 0 ? roles : fallbackRoles
     const { success, error } = useNotification()
     const roleLabelByKey = useMemo(
@@ -57,6 +117,27 @@ function EmployeesPage() {
             }, {}),
         [displayedRoles]
     )
+    const groupedPermissionCatalog = useMemo(() => {
+        return permissionCatalog.reduce((acc, item) => {
+            const group = String(item.group || "General")
+            if (!acc[group]) acc[group] = []
+            acc[group].push(item)
+            return acc
+        }, {})
+    }, [permissionCatalog])
+    const currentRolePermissions = useMemo(() => {
+        const currentRoleKey = String(currentUserProfile?.role || "").toLowerCase()
+        if (!currentRoleKey) return []
+        const roleItem = displayedRoles.find((role) => String(role.key || "").toLowerCase() === currentRoleKey)
+        return normalizePermissions(roleItem?.permissions)
+    }, [displayedRoles, currentUserProfile?.role])
+    const canManageRoles = useMemo(() => {
+        return (
+            permissionListHasPermission(currentRolePermissions, "roles:create") ||
+            permissionListHasPermission(currentRolePermissions, "roles:update") ||
+            permissionListHasPermission(currentRolePermissions, "roles:delete")
+        )
+    }, [currentRolePermissions])
 
     const filteredEmployees = useMemo(() => {
         const safeSearch = String(searchTerm || "").trim().toLowerCase()
@@ -102,9 +183,16 @@ function EmployeesPage() {
 
     useEffect(() => {
         let active = true
+        if (!officeId) {
+            setRoles([])
+            return () => {
+                active = false
+            }
+        }
+
         setIsLoadingRoles(true)
 
-        listAvailableRoles()
+        listAvailableRoles(officeId)
             .then((items) => {
                 if (!active) return
                 const safeItems = Array.isArray(items) ? items : []
@@ -126,7 +214,26 @@ function EmployeesPage() {
         return () => {
             active = false
         }
-    }, [error])
+    }, [officeId, rolesRefreshKey, error])
+
+    useEffect(() => {
+        let active = true
+        listRolePermissions()
+            .then((items) => {
+                if (!active) return
+                const safeItems = Array.isArray(items) ? items : []
+                if (safeItems.length === 0) return
+                setPermissionCatalog(safeItems)
+            })
+            .catch(() => {
+                if (!active) return
+                setPermissionCatalog(fallbackPermissionCatalog)
+            })
+
+        return () => {
+            active = false
+        }
+    }, [])
 
     useEffect(() => {
         let active = true
@@ -313,6 +420,103 @@ function EmployeesPage() {
         }
     }
 
+    const openCreateRoleForm = () => {
+        setEditingRoleId("")
+        setRoleDraft({
+            label: "",
+            description: "",
+            permissions: [],
+        })
+        setShowRoleForm(true)
+    }
+
+    const openEditRoleForm = (roleItem) => {
+        if (!roleItem || roleItem.isSystem) return
+        setEditingRoleId(String(roleItem.id || ""))
+        setRoleDraft({
+            label: String(roleItem.label || ""),
+            description: String(roleItem.description || ""),
+            permissions: normalizePermissions(roleItem.permissions),
+        })
+        setShowRoleForm(true)
+    }
+
+    const closeRoleForm = () => {
+        setShowRoleForm(false)
+        setEditingRoleId("")
+        setRoleDraft({
+            label: "",
+            description: "",
+            permissions: [],
+        })
+    }
+
+    const toggleRolePermission = (permissionKey) => {
+        const key = String(permissionKey || "").trim()
+        if (!key) return
+
+        setRoleDraft((current) => {
+            const hasKey = current.permissions.includes(key)
+            return {
+                ...current,
+                permissions: hasKey
+                    ? current.permissions.filter((item) => item !== key)
+                    : [...current.permissions, key],
+            }
+        })
+    }
+
+    const handleSaveRole = async (e) => {
+        e.preventDefault()
+
+        if (!officeId) {
+            error("Office is required")
+            return
+        }
+
+        try {
+            setIsSubmitting(true)
+
+            const payload = {
+                officeId,
+                label: roleDraft.label,
+                description: roleDraft.description,
+                permissions: normalizePermissions(roleDraft.permissions),
+            }
+
+            if (editingRoleId) {
+                await updateCustomRoleById(editingRoleId, payload)
+                success("Role updated successfully")
+            } else {
+                await createCustomRole(payload)
+                success("Role created successfully")
+            }
+
+            closeRoleForm()
+            setRolesRefreshKey((current) => current + 1)
+        } catch (err) {
+            error(err.message || "Failed to save role")
+        } finally {
+            setIsSubmitting(false)
+        }
+    }
+
+    const handleDeleteRole = async () => {
+        if (!roleToDelete?.id) return
+
+        try {
+            setIsSubmitting(true)
+            await deleteCustomRoleById(roleToDelete.id)
+            success("Role deleted successfully")
+            setRoleToDelete(null)
+            setRolesRefreshKey((current) => current + 1)
+        } catch (err) {
+            error(err.message || "Failed to delete role")
+        } finally {
+            setIsSubmitting(false)
+        }
+    }
+
     const isCurrentUser = (employeeItem) => {
         const currentEmail = String(currentUserProfile?.email || "").toLowerCase()
         const itemEmail = String(employeeItem.email || "").toLowerCase()
@@ -322,19 +526,119 @@ function EmployeesPage() {
     }
 
     return (
-        <section className="w-full p-8">
+        <section className="w-full h-full min-h-0 overflow-y-auto p-8">
             <div className="max-w-5xl mx-auto flex flex-col gap-6">
                 <header className="flex items-start justify-between gap-3">
                     <div>
                         <h1 className="text-3xl font-bold">Employees</h1>
                     </div>
-                    <button
-                        className="border border-gray-200 rounded-lg px-4 py-2 text-sm font-medium text-left"
-                        onClick={() => setShowEmployeeForm(true)}
-                    >
-                        + New Employee
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {canManageRoles && (
+                            <button
+                                className="border border-gray-200 rounded-lg px-4 py-2 text-sm font-medium text-left"
+                                onClick={openCreateRoleForm}
+                            >
+                                + New Role
+                            </button>
+                        )}
+                        <button
+                            className="border border-gray-200 rounded-lg px-4 py-2 text-sm font-medium text-left"
+                            onClick={() => setShowEmployeeForm(true)}
+                        >
+                            + New Employee
+                        </button>
+                    </div>
                 </header>
+
+                <section className="rounded-xl border border-gray-200 bg-white p-4">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                        <div>
+                            <h2 className="text-lg font-semibold">Roles</h2>
+                            <p className="text-sm text-gray-500">Create custom roles and choose permissions for employee accounts</p>
+                        </div>
+                        <button
+                            type="button"
+                            className="rounded-md p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-800"
+                            onClick={() => setIsRolesSectionExpanded((current) => !current)}
+                            title={isRolesSectionExpanded ? "Collapse roles" : "Expand roles"}
+                            aria-label={isRolesSectionExpanded ? "Collapse roles" : "Expand roles"}
+                        >
+                            <svg
+                                viewBox="0 0 24 24"
+                                className={`h-5 w-5 transition-transform ${isRolesSectionExpanded ? "rotate-180" : ""}`}
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            >
+                                <path d="M6 9l6 6 6-6" />
+                            </svg>
+                        </button>
+                    </div>
+
+                    {isRolesSectionExpanded && (
+                        <>
+                            <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_130px_110px] gap-3 border-b border-gray-200 px-1 py-2 text-xs font-semibold uppercase tracking-wide text-gray-600">
+                                <span>Role</span>
+                                <span>Description</span>
+                                <span>Permissions</span>
+                                <span className="text-right">Actions</span>
+                            </div>
+
+                            <div className="divide-y divide-gray-100">
+                                {displayedRoles.map((roleItem) => (
+                                    <div key={roleItem.id || roleItem.key} className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_130px_110px] gap-3 px-1 py-2.5">
+                                        <div className="min-w-0">
+                                            <p className="truncate font-medium text-gray-900">{roleItem.label}</p>
+                                            <p className="text-xs text-gray-500">{roleItem.isSystem ? "System role" : "Custom role"}</p>
+                                        </div>
+                                        <p className="truncate text-sm text-gray-700">
+                                            {roleItem.description || "-"}
+                                        </p>
+                                        <p className="text-sm text-gray-700">
+                                            {Array.isArray(roleItem.permissions) && roleItem.permissions.includes("*")
+                                                ? "All"
+                                                : `${normalizePermissions(roleItem.permissions).length}`}
+                                        </p>
+                                        <div className="flex items-center justify-end gap-1">
+                                            {!roleItem.isSystem && canManageRoles && (
+                                                <>
+                                                    <button
+                                                        type="button"
+                                                        className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-sky-700"
+                                                        onClick={() => openEditRoleForm(roleItem)}
+                                                        title="Edit role"
+                                                        aria-label="Edit role"
+                                                    >
+                                                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                            <path d="M12 20h9" />
+                                                            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5z" />
+                                                        </svg>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-rose-600"
+                                                        onClick={() => setRoleToDelete(roleItem)}
+                                                        title="Delete role"
+                                                        aria-label="Delete role"
+                                                    >
+                                                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                            <path d="M3 6h18" />
+                                                            <path d="M8 6V4h8v2" />
+                                                            <path d="M19 6l-1 14H6L5 6" />
+                                                            <path d="M10 11v6M14 11v6" />
+                                                        </svg>
+                                                    </button>
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </>
+                    )}
+                </section>
 
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_180px]">
                     <div className="relative">
@@ -597,6 +901,73 @@ function EmployeesPage() {
                 )}
 
                 <PopupModal
+                    isOpen={showRoleForm}
+                    title={editingRoleId ? "Edit Role" : "Create Custom Role"}
+                    onClose={closeRoleForm}
+                    maxWidthClass="max-w-3xl"
+                >
+                    <form className="flex flex-col gap-3" onSubmit={handleSaveRole}>
+                        <input
+                            className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
+                            type="text"
+                            placeholder="Role name"
+                            value={roleDraft.label}
+                            onChange={(e) => setRoleDraft((current) => ({ ...current, label: e.target.value }))}
+                        />
+                        <textarea
+                            className="min-h-20 resize-y rounded-xl border-2 border-gray-100 px-3 py-2 text-sm outline-none focus:border-gray-300"
+                            placeholder="Role description (optional)"
+                            value={roleDraft.description}
+                            onChange={(e) => setRoleDraft((current) => ({ ...current, description: e.target.value }))}
+                        />
+
+                        <div className="max-h-[44vh] overflow-y-auto rounded-xl border border-gray-100 p-3">
+                            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                Permissions
+                            </p>
+                            <div className="flex flex-col gap-4">
+                                {Object.entries(groupedPermissionCatalog).map(([groupName, items]) => (
+                                    <div key={groupName} className="flex flex-col gap-2">
+                                        <p className="text-sm font-semibold text-gray-800">{groupName}</p>
+                                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                            {items.map((permissionItem) => {
+                                                const checked = roleDraft.permissions.includes(permissionItem.key)
+                                                return (
+                                                    <button
+                                                        key={permissionItem.key}
+                                                        type="button"
+                                                        className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-left hover:bg-gray-100"
+                                                        onClick={() => toggleRolePermission(permissionItem.key)}
+                                                    >
+                                                        <span className="text-sm text-gray-700">{permissionItem.label}</span>
+                                                        <span
+                                                            className={`relative inline-flex h-5 w-10 items-center rounded-full transition ${
+                                                                checked ? "bg-emerald-500" : "bg-gray-300"
+                                                            }`}
+                                                            aria-hidden="true"
+                                                        >
+                                                            <span
+                                                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
+                                                                    checked ? "translate-x-5" : "translate-x-1"
+                                                                }`}
+                                                            />
+                                                        </span>
+                                                    </button>
+                                                )
+                                            })}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <button className="bg-gray-100 rounded-full p-2" type="submit" disabled={isSubmitting || isLoadingProfile || !officeId}>
+                            {isSubmitting ? "Saving..." : "Save Role"}
+                        </button>
+                    </form>
+                </PopupModal>
+
+                <PopupModal
                     isOpen={showEmployeeForm}
                     title="Create Employee Account"
                     onClose={() => setShowEmployeeForm(false)}
@@ -666,6 +1037,16 @@ function EmployeesPage() {
                     confirmLabel="Delete Employee"
                     onConfirm={handleDeleteEmployee}
                     onClose={() => setEmployeeToDelete(null)}
+                    isLoading={isSubmitting}
+                />
+
+                <ConfirmModal
+                    isOpen={Boolean(roleToDelete)}
+                    title="Delete Role"
+                    message={`Delete role ${roleToDelete?.label || ""}? Employees using this role must be moved first.`}
+                    confirmLabel="Delete Role"
+                    onConfirm={handleDeleteRole}
+                    onClose={() => setRoleToDelete(null)}
                     isLoading={isSubmitting}
                 />
 
