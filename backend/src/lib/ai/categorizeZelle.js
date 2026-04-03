@@ -8,6 +8,11 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 })
 
+const DEFAULT_LLM_BATCH_SIZE = Number(process.env.LLM_BATCH_SIZE || 20)
+const DEFAULT_LLM_TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS || 60_000)
+const DEFAULT_LLM_MAX_RETRIES = Number(process.env.LLM_MAX_RETRIES || 4)
+const DEFAULT_LLM_BACKOFF_MS = Number(process.env.LLM_BACKOFF_MS || 1200)
+
 const ZelleTransactionSchema = z.object({
   id: z.union([z.string(), z.number()]),
   description: z.string().optional().nullable(),
@@ -316,10 +321,10 @@ async function categorizeZelle(transactions, business, options = {}) {
 
   const txById = new Map(safeTransactions.map((transaction) => [toIdKey(transaction.id), transaction]))
   const model = String(options.model || "gpt-4.1-mini")
-  const batchSize = Number(options.batchSize || 40)
-  const timeoutMs = Number(options.timeoutMs || 25_000)
-  const maxRetries = Number(options.maxRetries || 3)
-  const backoffMs = Number(options.backoffMs || 600)
+  const batchSize = Number(options.batchSize || DEFAULT_LLM_BATCH_SIZE)
+  const timeoutMs = Number(options.timeoutMs || DEFAULT_LLM_TIMEOUT_MS)
+  const maxRetries = Number(options.maxRetries || DEFAULT_LLM_MAX_RETRIES)
+  const backoffMs = Number(options.backoffMs || DEFAULT_LLM_BACKOFF_MS)
 
   const positiveTransactions = safeTransactions.filter(
     (transaction) => getDirectionByAmount(transaction.amount) === "positive"

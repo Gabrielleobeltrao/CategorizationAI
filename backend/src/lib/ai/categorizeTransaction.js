@@ -8,6 +8,11 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 })
 
+const DEFAULT_LLM_BATCH_SIZE = Number(process.env.LLM_BATCH_SIZE || 20)
+const DEFAULT_LLM_TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS || 60_000)
+const DEFAULT_LLM_MAX_RETRIES = Number(process.env.LLM_MAX_RETRIES || 4)
+const DEFAULT_LLM_BACKOFF_MS = Number(process.env.LLM_BACKOFF_MS || 1200)
+
 const CategorySchema = z.object({
   id: z.union([z.string(), z.number()]),
   name: z.string().trim().min(1),
@@ -31,6 +36,8 @@ const BusinessSchema = z.object({
 const CategorizationItemSchema = z.object({
   id: z.union([z.string(), z.number()]),
   categoryId: z.string(),
+  confidence: z.number().min(0).max(1),
+  ambiguous: z.boolean(),
 })
 
 const CategorizationOutputSchema = z.object({
@@ -148,13 +155,18 @@ ${promptTransactions(transactions)}
 Return ONLY valid JSON in this format:
 {
   "results": [
-    { "id": "transaction-id", "categoryId": "category-id-or-empty" }
+    { "id": "transaction-id", "categoryId": "category-id-or-empty", "confidence": 0.0, "ambiguous": false }
   ]
 }
 
 Rules:
 - categoryId must be exactly one of the available category ids.
 - if unclear, categoryId must be "".
+- confidence must be a number from 0 to 1.
+- confidence should reflect how certain you are about the chosen category.
+- ambiguous must be true when the merchant or description could reasonably fit more than one category.
+- if ambiguous is true, prefer categoryId = "" unless the description is still clearly decisive.
+- if confidence is low, prefer categoryId = "".
 - every transaction id in this batch should appear once in the output.
               `.trim(),
             },
@@ -175,8 +187,10 @@ Rules:
                       properties: {
                         id: { type: ["string", "number"] },
                         categoryId: { type: "string", enum: allowedCategoryIdsWithBlank },
+                        confidence: { type: "number", minimum: 0, maximum: 1 },
+                        ambiguous: { type: "boolean" },
                       },
-                      required: ["id", "categoryId"],
+                      required: ["id", "categoryId", "confidence", "ambiguous"],
                     },
                   },
                 },
@@ -225,10 +239,10 @@ async function categorizeTransaction(categories, transactions, business, options
   const txById = new Map(safeTransactions.map((transaction) => [toIdKey(transaction.id), transaction]))
 
   const model = String(options.model || "gpt-4.1-mini")
-  const batchSize = Number(options.batchSize || 40)
-  const timeoutMs = Number(options.timeoutMs || 25_000)
-  const maxRetries = Number(options.maxRetries || 3)
-  const backoffMs = Number(options.backoffMs || 600)
+  const batchSize = Number(options.batchSize || DEFAULT_LLM_BATCH_SIZE)
+  const timeoutMs = Number(options.timeoutMs || DEFAULT_LLM_TIMEOUT_MS)
+  const maxRetries = Number(options.maxRetries || DEFAULT_LLM_MAX_RETRIES)
+  const backoffMs = Number(options.backoffMs || DEFAULT_LLM_BACKOFF_MS)
 
   const batches = chunkArray(safeTransactions, batchSize)
   const batchResults = []
@@ -261,6 +275,8 @@ async function categorizeTransaction(categories, transactions, business, options
     resultById.set(idKey, {
       id: txById.get(idKey).id,
       categoryId: normalizedCategoryId || null,
+      confidence: Number(item.confidence || 0),
+      ambiguous: Boolean(item.ambiguous),
     })
   }
 
@@ -270,6 +286,8 @@ async function categorizeTransaction(categories, transactions, business, options
       resultById.get(idKey) || {
         id: transaction.id,
         categoryId: null,
+        confidence: 0,
+        ambiguous: true,
       }
     )
   })

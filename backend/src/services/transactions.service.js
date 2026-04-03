@@ -21,6 +21,8 @@ import { ObjectId } from "mongodb"
 import categorizeTransaction from "../lib/ai/categorizeTransaction.js"
 import categorizeZelle from "../lib/ai/categorizeZelle.js"
 
+const LLM_CONFIDENCE_THRESHOLD = 0.8
+
 function normalizeObjectIdString(value) {
   const raw = String(value || "").trim()
   if (!raw || !ObjectId.isValid(raw)) return null
@@ -574,7 +576,12 @@ export async function categorizeTransactionsWithLlmService(input) {
   const now = new Date()
 
   const updates = llmResults.map((result) => {
-    const categoryId = normalizeObjectIdString(result?.categoryId)
+    const confidence = Number(result?.confidence || 0)
+    const ambiguous = Boolean(result?.ambiguous)
+    const meetsConfidenceThreshold = confidence >= LLM_CONFIDENCE_THRESHOLD
+    const categoryId = meetsConfidenceThreshold && !ambiguous
+      ? normalizeObjectIdString(result?.categoryId)
+      : null
     const categoryName = categoryId ? categoryById.get(categoryId) || null : null
     const isCategorized = Boolean(categoryId && categoryName)
 
@@ -586,6 +593,8 @@ export async function categorizeTransactionsWithLlmService(input) {
       llmProcessedAt: now,
       llmCategorySuggestionId: isCategorized ? categoryId : null,
       llmCategorySuggestionName: isCategorized ? categoryName : null,
+      llmConfidence: confidence,
+      llmAmbiguous: ambiguous,
     }
   })
 
