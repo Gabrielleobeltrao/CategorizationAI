@@ -31,6 +31,8 @@ const fallbackPermissionCatalog = [
     { key: "clients:create", group: "Clients", label: "Create clients" },
     { key: "clients:update", group: "Clients", label: "Update clients" },
     { key: "clients:delete", group: "Clients", label: "Delete clients" },
+    { key: "clientsOwnerInfo:read", group: "Clients", label: "View owner contact info" },
+    { key: "clientsOwnerInfo:update", group: "Clients", label: "Edit owner contact info" },
     { key: "accounts:read", group: "Accounts", label: "Read accounts" },
     { key: "accounts:create", group: "Accounts", label: "Create accounts" },
     { key: "accounts:update", group: "Accounts", label: "Update accounts" },
@@ -66,6 +68,29 @@ function permissionListHasPermission(permissions, permission) {
 
     const [resource] = String(permission || "").split(":")
     return safePermissions.includes(`${resource}:*`)
+}
+
+function getEmployeeStatusStyles(status) {
+    const safeStatus = String(status || "").toLowerCase()
+
+    if (safeStatus === "active") {
+        return {
+            label: "Active",
+            className: "border-gray-300 bg-white text-gray-900",
+        }
+    }
+
+    if (safeStatus === "inactive") {
+        return {
+            label: "Inactive",
+            className: "border-gray-300 bg-gray-200 text-gray-700",
+        }
+    }
+
+    return {
+        label: safeStatus ? `${safeStatus.charAt(0).toUpperCase()}${safeStatus.slice(1)}` : "Unknown",
+        className: "border-gray-300 bg-gray-100 text-gray-700",
+    }
 }
 
 function EmployeesPage() {
@@ -764,32 +789,30 @@ function EmployeesPage() {
                                         </div>
 
                                         <div className="min-w-0 flex items-center">
-                                            {isEditing ? (
-                                                <button
-                                                    type="button"
-                                                    className={`relative inline-flex h-5 w-10 items-center rounded-full transition ${
-                                                        editingDraft.status === "active" ? "bg-emerald-500" : "bg-gray-300"
-                                                    }`}
-                                                    onClick={() =>
-                                                        setEditingDraft((current) => ({
-                                                            ...current,
-                                                            status: current.status === "active" ? "inactive" : "active",
-                                                        }))
-                                                    }
-                                                    title={editingDraft.status === "active" ? "Set inactive" : "Set active"}
-                                                    aria-label={editingDraft.status === "active" ? "Set inactive" : "Set active"}
-                                                >
-                                                    <span
-                                                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
-                                                            editingDraft.status === "active" ? "translate-x-5" : "translate-x-1"
+                                            {(() => {
+                                                const currentStatus = isEditing ? editingDraft.status : employeeItem.status
+                                                const statusUi = getEmployeeStatusStyles(currentStatus)
+
+                                                return (
+                                                    <button
+                                                        type="button"
+                                                        className={`inline-flex min-w-[88px] items-center justify-center rounded-full border px-3 py-1 text-xs font-semibold transition ${statusUi.className} ${
+                                                            isEditing ? "hover:brightness-95" : "cursor-default"
                                                         }`}
-                                                    />
-                                                </button>
-                                            ) : (
-                                                <p className="text-sm text-gray-700">
-                                                    {employeeItem.status}
-                                                </p>
-                                            )}
+                                                        onClick={() => {
+                                                            if (!isEditing) return
+                                                            setEditingDraft((current) => ({
+                                                                ...current,
+                                                                status: current.status === "active" ? "inactive" : "active",
+                                                            }))
+                                                        }}
+                                                        title={isEditing ? "Toggle status" : `Status: ${statusUi.label}`}
+                                                        aria-label={isEditing ? "Toggle status" : `Status: ${statusUi.label}`}
+                                                    >
+                                                        {statusUi.label}
+                                                    </button>
+                                                )
+                                            })()}
                                         </div>
 
                                         <div className="flex items-center justify-end gap-2">
@@ -906,22 +929,31 @@ function EmployeesPage() {
                     onClose={closeRoleForm}
                     maxWidthClass="max-w-3xl"
                 >
-                    <form className="flex flex-col gap-3" onSubmit={handleSaveRole}>
-                        <input
-                            className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
-                            type="text"
-                            placeholder="Role name"
-                            value={roleDraft.label}
-                            onChange={(e) => setRoleDraft((current) => ({ ...current, label: e.target.value }))}
-                        />
-                        <textarea
-                            className="min-h-20 resize-y rounded-xl border-2 border-gray-100 px-3 py-2 text-sm outline-none focus:border-gray-300"
-                            placeholder="Role description (optional)"
-                            value={roleDraft.description}
-                            onChange={(e) => setRoleDraft((current) => ({ ...current, description: e.target.value }))}
-                        />
+                    <form className="flex flex-col gap-4" onSubmit={handleSaveRole}>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <label className="flex flex-col gap-1">
+                                <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Role name</span>
+                                <input
+                                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none transition focus:border-gray-400 focus:bg-white"
+                                    type="text"
+                                    placeholder="Reviewer"
+                                    value={roleDraft.label}
+                                    onChange={(e) => setRoleDraft((current) => ({ ...current, label: e.target.value }))}
+                                />
+                            </label>
+                            <label className="flex flex-col gap-1 sm:col-span-1">
+                                <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Description</span>
+                                <input
+                                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none transition focus:border-gray-400 focus:bg-white"
+                                    type="text"
+                                    placeholder="Can review categorized transactions"
+                                    value={roleDraft.description}
+                                    onChange={(e) => setRoleDraft((current) => ({ ...current, description: e.target.value }))}
+                                />
+                            </label>
+                        </div>
 
-                        <div className="max-h-[44vh] overflow-y-auto rounded-xl border border-gray-100 p-3">
+                        <div className="max-h-[44vh] overflow-y-auto rounded-xl border border-gray-100 bg-gray-50 p-3">
                             <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
                                 Permissions
                             </p>
@@ -936,7 +968,7 @@ function EmployeesPage() {
                                                     <button
                                                         key={permissionItem.key}
                                                         type="button"
-                                                        className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-left hover:bg-gray-100"
+                                                        className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 text-left hover:bg-gray-100"
                                                         onClick={() => toggleRolePermission(permissionItem.key)}
                                                     >
                                                         <span className="text-sm text-gray-700">{permissionItem.label}</span>
@@ -961,9 +993,22 @@ function EmployeesPage() {
                             </div>
                         </div>
 
-                        <button className="bg-gray-100 rounded-full p-2" type="submit" disabled={isSubmitting || isLoadingProfile || !officeId}>
-                            {isSubmitting ? "Saving..." : "Save Role"}
-                        </button>
+                        <div className="mt-1 flex items-center justify-end gap-2">
+                            <button
+                                type="button"
+                                className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                onClick={closeRoleForm}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-black disabled:opacity-60"
+                                type="submit"
+                                disabled={isSubmitting || isLoadingProfile || !officeId}
+                            >
+                                {isSubmitting ? "Saving..." : "Save Role"}
+                            </button>
+                        </div>
                     </form>
                 </PopupModal>
 
@@ -972,61 +1017,90 @@ function EmployeesPage() {
                     title="Create Employee Account"
                     onClose={() => setShowEmployeeForm(false)}
                 >
-                    <form className="flex flex-col gap-3" onSubmit={handleCreateEmployee}>
-                        <input
-                            className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
-                            type="text"
-                            placeholder="Employee name"
-                            value={newEmployeeName}
-                            onChange={(e) => setNewEmployeeName(e.target.value)}
-                        />
-                        <input
-                            className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
-                            type="email"
-                            placeholder="Employee email"
-                            value={newEmployeeEmail}
-                            onChange={(e) => setNewEmployeeEmail(e.target.value)}
-                        />
-                        <input
-                            className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
-                            type="password"
-                            placeholder="Password"
-                            value={newEmployeePassword}
-                            onChange={(e) => setNewEmployeePassword(e.target.value)}
-                        />
-                        <div className="relative">
-                            <select
-                                className="w-full appearance-none rounded-full border-3 border-gray-100 bg-white px-3 py-2 pr-8"
-                                value={newEmployeeRole}
-                                onChange={(e) => setNewEmployeeRole(e.target.value)}
-                                disabled={isLoadingRoles}
-                            >
-                                {displayedRoles.map((role) => (
-                                    <option key={role.key} value={role.key}>
-                                        {role.label}
-                                    </option>
-                                ))}
-                            </select>
-                            <svg
-                                className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2.5"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                            >
-                                <path d="M6 9l6 6 6-6" />
-                            </svg>
+                    <form className="flex flex-col gap-4" onSubmit={handleCreateEmployee}>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <label className="flex flex-col gap-1">
+                                <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Employee name</span>
+                                <input
+                                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none transition focus:border-gray-400 focus:bg-white"
+                                    type="text"
+                                    placeholder="John Doe"
+                                    value={newEmployeeName}
+                                    onChange={(e) => setNewEmployeeName(e.target.value)}
+                                />
+                            </label>
+                            <label className="flex flex-col gap-1">
+                                <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Email</span>
+                                <input
+                                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none transition focus:border-gray-400 focus:bg-white"
+                                    type="email"
+                                    placeholder="john@company.com"
+                                    value={newEmployeeEmail}
+                                    onChange={(e) => setNewEmployeeEmail(e.target.value)}
+                                />
+                            </label>
+                        </div>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <label className="flex flex-col gap-1">
+                                <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Password</span>
+                                <input
+                                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none transition focus:border-gray-400 focus:bg-white"
+                                    type="password"
+                                    placeholder="Password"
+                                    value={newEmployeePassword}
+                                    onChange={(e) => setNewEmployeePassword(e.target.value)}
+                                />
+                            </label>
+                            <label className="flex flex-col gap-1">
+                                <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Role</span>
+                                <div className="relative">
+                                    <select
+                                        className="w-full appearance-none rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 pr-8 text-sm outline-none transition focus:border-gray-400 focus:bg-white"
+                                        value={newEmployeeRole}
+                                        onChange={(e) => setNewEmployeeRole(e.target.value)}
+                                        disabled={isLoadingRoles}
+                                    >
+                                        {displayedRoles.map((role) => (
+                                            <option key={role.key} value={role.key}>
+                                                {role.label}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <svg
+                                        className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2.5"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                    >
+                                        <path d="M6 9l6 6 6-6" />
+                                    </svg>
+                                </div>
+                            </label>
                         </div>
                         {displayedRoles.length > 0 && (
-                            <div className="rounded-md border border-gray-100 bg-gray-50 px-3 py-2 text-xs text-gray-700">
+                            <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 text-xs text-gray-700">
                                 {displayedRoles.find((role) => role.key === newEmployeeRole)?.description || "Select a role"}
                             </div>
                         )}
-                        <button className="bg-gray-100 rounded-full p-2" type="submit" disabled={isSubmitting || isLoadingProfile || !officeId}>
-                            {isSubmitting ? "Saving..." : "Save Employee"}
-                        </button>
+                        <div className="mt-1 flex items-center justify-end gap-2">
+                            <button
+                                type="button"
+                                className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                onClick={() => setShowEmployeeForm(false)}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-black disabled:opacity-60"
+                                type="submit"
+                                disabled={isSubmitting || isLoadingProfile || !officeId}
+                            >
+                                {isSubmitting ? "Saving..." : "Save Employee"}
+                            </button>
+                        </div>
                     </form>
                 </PopupModal>
 
