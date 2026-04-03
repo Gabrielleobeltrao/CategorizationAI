@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import LedgerEntryRow from "./LedgerEntryRow"
 import ConfirmModal from "../ui/ConfirmModal"
 import PopupModal from "../ui/PopupModal"
+import { getTransactionAmountPresentation } from "../../utils/amountPresentation"
 
 const UNCATEGORIZED_INCOME_FILTER_VALUE = "__uncategorized_income__"
 const UNCATEGORIZED_EXPENSES_FILTER_VALUE = "__uncategorized_expenses__"
@@ -30,6 +31,11 @@ const LLM_PROCESSED_OPTIONS = [
     { id: "all", label: "All" },
     { id: "processed", label: "LLM processed" },
     { id: "not_processed", label: "Not processed" },
+]
+const AMOUNT_SIGN_OPTIONS = [
+    { id: "all", label: "All amounts" },
+    { id: "positive", label: "Positive only" },
+    { id: "negative", label: "Negative only" },
 ]
 
 function formatPreviewDate(value = "") {
@@ -275,6 +281,7 @@ function LedgerEntriesTable({
     onApplyFilters,
     onSearchTermChange,
     onUpdateEntry,
+    onUpdateEntries,
     onDeleteEntry,
     onDeleteEntries,
     onImportTransactions,
@@ -316,6 +323,7 @@ function LedgerEntriesTable({
         includeUncategorizedIncome: false,
         includeUncategorizedExpenses: false,
         splitMode: "all",
+        amountSign: "all",
         llmProcessed: "all",
         fromDate: "",
         toDate: "",
@@ -516,6 +524,7 @@ function LedgerEntriesTable({
         if (selectedAccounts.length > 0) count += 1
         if (selectedCategories.length > 0 || selectedUncategorizedCount > 0) count += 1
         if (String(appliedFilters.splitMode || "all") !== "all") count += 1
+        if (String(appliedFilters.amountSign || "all") !== "all") count += 1
         if (String(appliedFilters.llmProcessed || "all") !== "all") count += 1
         if (Array.isArray(appliedFilters.years) && appliedFilters.years.length > 0) count += 1
         if (Array.isArray(appliedFilters.months) && appliedFilters.months.length > 0) count += 1
@@ -625,11 +634,20 @@ function LedgerEntriesTable({
                 return
             }
 
-            await Promise.all(
-                patchByTarget.map(({ targetId, patch }) =>
-                    onUpdateEntry?.(targetId, patch)
+            if (patchByTarget.length > 1 && onUpdateEntries) {
+                await onUpdateEntries(
+                    patchByTarget.map(({ targetId, patch }) => ({
+                        id: targetId,
+                        patch,
+                    }))
                 )
-            )
+            } else {
+                await Promise.all(
+                    patchByTarget.map(({ targetId, patch }) =>
+                        onUpdateEntry?.(targetId, patch)
+                    )
+                )
+            }
             setEditingTargetIds([])
             setEditingDraft(null)
             setEditingTouched({})
@@ -790,6 +808,18 @@ function LedgerEntriesTable({
         if (split?.categoryId) return split.categoryId
         const matchedCategory = categories.find((item) => item.name === split?.category)
         return matchedCategory?.id || ""
+    }
+
+    const getSplitAmountPresentation = (split) => {
+        const splitCategoryName =
+            split?.category ||
+            categories.find((item) => item.id === getSplitCategoryId(split))?.name ||
+            (Number(split?.amount || 0) >= 0 ? "Uncategorized income" : "Uncategorized expenses")
+
+        return getTransactionAmountPresentation({
+            amount: split?.amount || 0,
+            category: splitCategoryName,
+        })
     }
 
     const updateSavedSplitCategory = async (entry, splitIndex, nextCategoryId) => {
@@ -1049,7 +1079,7 @@ function LedgerEntriesTable({
                                         : ""}
                                 </h4>
                             </div>
-                        <div className="relative flex items-center gap-3" ref={filterPanelRef}>
+                        <div className="relative flex items-center gap-3">
                             <div className="relative min-w-[220px] flex-1">
                                 <input
                                     type="text"
@@ -1312,55 +1342,59 @@ function LedgerEntriesTable({
 
                             {splittingEntryId !== entry.id && Array.isArray(entry.splits) && entry.splits.length > 1 && (
                                 <>
-                                    {entry.splits.map((split, splitIndex) => (
-                                        <div
-                                            key={split.id || `${entry.id}-split-${splitIndex}`}
-                                            className={`grid grid-cols-[24px_minmax(110px,0.7fr)_minmax(180px,2fr)_minmax(120px,1fr)_minmax(160px,1.3fr)_16px_78px_92px] items-center gap-4 px-2 py-2 text-sm ${
-                                                index % 2 === 0
-                                                    ? splitIndex % 2 === 0
-                                                        ? "bg-zinc-50"
-                                                        : "bg-zinc-100"
-                                                    : splitIndex % 2 === 0
-                                                        ? "bg-zinc-100"
-                                                        : "bg-zinc-50"
-                                            }`}
-                                        >
-                                            <span className="block h-4 w-4" />
-                                            <span />
-                                            <span />
-                                            <span />
-                                            <div className="relative w-full">
-                                                <select
-                                                    className="w-full rounded-full border-3 border-gray-100 bg-white p-2 pl-3 appearance-none"
-                                                    value={getSplitCategoryId(split)}
-                                                    onChange={(e) =>
-                                                        updateSavedSplitCategory(entry, splitIndex, e.target.value)
-                                                    }
-                                                >
-                                                    <option value="">Uncategorized</option>
-                                                    {categories.map((category) => (
-                                                        <option key={category.id} value={category.id}>
-                                                            {category.name}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                                <svg
-                                                    className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
-                                                    viewBox="0 0 24 24"
-                                                    fill="none"
-                                                    stroke="currentColor"
-                                                    strokeWidth="2.5"
-                                                    strokeLinecap="round"
-                                                    strokeLinejoin="round"
-                                                >
-                                                    <path d="M6 9l6 6 6-6" />
-                                                </svg>
+                                    {entry.splits.map((split, splitIndex) => {
+                                        const splitAmountPresentation = getSplitAmountPresentation(split)
+
+                                        return (
+                                            <div
+                                                key={split.id || `${entry.id}-split-${splitIndex}`}
+                                                className={`grid grid-cols-[24px_minmax(110px,0.7fr)_minmax(180px,2fr)_minmax(120px,1fr)_minmax(160px,1.3fr)_16px_78px_92px] items-center gap-4 px-2 py-2 text-sm ${
+                                                    index % 2 === 0
+                                                        ? splitIndex % 2 === 0
+                                                            ? "bg-zinc-50"
+                                                            : "bg-zinc-100"
+                                                        : splitIndex % 2 === 0
+                                                            ? "bg-zinc-100"
+                                                            : "bg-zinc-50"
+                                                }`}
+                                            >
+                                                <span className="block h-4 w-4" />
+                                                <span />
+                                                <span />
+                                                <span />
+                                                <div className="relative w-full">
+                                                    <select
+                                                        className="w-full rounded-full border-3 border-gray-100 bg-white p-2 pl-3 appearance-none"
+                                                        value={getSplitCategoryId(split)}
+                                                        onChange={(e) =>
+                                                            updateSavedSplitCategory(entry, splitIndex, e.target.value)
+                                                        }
+                                                    >
+                                                        <option value="">Uncategorized</option>
+                                                        {categories.map((category) => (
+                                                            <option key={category.id} value={category.id}>
+                                                                {category.name}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                    <svg
+                                                        className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
+                                                        viewBox="0 0 24 24"
+                                                        fill="none"
+                                                        stroke="currentColor"
+                                                        strokeWidth="2.5"
+                                                        strokeLinecap="round"
+                                                        strokeLinejoin="round"
+                                                    >
+                                                        <path d="M6 9l6 6 6-6" />
+                                                    </svg>
+                                                </div>
+                                                <span />
+                                                <span className={`text-right ${splitAmountPresentation.className}`}>{splitAmountPresentation.text}</span>
+                                                <span />
                                             </div>
-                                            <span />
-                                            <span className="text-right">${Number(split.amount || 0).toFixed(2)}</span>
-                                            <span />
-                                        </div>
-                                    ))}
+                                        )
+                                    })}
                                 </>
                             )}
                         </div>
@@ -1396,7 +1430,7 @@ function LedgerEntriesTable({
                                 className="absolute inset-0 bg-slate-900/20"
                                 onClick={() => setShowFilterModal(false)}
                             />
-                            <aside className="fixed bottom-0 right-0 top-0 flex w-[380px] max-w-[100vw] flex-col overflow-hidden border-l border-gray-200 bg-white shadow-2xl">
+                            <aside ref={filterPanelRef} className="fixed bottom-0 right-0 top-0 flex w-[380px] max-w-[100vw] flex-col overflow-hidden border-l border-gray-200 bg-white shadow-2xl">
                                 <header className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
                                     <h2 className="text-base font-semibold">Transaction Filters</h2>
                                     <button type="button" className="rounded-md px-2 py-1 text-sm text-gray-500 hover:bg-gray-100" onClick={() => setShowFilterModal(false)}>
@@ -1537,6 +1571,31 @@ function LedgerEntriesTable({
                                                             setDraftFilters((current) => ({
                                                                 ...current,
                                                                 splitMode: option.id,
+                                                            }))
+                                                        }
+                                                    >
+                                                        {option.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </section>
+
+                                        <section className="space-y-2">
+                                            <p className="text-sm font-medium text-gray-700">Amount sign</p>
+                                            <div className="flex flex-wrap gap-2">
+                                                {AMOUNT_SIGN_OPTIONS.map((option) => (
+                                                    <button
+                                                        key={option.id}
+                                                        type="button"
+                                                        className={`rounded-md border px-2.5 py-1.5 text-xs ${
+                                                            String(draftFilters.amountSign || "all") === option.id
+                                                                ? "border-gray-900 bg-gray-900 text-white"
+                                                                : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                                                        }`}
+                                                        onClick={() =>
+                                                            setDraftFilters((current) => ({
+                                                                ...current,
+                                                                amountSign: option.id,
                                                             }))
                                                         }
                                                     >
@@ -1714,6 +1773,7 @@ function LedgerEntriesTable({
                                                 includeUncategorizedIncome: false,
                                                 includeUncategorizedExpenses: false,
                                                 splitMode: "all",
+                                                amountSign: "all",
                                                 llmProcessed: "all",
                                                 fromDate: "",
                                                 toDate: "",
@@ -1828,19 +1888,21 @@ function LedgerEntriesTable({
                 maxWidthClass="max-w-3xl"
             >
                 <div className="flex flex-col gap-4">
-                    {pendingLlmPayload?.mode === "selected" ? (
-                        <p className="text-sm text-gray-700">
-                            You selected <b>{pendingLlmPayload.selectedCount}</b> transaction(s). AI flow will process{" "}
-                            <b>{pendingLlmPayload.targetCount}</b> eligible transaction(s) and skip{" "}
-                            <b>{pendingLlmPayload.skippedCount}</b>.
-                        </p>
-                    ) : (
-                        <p className="text-sm text-gray-700">
-                            AI flow will process all eligible transactions for this client (Zelle + regular uncategorized, non-split).
-                        </p>
-                    )}
+                    <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5">
+                        {pendingLlmPayload?.mode === "selected" ? (
+                            <p className="text-sm text-gray-700">
+                                You selected <b>{pendingLlmPayload.selectedCount}</b> transaction(s). AI flow will process{" "}
+                                <b>{pendingLlmPayload.targetCount}</b> eligible transaction(s) and skip{" "}
+                                <b>{pendingLlmPayload.skippedCount}</b>.
+                            </p>
+                        ) : (
+                            <p className="text-sm text-gray-700">
+                                AI flow will process all eligible transactions for this client (Zelle + regular uncategorized, non-split).
+                            </p>
+                        )}
+                    </div>
 
-                    <div className="max-h-56 overflow-y-auto rounded-md border border-gray-200 bg-white">
+                    <div className="max-h-56 overflow-y-auto rounded-xl border border-gray-200 bg-white">
                         <div className="overflow-x-auto">
                             <div className="min-w-[760px]">
                                 <div className="grid grid-cols-[96px_1.7fr_1fr_100px] gap-3 border-b border-gray-200 bg-gray-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-600">
@@ -1881,7 +1943,7 @@ function LedgerEntriesTable({
                     <div className="flex items-center justify-end gap-2">
                         <button
                             type="button"
-                            className="rounded-md border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                            className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60"
                             onClick={() => setPendingLlmPayload(null)}
                             disabled={isCategorizingWithLlm}
                         >
@@ -1889,7 +1951,7 @@ function LedgerEntriesTable({
                         </button>
                         <button
                             type="button"
-                            className="rounded-md border border-gray-900 bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-black disabled:opacity-60"
+                            className="rounded-lg border border-gray-900 bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-black disabled:opacity-60"
                             onClick={confirmCategorizeWithLlm}
                             disabled={
                                 isCategorizingWithLlm ||
@@ -1909,9 +1971,11 @@ function LedgerEntriesTable({
                 maxWidthClass="max-w-5xl"
             >
                 <div className="flex flex-col gap-4">
-                    <p className="text-sm text-gray-600">
-                        Upload a CSV and confirm if the columns are mapped correctly before importing.
-                    </p>
+                    <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5">
+                        <p className="text-sm text-gray-600">
+                            Upload a CSV and confirm if the columns are mapped correctly before importing.
+                        </p>
+                    </div>
 
                     <div className="max-w-sm">
                         <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -1919,7 +1983,7 @@ function LedgerEntriesTable({
                         </label>
                         <div className="relative">
                             <select
-                                className="w-full rounded-full border-3 border-gray-100 bg-white p-2 pl-3 pr-8 text-sm text-gray-700 appearance-none outline-none"
+                                className="w-full appearance-none rounded-xl border border-gray-200 bg-gray-50 p-2.5 pl-3 pr-8 text-sm text-gray-700 outline-none transition focus:border-gray-400 focus:bg-white"
                                 value={uploadAccountId}
                                 onChange={(e) => setUploadAccountId(e.target.value)}
                             >
@@ -1955,7 +2019,7 @@ function LedgerEntriesTable({
                         />
                         <button
                             type="button"
-                            className="rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black"
+                            className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black"
                             onClick={openCsvFilePicker}
                         >
                             Upload CSV Files
@@ -1964,7 +2028,7 @@ function LedgerEntriesTable({
                     </div>
 
                     {uploadedCsvFiles.length === 0 && (
-                        <p className="rounded-md border border-dashed border-gray-300 bg-gray-50 px-3 py-5 text-center text-sm text-gray-500">
+                        <p className="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-3 py-5 text-center text-sm text-gray-500">
                             No files selected yet.
                         </p>
                     )}
@@ -1989,7 +2053,7 @@ function LedgerEntriesTable({
                                 )
 
                                 return (
-                                    <div key={uploadedFile.id} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                                    <div key={uploadedFile.id} className="rounded-xl border border-gray-200 bg-gray-50 p-3">
                                         <div className="mb-3 flex items-center justify-between">
                                             <div>
                                                 <h3 className="text-sm font-semibold text-gray-700">{uploadedFile.fileName}</h3>
@@ -2018,7 +2082,7 @@ function LedgerEntriesTable({
                                             </button>
                                         </div>
 
-                                        <div className="mt-4 overflow-x-auto rounded-md border border-gray-200 bg-white">
+                                        <div className="mt-4 overflow-x-auto rounded-xl border border-gray-200 bg-white">
                                             <table className="min-w-[760px] w-max border-collapse">
                                                 <thead>
                                                     <tr className="border-b border-gray-200 bg-gray-100">
@@ -2106,7 +2170,7 @@ function LedgerEntriesTable({
                     <div className="mt-1 flex items-center justify-end gap-2">
                         <button
                             type="button"
-                            className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
                             onClick={closeUploadModal}
                             disabled={isImportingTransactions}
                         >
@@ -2114,7 +2178,7 @@ function LedgerEntriesTable({
                         </button>
                         <button
                             type="button"
-                            className="rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
+                            className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
                             disabled={
                                 uploadedCsvFiles.length === 0 ||
                                 hasDuplicateMappingInAnyFile ||

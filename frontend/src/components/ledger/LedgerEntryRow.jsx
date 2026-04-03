@@ -1,3 +1,5 @@
+import { getTransactionAmountPresentation } from "../../utils/amountPresentation"
+
 function LedgerEntryRow({
     index,
     accounts,
@@ -46,6 +48,10 @@ function LedgerEntryRow({
     const selectedAccountId = currentAccountId || fallbackAccount?.id || ""
     const currentCategory = shouldUseDraftCategory ? editingDraft?.category ?? category : category
     const currentAmount = isEditing && !isBatchEditing ? editingDraft?.amount ?? String(amount) : amount
+    const amountPresentation = getTransactionAmountPresentation({
+        amount: currentAmount,
+        category: currentCategory,
+    })
     const isLlmProcessed =
         Boolean(llmProcessed) ||
         Boolean(llmProcessedAt) ||
@@ -187,7 +193,7 @@ function LedgerEntryRow({
                     onChange={(e) => onChangeDraft({ amount: e.target.value })}
                 />
             ) : (
-                <h4 className="text-right">${Number(currentAmount).toFixed(2)}</h4>
+                <h4 className={`text-right ${amountPresentation.className}`}>{amountPresentation.text}</h4>
             )}
             <div className="flex items-center justify-end gap-1">
                 {!isSplitting && (

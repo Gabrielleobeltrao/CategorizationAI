@@ -232,12 +232,8 @@ export function downloadProfitLossPdf({
 
     cards.forEach((kpi) => {
       const amountColor =
-        kpi?.id === "net_income"
-          ? Number(kpi?.value || 0) > 0
-            ? [0.08, 0.5, 0.3]
-            : Number(kpi?.value || 0) < 0
-              ? [0.75, 0.2, 0.25]
-              : [0.12, 0.13, 0.16]
+        kpi?.id === "income" || (kpi?.id === "net_income" && Number(kpi?.value || 0) > 0)
+          ? [0.08, 0.5, 0.3]
           : [0.12, 0.13, 0.16]
 
       commands.push(
@@ -324,8 +320,7 @@ export function downloadProfitLossPdf({
     const leftPadding = row.level === 1 ? 20 : 8
     const labelFont = row.type === "total" || row.type === "group" ? "F2" : "F1"
     const amountFont = row.type === "total" || row.type === "group" ? "F2" : "F1"
-    const amountColor =
-      Number(row.rawAmount || 0) < 0 ? [0.75, 0.2, 0.25] : [0.14, 0.16, 0.2]
+    const amountColor = Array.isArray(row.amountPdfColor) ? row.amountPdfColor : [0.14, 0.16, 0.2]
 
     commands.push(
       buildTextCommand({

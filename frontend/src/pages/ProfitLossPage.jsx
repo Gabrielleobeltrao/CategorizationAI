@@ -8,14 +8,7 @@ import {
 import { useNotification } from "../contexts/notification.context"
 import { downloadProfitLossPdf } from "../utils/pdf"
 import { trackClientOpened } from "../utils/recentClients"
-
-function formatCurrency(value) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(value)
-}
+import { formatAbsoluteCurrency, getProfitLossAmountPresentation } from "../utils/amountPresentation"
 
 function formatPeriodLabel(value) {
   const [prefix, raw] = String(value || "").split(":")
@@ -221,7 +214,6 @@ function ProfitLossPage() {
 
   const netIncomeColorClass = useMemo(() => {
     if (formula.netIncome > 0) return "text-emerald-700"
-    if (formula.netIncome < 0) return "text-rose-700"
     return "text-gray-900"
   }, [formula.netIncome])
 
@@ -258,20 +250,20 @@ function ProfitLossPage() {
 
     const safeClientSlug = clientName.replace(/\s+/g, "-").toLowerCase()
     const kpis = [
-      { id: "income", label: "Income", value: formula.income, displayValue: formatCurrency(formula.income) },
+      { id: "income", label: "Income", value: formula.income, displayValue: formatAbsoluteCurrency(formula.income, { minimumFractionDigits: 0, maximumFractionDigits: 0 }) },
       {
         id: "cost_of_goods_sold",
         label: "Cost of Goods Sold",
         value: formula.costOfGoodsSold,
-        displayValue: formatCurrency(formula.costOfGoodsSold),
+        displayValue: formatAbsoluteCurrency(formula.costOfGoodsSold, { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
       },
       {
         id: "operating_expenses",
         label: "Operating Expenses",
         value: formula.operatingExpenses,
-        displayValue: formatCurrency(formula.operatingExpenses),
+        displayValue: formatAbsoluteCurrency(formula.operatingExpenses, { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
       },
-      { id: "net_income", label: "Net Income", value: formula.netIncome, displayValue: formatCurrency(formula.netIncome) },
+      { id: "net_income", label: "Net Income", value: formula.netIncome, displayValue: formatAbsoluteCurrency(formula.netIncome, { minimumFractionDigits: 0, maximumFractionDigits: 0 }) },
     ]
 
     const statementRows = (Array.isArray(profitLoss.statement) ? profitLoss.statement : []).map((line) => ({
@@ -279,7 +271,8 @@ function ProfitLossPage() {
       level: line.level,
       type: line.type,
       rawAmount: Number(line.amount || 0),
-      amountText: formatCurrency(line.amount),
+      amountText: getProfitLossAmountPresentation({ amount: line.amount, label: line.label }).text,
+      amountPdfColor: getProfitLossAmountPresentation({ amount: line.amount, label: line.label }).pdfColor,
     }))
 
     downloadProfitLossPdf({
@@ -447,22 +440,22 @@ function ProfitLossPage() {
                   <div className="grid min-w-[900px] grid-cols-[minmax(170px,1fr)_32px_minmax(220px,1fr)_32px_minmax(220px,1fr)_32px_minmax(180px,1fr)] items-end gap-x-2">
                     <div className="text-center">
                       <p className="text-xs text-gray-500 uppercase tracking-wide">Income</p>
-                      <p className="text-xl font-semibold text-gray-900">{formatCurrency(formula.income)}</p>
+                      <p className="text-xl font-semibold text-emerald-700">{formatAbsoluteCurrency(formula.income, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
                     </div>
                     <span className="flex h-10 w-8 items-end justify-center pb-1 text-lg text-gray-500">-</span>
                     <div className="text-center">
                       <p className="text-xs text-gray-500 uppercase tracking-wide">Cost Of Goods Sold</p>
-                      <p className="text-xl font-semibold text-gray-900">{formatCurrency(formula.costOfGoodsSold)}</p>
+                      <p className="text-xl font-semibold text-gray-900">{formatAbsoluteCurrency(formula.costOfGoodsSold, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
                     </div>
                     <span className="flex h-10 w-8 items-end justify-center pb-1 text-lg text-gray-500">-</span>
                     <div className="text-center">
                       <p className="text-xs text-gray-500 uppercase tracking-wide">Operating Expenses</p>
-                      <p className="text-xl font-semibold text-gray-900">{formatCurrency(formula.operatingExpenses)}</p>
+                      <p className="text-xl font-semibold text-gray-900">{formatAbsoluteCurrency(formula.operatingExpenses, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
                     </div>
                     <span className="flex h-10 w-8 items-end justify-center pb-1 text-lg text-gray-500">=</span>
                     <div className="text-center">
                       <p className={`text-xs uppercase tracking-wide ${netIncomeColorClass}`}>Net Income</p>
-                      <p className={`text-xl font-bold ${netIncomeColorClass}`}>{formatCurrency(formula.netIncome)}</p>
+                      <p className={`text-xl font-bold ${netIncomeColorClass}`}>{formatAbsoluteCurrency(formula.netIncome, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
                     </div>
                   </div>
                 </div>
@@ -493,6 +486,10 @@ function ProfitLossPage() {
                   {!showPercentView && (
                     <div>
                       {profitLoss.statement.map((line, index) => (
+                        (() => {
+                          const amountPresentation = getProfitLossAmountPresentation({ amount: line.amount, label: line.label })
+
+                          return (
                         <div
                           key={line.id}
                           className={`grid grid-cols-[minmax(0,1fr)_180px] items-center px-3 py-2 text-sm ${index % 2 === 0 ? "bg-gray-100" : "bg-white"}`}
@@ -512,10 +509,12 @@ function ProfitLossPage() {
                               {line.label}
                             </span>
                           )}
-                          <span className={`text-right ${getLineWeightClass(line.type)} ${line.amount < 0 ? "text-rose-600" : "text-gray-900"}`}>
-                            {formatCurrency(line.amount)}
+                          <span className={`text-right ${getLineWeightClass(line.type)} ${amountPresentation.className}`}>
+                            {amountPresentation.text}
                           </span>
                         </div>
+                          )
+                        })()
                       ))}
                     </div>
                   )}
@@ -524,6 +523,7 @@ function ProfitLossPage() {
                     <div className="space-y-2 p-3">
                       {profitLoss.statement.map((line) => {
                         const percentage = Math.round((Math.abs(line.amount) / revenueBase) * 100)
+                        const amountPresentation = getProfitLossAmountPresentation({ amount: line.amount, label: line.label })
                         return (
                           <div key={line.id} className="space-y-1">
                             <div className="flex items-center justify-between gap-2 text-sm">
@@ -534,7 +534,7 @@ function ProfitLossPage() {
                             </div>
                             <div className="h-2 w-full rounded-full bg-gray-100">
                               <div
-                                className={`h-2 rounded-full ${line.amount < 0 ? "bg-rose-500" : "bg-emerald-500"}`}
+                                className={`h-2 rounded-full ${amountPresentation.barClassName}`}
                                 style={{ width: `${Math.min(100, percentage)}%` }}
                               />
                             </div>
