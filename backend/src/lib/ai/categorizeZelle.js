@@ -19,7 +19,16 @@ const BusinessSchema = z.object({
   businessType: z.string().optional().nullable(),
   mainActivity: z.string().optional().nullable(),
   description: z.string().optional().nullable(),
-  owners: z.array(z.string()).optional().nullable(),
+  owners: z.array(
+    z.union([
+      z.string(),
+      z.object({
+        name: z.string().optional().nullable(),
+        email: z.string().optional().nullable(),
+        phone: z.string().optional().nullable(),
+      }),
+    ])
+  ).optional().nullable(),
 })
 
 const ZelleCategorySchema = z.object({
@@ -72,7 +81,13 @@ function promptBusiness(business) {
   if (business?.description) lines.push(`Business context: ${business.description}`)
 
   const owners = Array.isArray(business?.owners)
-    ? business.owners.map((owner) => String(owner || "").trim()).filter(Boolean)
+    ? business.owners
+        .map((owner) => {
+          if (typeof owner === "string") return owner.trim()
+          if (owner && typeof owner === "object") return String(owner.name || "").trim()
+          return ""
+        })
+        .filter(Boolean)
     : []
   if (owners.length > 0) {
     lines.push(`Business owners: ${owners.join(", ")}`)
