@@ -86,6 +86,54 @@ export async function updateTransactionById(id, patch) {
     )
 }
 
+export async function updateTransactionsByIds(updates = []) {
+  const db = getDB()
+  const collection = db.collection("transactions")
+
+  if (!Array.isArray(updates) || updates.length === 0) {
+    return { matchedCount: 0, modifiedCount: 0 }
+  }
+
+  const operations = updates
+    .map((item) => {
+      const patch = item?.patch || {}
+      const allowed = {
+        accountId: patch.accountId,
+        accountName: patch.accountName,
+        date: patch.date,
+        description: patch.description,
+        amount: patch.amount,
+        categoryId: patch.categoryId,
+        category: patch.category,
+        updatedAt: new Date(),
+      }
+
+      const $set = Object.fromEntries(
+        Object.entries(allowed).filter(([, value]) => value !== undefined)
+      )
+
+      if (Object.keys($set).length <= 1) return null
+
+      return {
+        updateOne: {
+          filter: { _id: new ObjectId(item.id) },
+          update: { $set },
+        },
+      }
+    })
+    .filter(Boolean)
+
+  if (operations.length === 0) {
+    return { matchedCount: 0, modifiedCount: 0 }
+  }
+
+  const result = await collection.bulkWrite(operations, { ordered: false })
+  return {
+    matchedCount: Number(result?.matchedCount || 0),
+    modifiedCount: Number(result?.modifiedCount || 0),
+  }
+}
+
 export async function getTransactionById(id) {
   const db = getDB()
   return db.collection("transactions").findOne({ _id: new ObjectId(id) })
@@ -293,17 +341,15 @@ export async function listTransactionPeriodOptions(clientId) {
   return { years, months }
 }
 
-// busca paginada
-export async function listTransactionsPaginated({
+function buildTransactionsFilter({
   clientId,
-  page = 1,
-  limit = 50,
   search = "",
   accountIds = [],
   categoryIds = [],
   includeUncategorizedIncome = false,
   includeUncategorizedExpenses = false,
   splitMode = "all",
+  amountSign = "all",
   years = [],
   months = [],
   fromDate = "",
@@ -312,13 +358,6 @@ export async function listTransactionsPaginated({
   maxAmount = null,
   llmProcessed = "all",
 }) {
-  const db = getDB()
-  const collection = db.collection("transactions")
-
-  const safePage = Math.max(1, Number(page) || 1)
-  const safeLimit = Math.min(200, Math.max(1, Number(limit) || 50))
-  const skip = (safePage - 1) * safeLimit
-
   const conditions = [{ clientId }]
   const safeSearch = String(search || "").trim()
 
@@ -354,6 +393,12 @@ export async function listTransactionsPaginated({
         { "splits.1": { $exists: true } },
       ],
     })
+  }
+
+  if (amountSign === "positive") {
+    conditions.push({ amount: { $gt: 0 } })
+  } else if (amountSign === "negative") {
+    conditions.push({ amount: { $lt: 0 } })
   }
 
   const safeCategoryIds = Array.isArray(categoryIds) ? categoryIds.filter(Boolean) : []
@@ -534,7 +579,53 @@ export async function listTransactionsPaginated({
     })
   }
 
-  const filter = conditions.length === 1 ? conditions[0] : { $and: conditions }
+  return conditions.length === 1 ? conditions[0] : { $and: conditions }
+}
+
+// busca paginada
+export async function listTransactionsPaginated({
+  clientId,
+  page = 1,
+  limit = 50,
+  search = "",
+  accountIds = [],
+  categoryIds = [],
+  includeUncategorizedIncome = false,
+  includeUncategorizedExpenses = false,
+  splitMode = "all",
+  amountSign = "all",
+  years = [],
+  months = [],
+  fromDate = "",
+  toDate = "",
+  minAmount = null,
+  maxAmount = null,
+  llmProcessed = "all",
+}) {
+  const db = getDB()
+  const collection = db.collection("transactions")
+
+  const safePage = Math.max(1, Number(page) || 1)
+  const safeLimit = Math.min(200, Math.max(1, Number(limit) || 50))
+  const skip = (safePage - 1) * safeLimit
+
+  const filter = buildTransactionsFilter({
+    clientId,
+    search,
+    accountIds,
+    categoryIds,
+    includeUncategorizedIncome,
+    includeUncategorizedExpenses,
+    splitMode,
+    amountSign,
+    years,
+    months,
+    fromDate,
+    toDate,
+    minAmount,
+    maxAmount,
+    llmProcessed,
+  })
 
   const [items, total] = await Promise.all([
     collection
@@ -552,5 +643,62 @@ export async function listTransactionsPaginated({
     limit: safeLimit,
     total,
     totalPages: Math.ceil(total / safeLimit),
+  }
+}
+
+export async function summarizeTransactions({
+  clientId,
+  search = "",
+  accountIds = [],
+  categoryIds = [],
+  includeUncategorizedIncome = false,
+  includeUncategorizedExpenses = false,
+  splitMode = "all",
+  amountSign = "all",
+  years = [],
+  months = [],
+  fromDate = "",
+  toDate = "",
+  minAmount = null,
+  maxAmount = null,
+  llmProcessed = "all",
+}) {
+  const db = getDB()
+  const collection = db.collection("transactions")
+
+  const filter = buildTransactionsFilter({
+    clientId,
+    search,
+    accountIds,
+    categoryIds,
+    includeUncategorizedIncome,
+    includeUncategorizedExpenses,
+    splitMode,
+    amountSign,
+    years,
+    months,
+    fromDate,
+    toDate,
+    minAmount,
+    maxAmount,
+    llmProcessed,
+  })
+
+  const [result] = await collection
+    .aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: null,
+          totalAmount: { $sum: "$amount" },
+          totalCount: { $sum: 1 },
+        },
+      },
+    ])
+    .toArray()
+
+  return {
+    totalAmount: Number(result?.totalAmount || 0),
+    totalCount: Number(result?.totalCount || 0),
   }
 }

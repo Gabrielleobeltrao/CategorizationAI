@@ -91,3 +91,24 @@ export function validateObjectIdBodyArray(field) {
     next()
   }
 }
+
+export function validateTransactionsBatchUpdateIds(req, res, next) {
+  const updates = req.body?.updates
+
+  if (!Array.isArray(updates) || updates.length === 0) {
+    return res.status(400).json({
+      message: "updates must be a non-empty array",
+    })
+  }
+
+  for (let i = 0; i < updates.length; i += 1) {
+    const id = updates[i]?.id
+    if (!isValidObjectId(id)) {
+      return res.status(400).json({
+        message: `Invalid ObjectId for 'updates[${i}].id'`,
+      })
+    }
+  }
+
+  next()
+}

@@ -1,8 +1,10 @@
 import {
   insertTransactionsInBatches,
   updateTransactionById,
+  updateTransactionsByIds,
   getTransactionById,
   listTransactionsPaginated,
+  summarizeTransactions,
   listTransactionPeriodOptions,
   deleteTransactionById,
   deleteTransactionsByIds,
@@ -28,6 +30,55 @@ function normalizeObjectIdString(value) {
 function getDefaultUncategorizedLabelByAmount(amount = 0) {
   const numericAmount = Number(amount || 0)
   return numericAmount >= 0 ? "Uncategorized income" : "Uncategorized expenses"
+}
+
+function normalizeDateString(value) {
+  const safe = String(value || "").trim()
+  if (!safe) return null
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(safe)) {
+    throw new Error("date must be in YYYY-MM-DD format")
+  }
+  return safe
+}
+
+function normalizeBatchPatch(rawPatch = {}) {
+  if (!rawPatch || typeof rawPatch !== "object") {
+    throw new Error("patch is required")
+  }
+
+  const safePatch = {}
+
+  if (rawPatch.date !== undefined) {
+    safePatch.date = normalizeDateString(rawPatch.date)
+  }
+
+  if (rawPatch.accountId !== undefined) {
+    const accountId = rawPatch.accountId == null ? "" : String(rawPatch.accountId).trim()
+    if (accountId !== "" && !ObjectId.isValid(accountId)) {
+      throw new Error("accountId is invalid")
+    }
+    safePatch.accountId = accountId || null
+  }
+
+  if (rawPatch.accountName !== undefined) {
+    const accountName = rawPatch.accountName == null ? "" : String(rawPatch.accountName).trim()
+    safePatch.accountName = accountName || null
+  }
+
+  if (rawPatch.categoryId !== undefined) {
+    const categoryId = rawPatch.categoryId == null ? "" : String(rawPatch.categoryId).trim()
+    if (categoryId !== "" && !ObjectId.isValid(categoryId)) {
+      throw new Error("categoryId is invalid")
+    }
+    safePatch.categoryId = categoryId || null
+  }
+
+  if (rawPatch.category !== undefined) {
+    const category = rawPatch.category == null ? "" : String(rawPatch.category).trim()
+    safePatch.category = category || null
+  }
+
+  return safePatch
 }
 
 function normalizeNameKey(value = "") {
@@ -213,6 +264,45 @@ export async function updateTransactionByIdService(id, patch) {
   return updateTransactionById(id, safePatch)
 }
 
+export async function updateTransactionsByIdsService(input = {}) {
+  const updates = Array.isArray(input?.updates) ? input.updates : []
+  if (updates.length === 0) {
+    throw new Error("updates must be a non-empty array")
+  }
+
+  const mergedById = new Map()
+
+  updates.forEach((item, index) => {
+    const id = String(item?.id || "").trim()
+    if (!id || !ObjectId.isValid(id)) {
+      throw new Error(`updates[${index}].id is invalid`)
+    }
+
+    const safePatch = normalizeBatchPatch(item?.patch || {})
+    if (Object.keys(safePatch).length === 0) {
+      throw new Error(`updates[${index}].patch has no valid fields`)
+    }
+
+    const existing = mergedById.get(id) || {}
+    mergedById.set(id, {
+      ...existing,
+      ...safePatch,
+    })
+  })
+
+  const normalizedUpdates = Array.from(mergedById.entries()).map(([id, patch]) => ({
+    id,
+    patch,
+  }))
+
+  const result = await updateTransactionsByIds(normalizedUpdates)
+  return {
+    requestedCount: normalizedUpdates.length,
+    matchedCount: Number(result?.matchedCount || 0),
+    updatedCount: Number(result?.modifiedCount || 0),
+  }
+}
+
 export async function listTransactionsPaginatedService(query) {
   const parseCsv = (value) =>
     String(value || "")
@@ -229,6 +319,7 @@ export async function listTransactionsPaginatedService(query) {
   const includeUncategorizedIncome = String(query?.includeUncategorizedIncome || "").toLowerCase() === "true"
   const includeUncategorizedExpenses = String(query?.includeUncategorizedExpenses || "").toLowerCase() === "true"
   const splitMode = String(query?.splitMode || "all").trim().toLowerCase()
+  const amountSign = String(query?.amountSign || "all").trim().toLowerCase()
   const years = parseCsv(query?.years)
   const months = parseCsv(query?.months)
   const fromDate = String(query?.fromDate || "").trim()
@@ -242,6 +333,9 @@ export async function listTransactionsPaginatedService(query) {
   if (!clientId) throw new Error("clientId is required")
   if (!["all", "split", "regular"].includes(splitMode)) {
     throw new Error("splitMode must be one of: all, split, regular")
+  }
+  if (!["all", "positive", "negative"].includes(amountSign)) {
+    throw new Error("amountSign must be one of: all, positive, negative")
   }
   if (minAmountRaw !== "" && Number.isNaN(minAmount)) throw new Error("minAmount must be a number")
   if (maxAmountRaw !== "" && Number.isNaN(maxAmount)) throw new Error("maxAmount must be a number")
@@ -259,6 +353,7 @@ export async function listTransactionsPaginatedService(query) {
     includeUncategorizedIncome,
     includeUncategorizedExpenses,
     splitMode,
+    amountSign,
     years,
     months,
     fromDate,
@@ -314,6 +409,63 @@ export async function listTransactionsPaginatedService(query) {
     ...result,
     items: patchedItems,
   }
+}
+
+export async function summarizeTransactionsService(query) {
+  const parseCsv = (value) =>
+    String(value || "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean)
+
+  const clientId = query?.clientId
+  const search = String(query?.search || "").trim().slice(0, 100)
+  const accountIds = parseCsv(query?.accountIds)
+  const categoryIds = parseCsv(query?.categoryIds)
+  const includeUncategorizedIncome = String(query?.includeUncategorizedIncome || "").toLowerCase() === "true"
+  const includeUncategorizedExpenses = String(query?.includeUncategorizedExpenses || "").toLowerCase() === "true"
+  const splitMode = String(query?.splitMode || "all").trim().toLowerCase()
+  const amountSign = String(query?.amountSign || "all").trim().toLowerCase()
+  const years = parseCsv(query?.years)
+  const months = parseCsv(query?.months)
+  const fromDate = String(query?.fromDate || "").trim()
+  const toDate = String(query?.toDate || "").trim()
+  const minAmountRaw = String(query?.minAmount ?? "").trim()
+  const maxAmountRaw = String(query?.maxAmount ?? "").trim()
+  const llmProcessed = String(query?.llmProcessed || "all").trim().toLowerCase()
+  const minAmount = minAmountRaw === "" ? null : Number(minAmountRaw)
+  const maxAmount = maxAmountRaw === "" ? null : Number(maxAmountRaw)
+
+  if (!clientId) throw new Error("clientId is required")
+  if (!["all", "split", "regular"].includes(splitMode)) {
+    throw new Error("splitMode must be one of: all, split, regular")
+  }
+  if (!["all", "positive", "negative"].includes(amountSign)) {
+    throw new Error("amountSign must be one of: all, positive, negative")
+  }
+  if (minAmountRaw !== "" && Number.isNaN(minAmount)) throw new Error("minAmount must be a number")
+  if (maxAmountRaw !== "" && Number.isNaN(maxAmount)) throw new Error("maxAmount must be a number")
+  if (!["all", "processed", "not_processed"].includes(llmProcessed)) {
+    throw new Error("llmProcessed must be one of: all, processed, not_processed")
+  }
+
+  return summarizeTransactions({
+    clientId,
+    search,
+    accountIds,
+    categoryIds,
+    includeUncategorizedIncome,
+    includeUncategorizedExpenses,
+    splitMode,
+    amountSign,
+    years,
+    months,
+    fromDate,
+    toDate,
+    minAmount,
+    maxAmount,
+    llmProcessed,
+  })
 }
 
 export async function listTransactionPeriodOptionsService(query) {

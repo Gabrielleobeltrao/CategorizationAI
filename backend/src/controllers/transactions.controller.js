@@ -1,7 +1,9 @@
 import {
   createTransactionsBatchService,
   updateTransactionByIdService,
+  updateTransactionsByIdsService,
   listTransactionsPaginatedService,
+  summarizeTransactionsService,
   listTransactionPeriodOptionsService,
   deleteTransactionByIdService,
   deleteTransactionsByIdsService,
@@ -33,9 +35,31 @@ export async function updateTransactionByIdController(req, res) {
   }
 }
 
+export async function updateTransactionsByIdsController(req, res) {
+  try {
+    const result = await updateTransactionsByIdsService(req.body)
+    return res.status(200).json(result)
+  } catch (error) {
+    return res.status(400).json({
+      message: error.message,
+    })
+  }
+}
+
 export async function listTransactionsPaginatedController(req, res) {
   try {
     const result = await listTransactionsPaginatedService(req.query)
+    return res.status(200).json(result)
+  } catch (error) {
+    return res.status(400).json({
+      message: error.message,
+    })
+  }
+}
+
+export async function summarizeTransactionsController(req, res) {
+  try {
+    const result = await summarizeTransactionsService(req.query)
     return res.status(200).json(result)
   } catch (error) {
     return res.status(400).json({
