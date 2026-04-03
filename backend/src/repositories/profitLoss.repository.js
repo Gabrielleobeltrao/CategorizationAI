@@ -22,7 +22,7 @@ function isCogsCategory(type) {
 }
 
 function normalizeAmount(value) {
-  return Math.round(Number(value || 0))
+  return Number(Number(value || 0).toFixed(2))
 }
 
 function normalizeCategoryId(value) {
@@ -51,6 +51,23 @@ function buildExpenseItems(mapByCategory) {
       type: "item",
     }))
     .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
+}
+
+function getCategoryBucket({ categoryType = "", categoryName = "", amount = 0, isUncategorized = false }) {
+  if (isUncategorized) {
+    return Number(amount || 0) >= 0 ? "income" : "operating_expense"
+  }
+
+  const normalizedType = normalizeCategoryType(categoryType)
+  if (normalizedType === "income") return "income"
+  if (normalizedType === "cost_of_goods_sold") return "cost_of_goods_sold"
+  if (normalizedType === "operating_expense") return "operating_expense"
+
+  const normalizedName = String(categoryName || "").trim().toLowerCase()
+  if (normalizedName === UNCATEGORIZED_INCOME_LABEL.toLowerCase()) return "income"
+  if (normalizedName === UNCATEGORIZED_EXPENSES_LABEL.toLowerCase()) return "operating_expense"
+
+  return Number(amount || 0) >= 0 ? "income" : "operating_expense"
 }
 
 export async function listProfitLossPeriodOptionsByClientId(clientId) {
@@ -169,34 +186,34 @@ export async function getProfitLossByClientAndRange({ clientId, startDate, endDa
         !String(splitItem?.category || "").trim() &&
         !String(categoryRef?.name || "").trim()
 
-      if (amount > 0) {
-        const income = Math.abs(amount)
-        revenue += income
+      const bucket = getCategoryBucket({
+        categoryType,
+        categoryName,
+        amount,
+        isUncategorized,
+      })
+
+      if (bucket === "income") {
         const incomeCategoryLabel = isUncategorized ? UNCATEGORIZED_INCOME_LABEL : categoryName
-        revenueByCategory.set(incomeCategoryLabel, (revenueByCategory.get(incomeCategoryLabel) || 0) + income)
-        netByMonth.set(keyMonth, (netByMonth.get(keyMonth) || 0) + income)
+        revenue += amount
+        revenueByCategory.set(incomeCategoryLabel, (revenueByCategory.get(incomeCategoryLabel) || 0) + amount)
+        netByMonth.set(keyMonth, (netByMonth.get(keyMonth) || 0) + amount)
         continue
       }
 
-      const expense = Math.abs(amount)
-      if (isUncategorized) {
-        operatingExpenses += expense
-        operatingByCategory.set(
-          UNCATEGORIZED_EXPENSES_LABEL,
-          (operatingByCategory.get(UNCATEGORIZED_EXPENSES_LABEL) || 0) + expense
-        )
-        netByMonth.set(keyMonth, (netByMonth.get(keyMonth) || 0) - expense)
-        continue
-      }
-
-      if (isCogsCategory(categoryType)) {
-        cogs += expense
-        cogsByCategory.set(categoryName, (cogsByCategory.get(categoryName) || 0) + expense)
+      const expenseImpact = -amount
+      if (bucket === "cost_of_goods_sold") {
+        cogs += expenseImpact
+        cogsByCategory.set(categoryName, (cogsByCategory.get(categoryName) || 0) + expenseImpact)
       } else {
-        operatingExpenses += expense
-        operatingByCategory.set(categoryName, (operatingByCategory.get(categoryName) || 0) + expense)
+        const expenseCategoryLabel = isUncategorized ? UNCATEGORIZED_EXPENSES_LABEL : categoryName
+        operatingExpenses += expenseImpact
+        operatingByCategory.set(
+          expenseCategoryLabel,
+          (operatingByCategory.get(expenseCategoryLabel) || 0) + expenseImpact
+        )
       }
-      netByMonth.set(keyMonth, (netByMonth.get(keyMonth) || 0) - expense)
+      netByMonth.set(keyMonth, (netByMonth.get(keyMonth) || 0) + amount)
     }
   }
 
@@ -211,22 +228,29 @@ export async function getProfitLossByClientAndRange({ clientId, startDate, endDa
       amount: normalizeAmount(amount),
       level: 1,
       type: "item",
+      presentationType: "income",
     }))
     .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
 
-  const cogsItems = buildExpenseItems(cogsByCategory)
-  const operatingItems = buildExpenseItems(operatingByCategory)
+  const cogsItems = buildExpenseItems(cogsByCategory).map((item) => ({
+    ...item,
+    presentationType: "expense",
+  }))
+  const operatingItems = buildExpenseItems(operatingByCategory).map((item) => ({
+    ...item,
+    presentationType: "expense",
+  }))
 
   const statement = [
-    { id: "revenue", label: "Revenue", amount: normalizeAmount(revenue), level: 0, type: "group" },
+    { id: "revenue", label: "Revenue", amount: normalizeAmount(revenue), level: 0, type: "group", presentationType: "income" },
     ...revenueItems,
-    { id: "cogs", label: "Cost of Goods Sold", amount: -normalizeAmount(cogs), level: 0, type: "group" },
+    { id: "cogs", label: "Cost of Goods Sold", amount: -normalizeAmount(cogs), level: 0, type: "group", presentationType: "expense" },
     ...cogsItems,
-    { id: "gross_total", label: "Gross Profit", amount: normalizeAmount(grossProfit), level: 0, type: "total" },
-    { id: "opex", label: "Operating Expenses", amount: -normalizeAmount(operatingExpenses), level: 0, type: "group" },
+    { id: "gross_total", label: "Gross Profit", amount: normalizeAmount(grossProfit), level: 0, type: "total", presentationType: "net" },
+    { id: "opex", label: "Operating Expenses", amount: -normalizeAmount(operatingExpenses), level: 0, type: "group", presentationType: "expense" },
     ...operatingItems,
-    { id: "op_total", label: "Operating Income", amount: normalizeAmount(operatingIncome), level: 0, type: "total" },
-    { id: "net_total", label: "Net Income", amount: normalizeAmount(netIncome), level: 0, type: "total" },
+    { id: "op_total", label: "Operating Income", amount: normalizeAmount(operatingIncome), level: 0, type: "total", presentationType: "net" },
+    { id: "net_total", label: "Net Income", amount: normalizeAmount(netIncome), level: 0, type: "total", presentationType: "net" },
   ]
 
   const monthlyNet = Array.from(netByMonth.entries()).map(([month, amount]) => ({

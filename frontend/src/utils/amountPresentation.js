@@ -13,26 +13,12 @@ export function formatAbsoluteCurrency(value, options = {}) {
   }).format(numericValue)
 }
 
-export function isRefundCategoryLabel(label = "") {
-  return normalizeLabel(label).includes("refund")
-}
-
-function isIncomeLikeLabel(label = "") {
-  const normalized = normalizeLabel(label)
-  return normalized.includes("income") || normalized.includes("revenue")
-}
-
 export function getTransactionAmountPresentation({ amount = 0, category = "" }) {
   const numericAmount = Number(amount || 0)
+  const normalizedCategory = normalizeLabel(category)
+  const isPendingRefundRule = normalizedCategory.includes("refund")
 
-  if (isRefundCategoryLabel(category)) {
-    return {
-      text: formatAbsoluteCurrency(numericAmount),
-      className: "text-rose-600",
-    }
-  }
-
-  if (isIncomeLikeLabel(category) || numericAmount > 0) {
+  if (numericAmount > 0) {
     return {
       text: formatAbsoluteCurrency(numericAmount),
       className: "text-emerald-700",
@@ -41,25 +27,16 @@ export function getTransactionAmountPresentation({ amount = 0, category = "" }) 
 
   return {
     text: formatAbsoluteCurrency(numericAmount),
-    className: "text-gray-900",
+    className: isPendingRefundRule ? "text-gray-900" : "text-gray-900",
   }
 }
 
-export function getProfitLossAmountPresentation({ amount = 0, label = "" }) {
+export function getProfitLossAmountPresentation({ amount = 0 }) {
   const numericAmount = Number(amount || 0)
 
-  if (isRefundCategoryLabel(label)) {
+  if (numericAmount > 0) {
     return {
-      text: formatAbsoluteCurrency(numericAmount, { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
-      className: "text-rose-600",
-      barClassName: "bg-rose-500",
-      pdfColor: [0.75, 0.2, 0.25],
-    }
-  }
-
-  if (isIncomeLikeLabel(label) || numericAmount > 0) {
-    return {
-      text: formatAbsoluteCurrency(numericAmount, { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
+      text: formatAbsoluteCurrency(numericAmount),
       className: "text-emerald-700",
       barClassName: "bg-emerald-500",
       pdfColor: [0.08, 0.5, 0.3],
@@ -67,9 +44,27 @@ export function getProfitLossAmountPresentation({ amount = 0, label = "" }) {
   }
 
   return {
-    text: formatAbsoluteCurrency(numericAmount, { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
+    text: formatAbsoluteCurrency(numericAmount),
     className: "text-gray-900",
     barClassName: "bg-gray-500",
     pdfColor: [0.14, 0.16, 0.2],
+  }
+}
+
+export function getProfitLossKpiPresentation({ amount = 0, kind = "net" }) {
+  const numericAmount = Number(amount || 0)
+
+  if (kind === "income" || kind === "net") {
+    return {
+      text: formatAbsoluteCurrency(numericAmount),
+      className: numericAmount > 0 ? "text-emerald-700" : "text-gray-900",
+      pdfColor: numericAmount > 0 ? [0.08, 0.5, 0.3] : [0.12, 0.13, 0.16],
+    }
+  }
+
+  return {
+    text: formatAbsoluteCurrency(numericAmount),
+    className: numericAmount > 0 ? "text-gray-900" : "text-emerald-700",
+    pdfColor: numericAmount > 0 ? [0.12, 0.13, 0.16] : [0.08, 0.5, 0.3],
   }
 }

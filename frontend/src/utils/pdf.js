@@ -232,9 +232,11 @@ export function downloadProfitLossPdf({
 
     cards.forEach((kpi) => {
       const amountColor =
-        kpi?.id === "income" || (kpi?.id === "net_income" && Number(kpi?.value || 0) > 0)
-          ? [0.08, 0.5, 0.3]
-          : [0.12, 0.13, 0.16]
+        Array.isArray(kpi?.pdfColor)
+          ? kpi.pdfColor
+          : kpi?.id === "income" || (kpi?.id === "net_income" && Number(kpi?.value || 0) > 0)
+            ? [0.08, 0.5, 0.3]
+            : [0.12, 0.13, 0.16]
 
       commands.push(
         buildRectCommand({

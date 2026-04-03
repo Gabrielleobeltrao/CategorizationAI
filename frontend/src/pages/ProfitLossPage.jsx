@@ -8,7 +8,11 @@ import {
 import { useNotification } from "../contexts/notification.context"
 import { downloadProfitLossPdf } from "../utils/pdf"
 import { trackClientOpened } from "../utils/recentClients"
-import { formatAbsoluteCurrency, getProfitLossAmountPresentation } from "../utils/amountPresentation"
+import {
+  formatAbsoluteCurrency,
+  getProfitLossAmountPresentation,
+  getProfitLossKpiPresentation,
+} from "../utils/amountPresentation"
 
 function formatPeriodLabel(value) {
   const [prefix, raw] = String(value || "").split(":")
@@ -206,8 +210,8 @@ function ProfitLossPage() {
 
     return {
       income,
-      costOfGoodsSold: Math.max(0, income - grossProfit),
-      operatingExpenses: Math.max(0, grossProfit - operatingIncome),
+      costOfGoodsSold: income - grossProfit,
+      operatingExpenses: grossProfit - operatingIncome,
       netIncome,
     }
   }, [profitLoss])
@@ -249,30 +253,37 @@ function ProfitLossPage() {
     ).padStart(2, "0")}`
 
     const safeClientSlug = clientName.replace(/\s+/g, "-").toLowerCase()
+    const incomeKpi = getProfitLossKpiPresentation({ amount: formula.income, kind: "income" })
+    const cogsKpi = getProfitLossKpiPresentation({ amount: formula.costOfGoodsSold, kind: "expense" })
+    const operatingKpi = getProfitLossKpiPresentation({ amount: formula.operatingExpenses, kind: "expense" })
+    const netIncomeKpi = getProfitLossKpiPresentation({ amount: formula.netIncome, kind: "net" })
     const kpis = [
-      { id: "income", label: "Income", value: formula.income, displayValue: formatAbsoluteCurrency(formula.income, { minimumFractionDigits: 0, maximumFractionDigits: 0 }) },
+      { id: "income", label: "Income", value: formula.income, displayValue: incomeKpi.text, pdfColor: incomeKpi.pdfColor },
       {
         id: "cost_of_goods_sold",
         label: "Cost of Goods Sold",
         value: formula.costOfGoodsSold,
-        displayValue: formatAbsoluteCurrency(formula.costOfGoodsSold, { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
+        displayValue: cogsKpi.text,
+        pdfColor: cogsKpi.pdfColor,
       },
       {
         id: "operating_expenses",
         label: "Operating Expenses",
         value: formula.operatingExpenses,
-        displayValue: formatAbsoluteCurrency(formula.operatingExpenses, { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
+        displayValue: operatingKpi.text,
+        pdfColor: operatingKpi.pdfColor,
       },
-      { id: "net_income", label: "Net Income", value: formula.netIncome, displayValue: formatAbsoluteCurrency(formula.netIncome, { minimumFractionDigits: 0, maximumFractionDigits: 0 }) },
+      { id: "net_income", label: "Net Income", value: formula.netIncome, displayValue: netIncomeKpi.text, pdfColor: netIncomeKpi.pdfColor },
     ]
 
     const statementRows = (Array.isArray(profitLoss.statement) ? profitLoss.statement : []).map((line) => ({
       label: line.label,
       level: line.level,
       type: line.type,
+      presentationType: line.presentationType || "net",
       rawAmount: Number(line.amount || 0),
-      amountText: getProfitLossAmountPresentation({ amount: line.amount, label: line.label }).text,
-      amountPdfColor: getProfitLossAmountPresentation({ amount: line.amount, label: line.label }).pdfColor,
+      amountText: getProfitLossAmountPresentation({ amount: line.amount }).text,
+      amountPdfColor: getProfitLossAmountPresentation({ amount: line.amount }).pdfColor,
     }))
 
     downloadProfitLossPdf({
@@ -440,22 +451,22 @@ function ProfitLossPage() {
                   <div className="grid min-w-[900px] grid-cols-[minmax(170px,1fr)_32px_minmax(220px,1fr)_32px_minmax(220px,1fr)_32px_minmax(180px,1fr)] items-end gap-x-2">
                     <div className="text-center">
                       <p className="text-xs text-gray-500 uppercase tracking-wide">Income</p>
-                      <p className="text-xl font-semibold text-emerald-700">{formatAbsoluteCurrency(formula.income, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
+                      <p className={`text-xl font-semibold ${getProfitLossKpiPresentation({ amount: formula.income, kind: "income" }).className}`}>{formatAbsoluteCurrency(formula.income)}</p>
                     </div>
                     <span className="flex h-10 w-8 items-end justify-center pb-1 text-lg text-gray-500">-</span>
                     <div className="text-center">
                       <p className="text-xs text-gray-500 uppercase tracking-wide">Cost Of Goods Sold</p>
-                      <p className="text-xl font-semibold text-gray-900">{formatAbsoluteCurrency(formula.costOfGoodsSold, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
+                      <p className={`text-xl font-semibold ${getProfitLossKpiPresentation({ amount: formula.costOfGoodsSold, kind: "expense" }).className}`}>{formatAbsoluteCurrency(formula.costOfGoodsSold)}</p>
                     </div>
                     <span className="flex h-10 w-8 items-end justify-center pb-1 text-lg text-gray-500">-</span>
                     <div className="text-center">
                       <p className="text-xs text-gray-500 uppercase tracking-wide">Operating Expenses</p>
-                      <p className="text-xl font-semibold text-gray-900">{formatAbsoluteCurrency(formula.operatingExpenses, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
+                      <p className={`text-xl font-semibold ${getProfitLossKpiPresentation({ amount: formula.operatingExpenses, kind: "expense" }).className}`}>{formatAbsoluteCurrency(formula.operatingExpenses)}</p>
                     </div>
                     <span className="flex h-10 w-8 items-end justify-center pb-1 text-lg text-gray-500">=</span>
                     <div className="text-center">
                       <p className={`text-xs uppercase tracking-wide ${netIncomeColorClass}`}>Net Income</p>
-                      <p className={`text-xl font-bold ${netIncomeColorClass}`}>{formatAbsoluteCurrency(formula.netIncome, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
+                      <p className={`text-xl font-bold ${netIncomeColorClass}`}>{formatAbsoluteCurrency(formula.netIncome)}</p>
                     </div>
                   </div>
                 </div>
@@ -487,7 +498,7 @@ function ProfitLossPage() {
                     <div>
                       {profitLoss.statement.map((line, index) => (
                         (() => {
-                          const amountPresentation = getProfitLossAmountPresentation({ amount: line.amount, label: line.label })
+                          const amountPresentation = getProfitLossAmountPresentation({ amount: line.amount })
 
                           return (
                         <div
@@ -523,7 +534,7 @@ function ProfitLossPage() {
                     <div className="space-y-2 p-3">
                       {profitLoss.statement.map((line) => {
                         const percentage = Math.round((Math.abs(line.amount) / revenueBase) * 100)
-                        const amountPresentation = getProfitLossAmountPresentation({ amount: line.amount, label: line.label })
+                        const amountPresentation = getProfitLossAmountPresentation({ amount: line.amount })
                         return (
                           <div key={line.id} className="space-y-1">
                             <div className="flex items-center justify-between gap-2 text-sm">

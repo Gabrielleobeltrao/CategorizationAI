@@ -2,6 +2,7 @@ import { ObjectId } from "mongodb"
 import { getDB } from "../db.js"
 
 const BATCH_SIZE = 1000
+const ZELLE_DESCRIPTION_REGEX = /(^|[^a-z])(zel|zelle)([^a-z]|$)/i
 
 function escapeRegex(value = "") {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
@@ -159,7 +160,7 @@ export async function listEligibleTransactionsForLlmByIds(clientId, transactionI
     .find({
       clientId,
       _id: { $in: objectIds },
-      description: { $not: /zelle/i },
+      description: { $not: ZELLE_DESCRIPTION_REGEX },
       $nor: [
         { isSplit: true },
         { "splits.1": { $exists: true } },
@@ -181,7 +182,7 @@ export async function listEligibleTransactionsForLlmByClientId(clientId) {
   return collection
     .find({
       clientId,
-      description: { $not: /zelle/i },
+      description: { $not: ZELLE_DESCRIPTION_REGEX },
       $nor: [
         { isSplit: true },
         { "splits.1": { $exists: true } },
@@ -236,7 +237,7 @@ export async function listEligibleTransactionsForZelleByIds(clientId, transactio
     .find({
       clientId,
       _id: { $in: objectIds },
-      description: /zelle/i,
+      description: ZELLE_DESCRIPTION_REGEX,
       $nor: [
         { isSplit: true },
         { "splits.1": { $exists: true } },
@@ -260,7 +261,7 @@ export async function listEligibleTransactionsForZelleByClientId(clientId) {
   return collection
     .find({
       clientId,
-      description: /zelle/i,
+      description: ZELLE_DESCRIPTION_REGEX,
       $nor: [
         { isSplit: true },
         { "splits.1": { $exists: true } },

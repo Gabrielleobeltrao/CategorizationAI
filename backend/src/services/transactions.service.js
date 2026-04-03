@@ -107,7 +107,7 @@ function extractZelleCounterpartyName(description = "") {
 
   const cleaned = source
     .replace(/[_\-]+/g, " ")
-    .replace(/\b(zelle|payment|transfer|online|banking|from|to|memo|ref|reference|id|confirmation|sent|received)\b/gi, " ")
+    .replace(/\b(zel|zelle|payment|transfer|online|banking|from|to|memo|ref|reference|id|confirmation|sent|received)\b/gi, " ")
     .replace(/\d+/g, " ")
     .replace(/\s+/g, " ")
     .trim()
