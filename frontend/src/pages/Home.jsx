@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useNotification } from "../contexts/notification.context"
 import { getMyUserProfile } from "../services/employees.service"
@@ -7,6 +7,7 @@ import {
   getRecentOpenedClients,
   subscribeRecentOpenedClients,
 } from "../utils/recentClients"
+import { subscribeDashboardRefresh } from "../utils/dashboardRefresh"
 
 function getQueueStatusClass(status) {
   const safe = String(status || "").toLowerCase()
@@ -58,6 +59,38 @@ function Home() {
   const [dashboard, setDashboard] = useState(EMPTY_DASHBOARD)
   const [isLoadingDashboard, setIsLoadingDashboard] = useState(true)
 
+  const loadDashboard = useCallback(async (officeId, options = {}) => {
+    const safeOfficeId = String(officeId || "").trim()
+    const showLoading = Boolean(options?.showLoading)
+    const notifyError = options?.notifyError !== false
+
+    if (!safeOfficeId) {
+      setDashboard(EMPTY_DASHBOARD)
+      if (showLoading) setIsLoadingDashboard(false)
+      return
+    }
+
+    if (showLoading) setIsLoadingDashboard(true)
+
+    try {
+      const payload = await getOfficeHomeDashboard(safeOfficeId, { noCache: true })
+      setDashboard({
+        header: payload?.header || EMPTY_DASHBOARD.header,
+        kpis: Array.isArray(payload?.kpis) ? payload.kpis : [],
+        weeklyTrend: Array.isArray(payload?.weeklyTrend) ? payload.weeklyTrend : [],
+        jobsQueue: Array.isArray(payload?.jobsQueue) ? payload.jobsQueue : [],
+        recentActivities: Array.isArray(payload?.recentActivities) ? payload.recentActivities : [],
+      })
+    } catch (err) {
+      setDashboard(EMPTY_DASHBOARD)
+      if (notifyError) {
+        error(err.message || "Failed to load home dashboard")
+      }
+    } finally {
+      if (showLoading) setIsLoadingDashboard(false)
+    }
+  }, [error])
+
   const maxWeekly = useMemo(() => {
     return Math.max(
       1,
@@ -82,7 +115,7 @@ function Home() {
     setIsLoadingDashboard(true)
 
     getMyUserProfile()
-      .then(async (profile) => {
+      .then((profile) => {
         if (!active) return
 
         const safeOfficeId = String(profile?.officeId || "").trim()
@@ -95,27 +128,13 @@ function Home() {
 
         if (!safeOfficeId) {
           setDashboard(EMPTY_DASHBOARD)
-          return
+          setIsLoadingDashboard(false)
         }
-
-        const payload = await getOfficeHomeDashboard(safeOfficeId)
-        if (!active) return
-
-        setDashboard({
-          header: payload?.header || EMPTY_DASHBOARD.header,
-          kpis: Array.isArray(payload?.kpis) ? payload.kpis : [],
-          weeklyTrend: Array.isArray(payload?.weeklyTrend) ? payload.weeklyTrend : [],
-          jobsQueue: Array.isArray(payload?.jobsQueue) ? payload.jobsQueue : [],
-          recentActivities: Array.isArray(payload?.recentActivities) ? payload.recentActivities : [],
-        })
       })
       .catch((err) => {
         if (!active) return
         setDashboard(EMPTY_DASHBOARD)
         error(err.message || "Failed to load home dashboard")
-      })
-      .finally(() => {
-        if (!active) return
         setIsLoadingDashboard(false)
       })
 
@@ -123,6 +142,40 @@ function Home() {
       active = false
     }
   }, [error])
+
+  useEffect(() => {
+    const safeOfficeId = String(employee.officeId || "").trim()
+    if (!safeOfficeId) return undefined
+
+    loadDashboard(safeOfficeId, {
+      showLoading: true,
+      notifyError: true,
+    })
+
+    const refreshSilently = () => {
+      loadDashboard(safeOfficeId, {
+        showLoading: false,
+        notifyError: false,
+      })
+    }
+
+    const refreshTimer = setInterval(refreshSilently, 15000)
+    const unsubscribeDashboardRefresh = subscribeDashboardRefresh(refreshSilently)
+    const onWindowFocus = () => refreshSilently()
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") refreshSilently()
+    }
+
+    window.addEventListener("focus", onWindowFocus)
+    document.addEventListener("visibilitychange", onVisibilityChange)
+
+    return () => {
+      clearInterval(refreshTimer)
+      unsubscribeDashboardRefresh()
+      window.removeEventListener("focus", onWindowFocus)
+      document.removeEventListener("visibilitychange", onVisibilityChange)
+    }
+  }, [employee.officeId, loadDashboard])
 
   return (
     <section className="w-full h-full min-h-0 overflow-auto p-8">

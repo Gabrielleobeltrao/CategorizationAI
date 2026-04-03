@@ -7,6 +7,7 @@ import {
   listCategorizationJobs,
 } from "../services/categorizationJobs.service"
 import { getClientById } from "../services/clients.service"
+import { emitDashboardRefresh } from "../utils/dashboardRefresh"
 
 const CategorizationJobsContext = createContext(null)
 
@@ -228,9 +229,11 @@ export function CategorizationJobsProvider({ children }) {
       if (status === "done") {
         const totalProcessedCount = Number(job?.result?.totalProcessedCount || job?.processed || 0)
         success(`AI categorization completed: ${totalProcessedCount} transactions processed.`)
+        emitDashboardRefresh("categorization-job-done")
         notifiedIdsRef.current.add(id)
       } else if (status === "failed") {
         error(job?.errorMessage || "AI categorization failed.")
+        emitDashboardRefresh("categorization-job-failed")
         notifiedIdsRef.current.add(id)
       }
     })

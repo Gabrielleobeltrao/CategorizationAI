@@ -151,17 +151,27 @@ function buildWeeklyBuckets(startDate, endDate) {
   return buckets
 }
 
-function parseTransactionDate(dateString) {
-  const safe = String(dateString || "").trim()
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(safe)) return null
+function toUtcDayStart(dateValue) {
+  if (!(dateValue instanceof Date) || Number.isNaN(dateValue.getTime())) return null
 
-  const [yearValue, monthValue, dayValue] = safe.split("-")
-  const parsedDate = new Date(
-    Date.UTC(Number(yearValue), Number(monthValue) - 1, Number(dayValue))
+  return new Date(
+    Date.UTC(
+      dateValue.getUTCFullYear(),
+      dateValue.getUTCMonth(),
+      dateValue.getUTCDate()
+    )
   )
+}
 
-  if (Number.isNaN(parsedDate.getTime())) return null
-  return parsedDate
+function getWeeklyBucketIndex(dateValue, monthStart, bucketsLength) {
+  const safeDate = toUtcDayStart(dateValue)
+  if (!safeDate) return -1
+
+  const diffDays = Math.floor((safeDate.getTime() - monthStart.getTime()) / 86400000)
+  const index = Math.floor(diffDays / 7)
+
+  if (index < 0 || index >= bucketsLength) return -1
+  return index
 }
 
 function formatRelativeTime(dateValue) {
@@ -254,7 +264,10 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
     importedPreviousCount,
     allOfficeTransactionsCount,
     pendingNowCount,
+    aiCategorizedCurrentCount,
     transactionsInPeriod,
+    importedTrendTransactions,
+    categorizedTrendTransactions,
     jobsRaw,
     latestTransaction,
     latestJob,
@@ -288,6 +301,11 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
         { category: "uncategorized expenses" },
       ],
     }),
+    transactionsCollection.countDocuments({
+      clientId: { $in: clientIdList },
+      llmStatus: "suggested",
+      llmProcessedAt: { $gte: range.start, $lte: range.end },
+    }),
     transactionsCollection
       .find(
         {
@@ -306,6 +324,39 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
             llmProcessed: 1,
             createdAt: 1,
             description: 1,
+          },
+        }
+      )
+      .toArray(),
+    transactionsCollection
+      .find(
+        {
+          clientId: { $in: clientIdList },
+          createdAt: { $gte: range.start, $lte: range.monthEnd },
+        },
+        {
+          projection: {
+            _id: 1,
+            createdAt: 1,
+            categoryId: 1,
+            category: 1,
+            isSplit: 1,
+            splits: 1,
+          },
+        }
+      )
+      .toArray(),
+    transactionsCollection
+      .find(
+        {
+          clientId: { $in: clientIdList },
+          llmStatus: "suggested",
+          llmProcessedAt: { $gte: range.start, $lte: range.monthEnd },
+        },
+        {
+          projection: {
+            _id: 1,
+            llmProcessedAt: 1,
           },
         }
       )
@@ -392,7 +443,6 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
   const categorizedInPeriod = transactionsInPeriod.filter((transaction) =>
     isTransactionCategorized(transaction)
   )
-  const aiCategorizedInPeriod = categorizedInPeriod.filter((transaction) => Boolean(transaction.llmProcessed))
   const pendingInPeriodCount = transactionsInPeriod.length - categorizedInPeriod.length
 
   const coveragePct =
@@ -401,32 +451,38 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
       : 0
   const aiSharePct =
     categorizedInPeriod.length > 0
-      ? (aiCategorizedInPeriod.length / categorizedInPeriod.length) * 100
+      ? (Number(aiCategorizedCurrentCount || 0) / categorizedInPeriod.length) * 100
       : 0
   const pendingNowPct =
     allOfficeTransactionsCount > 0
       ? (pendingNowCount / allOfficeTransactionsCount) * 100
       : 0
 
-  // Weekly trend always renders all month weeks.
-  // For current month, future weeks stay at zero and fill over time.
+  // Operational weekly trend:
+  // imported uses createdAt, categorized uses llmProcessedAt,
+  // pending shows still-uncategorized transactions by intake week.
   const weeklyBuckets = buildWeeklyBuckets(range.start, range.monthEnd)
-  for (const transaction of transactionsInPeriod) {
-    const txDate = parseTransactionDate(transaction.date)
-    if (!txDate) continue
-    if (txDate < range.start || txDate > range.monthEnd) continue
 
-    const diffDays = Math.floor((txDate.getTime() - range.start.getTime()) / 86400000)
-    const index = Math.floor(diffDays / 7)
-    if (index < 0 || index >= weeklyBuckets.length) continue
+  for (const transaction of importedTrendTransactions) {
+    const index = getWeeklyBucketIndex(transaction.createdAt, range.start, weeklyBuckets.length)
+    if (index === -1) continue
 
     const bucket = weeklyBuckets[index]
     bucket.imported += 1
+
     if (isTransactionCategorized(transaction)) {
-      bucket.categorized += 1
-    } else {
-      bucket.pending += 1
+      continue
     }
+
+    bucket.pending += 1
+  }
+
+  for (const transaction of categorizedTrendTransactions) {
+    const index = getWeeklyBucketIndex(transaction.llmProcessedAt, range.start, weeklyBuckets.length)
+    if (index === -1) continue
+
+    const bucket = weeklyBuckets[index]
+    bucket.categorized += 1
   }
 
   const jobsQueueRaw = jobsRaw.filter((job) => {
@@ -542,7 +598,7 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
       {
         id: "ai_categorized_month",
         label: "Auto-Categorized by AI (Month)",
-        value: Number(aiCategorizedInPeriod.length || 0).toLocaleString("en-US"),
+        value: Number(aiCategorizedCurrentCount || 0).toLocaleString("en-US"),
         trend: `${aiSharePct.toFixed(1)}% of categorized`,
       },
       {

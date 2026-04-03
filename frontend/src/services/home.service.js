@@ -10,6 +10,9 @@ export async function getOfficeHomeDashboard(officeId, options = {}) {
   if (options?.month) {
     query.set("month", String(options.month))
   }
+  if (options?.noCache !== false) {
+    query.set("_ts", String(Date.now()))
+  }
 
   const queryString = query.toString()
   const path = queryString
