@@ -98,6 +98,24 @@ export async function getPermissionsForRoleService(roleKey, officeId) {
   return Array.isArray(customRole.permissions) ? customRole.permissions : []
 }
 
+export function hasPermissionFromListService(permissions, permission) {
+  const safePermissions = Array.isArray(permissions) ? permissions : []
+  if (safePermissions.includes("*")) return true
+  if (safePermissions.includes(permission)) return true
+
+  const [resource] = String(permission || "").split(":")
+  return safePermissions.includes(`${resource}:*`)
+}
+
+export async function userHasPermissionService(userProfile, permission) {
+  const role = String(userProfile?.role || "").toLowerCase()
+  const officeId = String(userProfile?.officeId || "")
+  if (!role) return false
+
+  const permissions = await getPermissionsForRoleService(role, officeId)
+  return hasPermissionFromListService(permissions, permission)
+}
+
 export async function createCustomRoleService(input, context = {}) {
   const officeId = String(input?.officeId || "").trim()
   const actorOfficeId = String(context?.actorOfficeId || "").trim()
@@ -183,4 +201,3 @@ export async function deleteCustomRoleService(roleId, context = {}) {
 
   return deleteCustomRoleById(roleId)
 }
-

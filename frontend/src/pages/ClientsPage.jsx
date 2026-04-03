@@ -14,10 +14,71 @@ import {
 
 function normalizeOwnersList(owners = []) {
     if (!Array.isArray(owners)) return []
-    const normalized = owners
-        .map((item) => String(item || "").trim())
-        .filter(Boolean)
-    return [...new Set(normalized)]
+
+    const normalized = []
+    const dedupe = new Set()
+
+    for (const owner of owners) {
+        let name = ""
+        let email = ""
+        let phone = ""
+
+        if (typeof owner === "string") {
+            name = owner.trim()
+        } else if (owner && typeof owner === "object") {
+            name = String(owner.name || "").trim()
+            email = String(owner.email || "").trim()
+            phone = String(owner.phone || "").trim()
+        } else {
+            continue
+        }
+
+        if (!name && !email && !phone) continue
+
+        const key = `${name.toLowerCase()}|${email.toLowerCase()}|${phone.toLowerCase()}`
+        if (dedupe.has(key)) continue
+        dedupe.add(key)
+
+        normalized.push({
+            name,
+            email,
+            phone,
+        })
+    }
+
+    return normalized
+}
+
+function normalizeOwnersForDraft(owners = []) {
+    if (!Array.isArray(owners) || owners.length === 0) {
+        return [{ name: "", email: "", phone: "" }]
+    }
+
+    const mapped = owners.map((owner) => {
+        if (typeof owner === "string") {
+            return {
+                name: owner,
+                email: "",
+                phone: "",
+            }
+        }
+
+        if (owner && typeof owner === "object") {
+            return {
+                name: String(owner.name || ""),
+                email: String(owner.email || ""),
+                phone: String(owner.phone || ""),
+            }
+        }
+
+        return {
+            name: "",
+            email: "",
+            phone: "",
+        }
+    })
+
+    return mapped.length > 0 ? mapped : [{ name: "", email: "", phone: "" }]
 }
 
 function getEmptyClientDraft() {
@@ -27,8 +88,25 @@ function getEmptyClientDraft() {
         description: "",
         mainActivity: "",
         state: "",
-        owners: [""],
+        owners: [{ name: "", email: "", phone: "" }],
     }
+}
+
+function formatClientDateTime(value = "") {
+    const safe = String(value || "").trim()
+    if (!safe) return "-"
+
+    const parsed = new Date(safe)
+    if (Number.isNaN(parsed.getTime())) return "-"
+
+    return parsed.toLocaleString("en-US", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+    })
 }
 
 function ClientsPage() {
@@ -53,7 +131,7 @@ function ClientsPage() {
     const [newClientDescription, setNewClientDescription] = useState("")
     const [newClientMainActivity, setNewClientMainActivity] = useState("")
     const [newClientState, setNewClientState] = useState("")
-    const [newClientOwners, setNewClientOwners] = useState([""])
+    const [newClientOwners, setNewClientOwners] = useState([{ name: "", email: "", phone: "" }])
 
     const [editingClientId, setEditingClientId] = useState("")
     const [editingClientDraft, setEditingClientDraft] = useState(getEmptyClientDraft())
@@ -118,7 +196,11 @@ function ClientsPage() {
                         description: item?.description || "",
                         mainActivity: item?.mainActivity || "",
                         state: item?.state || "",
-                        owners: Array.isArray(item?.owners) ? item.owners : [],
+                        owners: normalizeOwnersForDraft(item?.owners),
+                        ownerEmail: String(item?.ownerEmail || ""),
+                        ownerPhone: String(item?.ownerPhone || ""),
+                        createdAt: item?.createdAt || "",
+                        updatedAt: item?.updatedAt || "",
                     }))
                     : []
                 setClients(mapped)
@@ -164,7 +246,7 @@ function ClientsPage() {
             setNewClientDescription("")
             setNewClientMainActivity("")
             setNewClientState("")
-            setNewClientOwners([""])
+            setNewClientOwners([{ name: "", email: "", phone: "" }])
             setShowClientForm(false)
             setPage(1)
             setRefreshKey((current) => current + 1)
@@ -175,7 +257,7 @@ function ClientsPage() {
         }
     }
 
-    const startInlineEditClient = (client) => {
+    const openEditClientModal = (client) => {
         setEditingClientId(client.id)
         setEditingClientDraft({
             name: client.name || "",
@@ -183,21 +265,17 @@ function ClientsPage() {
             description: client.description || "",
             mainActivity: client.mainActivity || "",
             state: client.state || "",
-            owners: Array.isArray(client.owners) && client.owners.length > 0
-                ? [...client.owners]
-                : [""],
+            owners: normalizeOwnersForDraft(client.owners),
         })
-        setExpandedClientIds((current) =>
-            current.includes(client.id) ? current : [...current, client.id]
-        )
     }
 
-    const cancelInlineEditClient = () => {
+    const closeEditClientModal = () => {
         setEditingClientId("")
         setEditingClientDraft(getEmptyClientDraft())
     }
 
-    const handleEditClient = async () => {
+    const handleEditClient = async (e) => {
+        e.preventDefault()
         if (!editingClientId) return
 
         try {
@@ -211,6 +289,7 @@ function ClientsPage() {
                 state: editingClientDraft.state,
                 owners: normalizeOwnersList(editingClientDraft.owners),
             }
+
             const updated = await updateClientById(editingClientId, payload)
 
             setClients((current) =>
@@ -223,14 +302,20 @@ function ClientsPage() {
                             description: updated?.description ?? payload.description,
                             mainActivity: updated?.mainActivity ?? payload.mainActivity,
                             state: updated?.state ?? payload.state,
-                            owners: Array.isArray(updated?.owners) ? updated.owners : payload.owners,
+                            owners: normalizeOwnersForDraft(
+                                Array.isArray(updated?.owners) ? updated.owners : payload.owners
+                            ),
+                            ownerEmail: updated?.ownerEmail ?? item.ownerEmail ?? "",
+                            ownerPhone: updated?.ownerPhone ?? item.ownerPhone ?? "",
+                            createdAt: updated?.createdAt ?? item.createdAt ?? "",
+                            updatedAt: updated?.updatedAt ?? item.updatedAt ?? "",
                         }
                         : item
                 )
             )
 
             success("Client updated successfully")
-            cancelInlineEditClient()
+            closeEditClientModal()
         } catch (err) {
             error(err.message || "Failed to update client")
         } finally {
@@ -245,14 +330,21 @@ function ClientsPage() {
         }))
     }
 
-    const handleChangeNewOwner = (index, value) => {
+    const handleChangeNewOwner = (index, field, value) => {
         setNewClientOwners((current) =>
-            current.map((item, currentIndex) => (currentIndex === index ? value : item))
+            current.map((item, currentIndex) =>
+                currentIndex === index
+                    ? {
+                        ...item,
+                        [field]: value,
+                    }
+                    : item
+            )
         )
     }
 
     const addNewOwnerInput = () => {
-        setNewClientOwners((current) => [...current, ""])
+        setNewClientOwners((current) => [...current, { name: "", email: "", phone: "" }])
     }
 
     const removeNewOwnerInput = (index) => {
@@ -262,19 +354,28 @@ function ClientsPage() {
         })
     }
 
-    const handleChangeEditingOwner = (index, value) => {
+    const handleChangeEditingOwner = (index, field, value) => {
         setEditingClientDraft((current) => ({
             ...current,
             owners: Array.isArray(current.owners)
-                ? current.owners.map((item, currentIndex) => (currentIndex === index ? value : item))
-                : [value],
+                ? current.owners.map((item, currentIndex) =>
+                    currentIndex === index
+                        ? {
+                            ...item,
+                            [field]: value,
+                        }
+                        : item
+                )
+                : [{ name: "", email: "", phone: "" }],
         }))
     }
 
     const addEditingOwnerInput = () => {
         setEditingClientDraft((current) => ({
             ...current,
-            owners: Array.isArray(current.owners) ? [...current.owners, ""] : [""],
+            owners: Array.isArray(current.owners)
+                ? [...current.owners, { name: "", email: "", phone: "" }]
+                : [{ name: "", email: "", phone: "" }],
         }))
     }
 
@@ -375,128 +476,68 @@ function ClientsPage() {
                     </div>
                     <div className="divide-y divide-gray-100">
                         {clients.map((client) => {
-                            const isEditing = editingClientId === client.id
                             const isExpanded = expandedClientIds.includes(client.id)
 
                             return (
                                 <div key={client.id}>
                                     <div
-                                        className={`grid w-full grid-cols-[1fr_auto] gap-3 px-1 py-3 hover:bg-gray-50 ${isEditing ? "" : "cursor-pointer"}`}
-                                        onClick={() => {
-                                            if (isEditing) return
-                                            openClientLedger(client)
-                                        }}
+                                        className="grid w-full cursor-pointer grid-cols-[1fr_auto] gap-3 px-1 py-3 hover:bg-gray-50"
+                                        onClick={() => openClientLedger(client)}
                                     >
                                         <div className="flex min-w-0 flex-col gap-2">
-                                            {isEditing ? (
-                                                <input
-                                                    type="text"
-                                                    className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm"
-                                                    value={editingClientDraft.name}
-                                                    onChange={(e) => handleChangeEditingDraft({ name: e.target.value })}
-                                                />
-                                            ) : (
-                                                <button
-                                                    type="button"
-                                                    className="w-full max-w-full truncate text-left font-medium text-gray-900"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation()
-                                                        openClientLedger(client)
-                                                    }}
-                                                    title={client.name}
-                                                >
-                                                    {client.name}
-                                                </button>
-                                            )}
+                                            <button
+                                                type="button"
+                                                className="w-full max-w-full truncate text-left font-medium text-gray-900"
+                                                onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    openClientLedger(client)
+                                                }}
+                                                title={client.name}
+                                            >
+                                                {client.name}
+                                            </button>
 
                                             {isExpanded && (
                                                 <div className="mt-1 pt-2">
                                                     <div className="grid grid-cols-1 gap-y-2 text-sm md:grid-cols-[140px_minmax(0,1fr)] md:gap-x-4">
                                                         <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Business Type</p>
-                                                        {isEditing ? (
-                                                            <input
-                                                                type="text"
-                                                                className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm"
-                                                                value={editingClientDraft.businessType}
-                                                                onChange={(e) => handleChangeEditingDraft({ businessType: e.target.value })}
-                                                            />
-                                                        ) : (
-                                                            <p className="text-gray-700">{client.businessType || "-"}</p>
-                                                        )}
+                                                        <p className="text-gray-700">{client.businessType || "-"}</p>
 
                                                         <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">State</p>
-                                                        {isEditing ? (
-                                                            <input
-                                                                type="text"
-                                                                className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm"
-                                                                value={editingClientDraft.state}
-                                                                onChange={(e) => handleChangeEditingDraft({ state: e.target.value })}
-                                                            />
-                                                        ) : (
-                                                            <p className="text-gray-700">{client.state || "-"}</p>
-                                                        )}
+                                                        <p className="text-gray-700">{client.state || "-"}</p>
 
                                                         <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Main Activity</p>
-                                                        {isEditing ? (
-                                                            <input
-                                                                type="text"
-                                                                className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm"
-                                                                value={editingClientDraft.mainActivity}
-                                                                onChange={(e) => handleChangeEditingDraft({ mainActivity: e.target.value })}
-                                                            />
-                                                        ) : (
-                                                            <p className="text-gray-700">{client.mainActivity || "-"}</p>
-                                                        )}
+                                                        <p className="text-gray-700">{client.mainActivity || "-"}</p>
 
                                                         <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 md:pt-1">Description</p>
-                                                        {isEditing ? (
-                                                            <textarea
-                                                                rows={2}
-                                                                className="w-full resize-none rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm"
-                                                                value={editingClientDraft.description}
-                                                                onChange={(e) => handleChangeEditingDraft({ description: e.target.value })}
-                                                            />
-                                                        ) : (
-                                                            <p className="text-gray-700">{client.description || "-"}</p>
-                                                        )}
+                                                        <p className="text-gray-700">{client.description || "-"}</p>
 
                                                         <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 md:pt-1">Owners</p>
-                                                        {isEditing ? (
-                                                            <div className="flex flex-col gap-2">
-                                                                {(Array.isArray(editingClientDraft.owners) ? editingClientDraft.owners : [""]).map((owner, index) => (
-                                                                    <div key={`editing-owner-${client.id}-${index}`} className="flex items-center gap-2">
-                                                                        <input
-                                                                            type="text"
-                                                                            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm"
-                                                                            placeholder={`Owner ${index + 1}`}
-                                                                            value={owner}
-                                                                            onChange={(e) => handleChangeEditingOwner(index, e.target.value)}
-                                                                        />
-                                                                        <button
-                                                                            type="button"
-                                                                            className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 disabled:opacity-50"
-                                                                            disabled={(Array.isArray(editingClientDraft.owners) ? editingClientDraft.owners.length : 1) <= 1}
-                                                                            onClick={() => removeEditingOwnerInput(index)}
-                                                                        >
-                                                                            Remove
-                                                                        </button>
-                                                                    </div>
-                                                                ))}
-                                                                <button
-                                                                    type="button"
-                                                                    className="w-fit rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
-                                                                    onClick={addEditingOwnerInput}
-                                                                >
-                                                                    + Add owner
-                                                                </button>
-                                                            </div>
-                                                        ) : (
-                                                            <p className="text-gray-700">
-                                                                {Array.isArray(client.owners) && client.owners.length > 0
-                                                                    ? client.owners.join(", ")
-                                                                    : "-"}
-                                                            </p>
-                                                        )}
+                                                        <div className="flex flex-col gap-1">
+                                                            {Array.isArray(client.owners) && client.owners.length > 0 ? (
+                                                                client.owners.map((owner, index) => (
+                                                                    <p key={`owner-display-${client.id}-${index}`} className="text-gray-700">
+                                                                        {String(owner?.name || "").trim() || "-"}
+                                                                        {String(owner?.email || "").trim() ? ` • ${owner.email}` : ""}
+                                                                        {String(owner?.phone || "").trim() ? ` • ${owner.phone}` : ""}
+                                                                    </p>
+                                                                ))
+                                                            ) : (
+                                                                <p className="text-gray-700">-</p>
+                                                            )}
+                                                        </div>
+
+                                                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Owner Email</p>
+                                                        <p className="text-gray-700">{String(client.ownerEmail || "").trim() || "-"}</p>
+
+                                                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Owner Phone</p>
+                                                        <p className="text-gray-700">{String(client.ownerPhone || "").trim() || "-"}</p>
+
+                                                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Created At</p>
+                                                        <p className="text-gray-700">{formatClientDateTime(client.createdAt)}</p>
+
+                                                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Updated At</p>
+                                                        <p className="text-gray-700">{formatClientDateTime(client.updatedAt)}</p>
                                                     </div>
                                                 </div>
                                             )}
@@ -518,77 +559,38 @@ function ClientsPage() {
                                                     <circle cx="12" cy="12" r="3" />
                                                 </svg>
                                             </button>
-
-                                            {isEditing ? (
-                                                <>
-                                                    <button
-                                                        type="button"
-                                                        className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-emerald-700 disabled:opacity-50"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation()
-                                                            handleEditClient()
-                                                        }}
-                                                        disabled={isSubmitting}
-                                                        title="Save client"
-                                                        aria-label="Save client"
-                                                    >
-                                                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                            <path d="M20 6 9 17l-5-5" />
-                                                        </svg>
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-gray-800 disabled:opacity-50"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation()
-                                                            cancelInlineEditClient()
-                                                        }}
-                                                        disabled={isSubmitting}
-                                                        title="Cancel edit"
-                                                        aria-label="Cancel edit"
-                                                    >
-                                                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                            <path d="M18 6 6 18" />
-                                                            <path d="m6 6 12 12" />
-                                                        </svg>
-                                                    </button>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <button
-                                                        type="button"
-                                                        className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-sky-700"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation()
-                                                            startInlineEditClient(client)
-                                                        }}
-                                                        title="Edit client"
-                                                        aria-label="Edit client"
-                                                    >
-                                                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                            <path d="M12 20h9" />
-                                                            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5z" />
-                                                        </svg>
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-rose-600"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation()
-                                                            setClientToDelete(client)
-                                                        }}
-                                                        title="Delete client"
-                                                        aria-label="Delete client"
-                                                    >
-                                                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                            <path d="M3 6h18" />
-                                                            <path d="M8 6V4h8v2" />
-                                                            <path d="M19 6l-1 14H6L5 6" />
-                                                            <path d="M10 11v6M14 11v6" />
-                                                        </svg>
-                                                    </button>
-                                                </>
-                                            )}
+                                            <button
+                                                type="button"
+                                                className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-sky-700"
+                                                onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    openEditClientModal(client)
+                                                }}
+                                                title="Edit client"
+                                                aria-label="Edit client"
+                                            >
+                                                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                    <path d="M12 20h9" />
+                                                    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5z" />
+                                                </svg>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-rose-600"
+                                                onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    setClientToDelete(client)
+                                                }}
+                                                title="Delete client"
+                                                aria-label="Delete client"
+                                            >
+                                                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                    <path d="M3 6h18" />
+                                                    <path d="M8 6V4h8v2" />
+                                                    <path d="M19 6l-1 14H6L5 6" />
+                                                    <path d="M10 11v6M14 11v6" />
+                                                </svg>
+                                            </button>
                                         </div>
                                     </div>
                                 </div>
@@ -637,77 +639,253 @@ function ClientsPage() {
 
                 <PopupModal
                     isOpen={showClientForm}
-                    title="New Client"
+                    title="Create Client"
                     onClose={() => setShowClientForm(false)}
+                    maxWidthClass="max-w-2xl"
                 >
-                    <form className="flex flex-col gap-3" onSubmit={handleCreateClient}>
-                        <input
-                            className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
-                            type="text"
-                            placeholder="Client name"
-                            value={newClientName}
-                            onChange={(e) => setNewClientName(e.target.value)}
-                        />
-                        <input
-                            className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
-                            type="text"
-                            placeholder="Business type"
-                            value={newClientBusinessType}
-                            onChange={(e) => setNewClientBusinessType(e.target.value)}
-                        />
-                        <input
-                            className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
-                            type="text"
-                            placeholder="Description"
-                            value={newClientDescription}
-                            onChange={(e) => setNewClientDescription(e.target.value)}
-                        />
-                        <input
-                            className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
-                            type="text"
-                            placeholder="Main activity"
-                            value={newClientMainActivity}
-                            onChange={(e) => setNewClientMainActivity(e.target.value)}
-                        />
-                        <input
-                            className="border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
-                            type="text"
-                            placeholder="State"
-                            value={newClientState}
-                            onChange={(e) => setNewClientState(e.target.value)}
-                        />
-                        <div className="flex flex-col gap-2">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Owners</p>
-                            {newClientOwners.map((owner, index) => (
-                                <div key={`new-owner-${index}`} className="flex items-center gap-2">
-                                    <input
-                                        className="w-full border-2 border-gray-100 rounded-full px-3 py-2 placeholder:text-black"
-                                        type="text"
-                                        placeholder={`Owner ${index + 1}`}
-                                        value={owner}
-                                        onChange={(e) => handleChangeNewOwner(index, e.target.value)}
-                                    />
-                                    <button
-                                        type="button"
-                                        className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 disabled:opacity-50"
-                                        disabled={newClientOwners.length <= 1}
-                                        onClick={() => removeNewOwnerInput(index)}
-                                    >
-                                        Remove
-                                    </button>
-                                </div>
-                            ))}
+                    <form className="flex flex-col gap-4" onSubmit={handleCreateClient}>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <label className="flex flex-col gap-1">
+                                <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Client name</span>
+                                <input
+                                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none transition focus:border-gray-400 focus:bg-white"
+                                    type="text"
+                                    placeholder="VB Construction LLC"
+                                    value={newClientName}
+                                    onChange={(e) => setNewClientName(e.target.value)}
+                                />
+                            </label>
+                            <label className="flex flex-col gap-1">
+                                <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Business type</span>
+                                <input
+                                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none transition focus:border-gray-400 focus:bg-white"
+                                    type="text"
+                                    placeholder="1120"
+                                    value={newClientBusinessType}
+                                    onChange={(e) => setNewClientBusinessType(e.target.value)}
+                                />
+                            </label>
+                        </div>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <label className="flex flex-col gap-1">
+                                <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Main activity</span>
+                                <input
+                                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none transition focus:border-gray-400 focus:bg-white"
+                                    type="text"
+                                    placeholder="Construction"
+                                    value={newClientMainActivity}
+                                    onChange={(e) => setNewClientMainActivity(e.target.value)}
+                                />
+                            </label>
+                            <label className="flex flex-col gap-1">
+                                <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">State</span>
+                                <input
+                                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none transition focus:border-gray-400 focus:bg-white"
+                                    type="text"
+                                    placeholder="Florida"
+                                    value={newClientState}
+                                    onChange={(e) => setNewClientState(e.target.value)}
+                                />
+                            </label>
+                        </div>
+                        <label className="flex flex-col gap-1">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Details</span>
+                            <textarea
+                                className="min-h-20 w-full resize-y rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none transition focus:border-gray-400 focus:bg-white"
+                                placeholder="Construction and painting services"
+                                value={newClientDescription}
+                                onChange={(e) => setNewClientDescription(e.target.value)}
+                            />
+                        </label>
+                        <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                            <div className="mb-2 flex items-center justify-between">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Owners</p>
+                                <button
+                                    type="button"
+                                    className="rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+                                    onClick={addNewOwnerInput}
+                                >
+                                    + Add owner
+                                </button>
+                            </div>
+                            <div className="flex flex-col gap-2">
+                                {newClientOwners.map((owner, index) => (
+                                    <div key={`new-owner-${index}`} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_160px_auto]">
+                                        <input
+                                            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-gray-400"
+                                            type="text"
+                                            placeholder={`Owner ${index + 1} name`}
+                                            value={owner?.name || ""}
+                                            onChange={(e) => handleChangeNewOwner(index, "name", e.target.value)}
+                                        />
+                                        <input
+                                            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-gray-400"
+                                            type="email"
+                                            placeholder="Email (optional)"
+                                            value={owner?.email || ""}
+                                            onChange={(e) => handleChangeNewOwner(index, "email", e.target.value)}
+                                        />
+                                        <input
+                                            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-gray-400"
+                                            type="text"
+                                            placeholder="Phone (optional)"
+                                            value={owner?.phone || ""}
+                                            onChange={(e) => handleChangeNewOwner(index, "phone", e.target.value)}
+                                        />
+                                        <button
+                                            type="button"
+                                            className="shrink-0 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-600 disabled:opacity-50"
+                                            disabled={newClientOwners.length <= 1}
+                                            onClick={() => removeNewOwnerInput(index)}
+                                        >
+                                            Remove
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="mt-1 flex items-center justify-end gap-2">
                             <button
                                 type="button"
-                                className="w-fit rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
-                                onClick={addNewOwnerInput}
+                                className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                onClick={() => setShowClientForm(false)}
                             >
-                                + Add owner
+                                Cancel
+                            </button>
+                            <button
+                                className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-black disabled:opacity-60"
+                                type="submit"
+                                disabled={isSubmitting || !officeId}
+                            >
+                                {isSubmitting ? "Saving..." : "Save Client"}
                             </button>
                         </div>
-                        <button className="bg-gray-100 rounded-full p-2" type="submit" disabled={isSubmitting || !officeId}>
-                            {isSubmitting ? "Saving..." : "Save Client"}
-                        </button>
+                    </form>
+                </PopupModal>
+
+                <PopupModal
+                    isOpen={Boolean(editingClientId)}
+                    title="Edit Client"
+                    onClose={closeEditClientModal}
+                    maxWidthClass="max-w-2xl"
+                >
+                    <form className="flex flex-col gap-4" onSubmit={handleEditClient}>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <label className="flex flex-col gap-1">
+                                <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Client name</span>
+                                <input
+                                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none transition focus:border-gray-400 focus:bg-white"
+                                    type="text"
+                                    placeholder="VB Construction LLC"
+                                    value={editingClientDraft.name}
+                                    onChange={(e) => handleChangeEditingDraft({ name: e.target.value })}
+                                />
+                            </label>
+                            <label className="flex flex-col gap-1">
+                                <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Business type</span>
+                                <input
+                                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none transition focus:border-gray-400 focus:bg-white"
+                                    type="text"
+                                    placeholder="1120"
+                                    value={editingClientDraft.businessType}
+                                    onChange={(e) => handleChangeEditingDraft({ businessType: e.target.value })}
+                                />
+                            </label>
+                        </div>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <label className="flex flex-col gap-1">
+                                <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Main activity</span>
+                                <input
+                                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none transition focus:border-gray-400 focus:bg-white"
+                                    type="text"
+                                    placeholder="Construction"
+                                    value={editingClientDraft.mainActivity}
+                                    onChange={(e) => handleChangeEditingDraft({ mainActivity: e.target.value })}
+                                />
+                            </label>
+                            <label className="flex flex-col gap-1">
+                                <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">State</span>
+                                <input
+                                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none transition focus:border-gray-400 focus:bg-white"
+                                    type="text"
+                                    placeholder="Florida"
+                                    value={editingClientDraft.state}
+                                    onChange={(e) => handleChangeEditingDraft({ state: e.target.value })}
+                                />
+                            </label>
+                        </div>
+                        <label className="flex flex-col gap-1">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Details</span>
+                            <textarea
+                                className="min-h-20 w-full resize-y rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none transition focus:border-gray-400 focus:bg-white"
+                                placeholder="Construction and painting services"
+                                value={editingClientDraft.description}
+                                onChange={(e) => handleChangeEditingDraft({ description: e.target.value })}
+                            />
+                        </label>
+                        <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                            <div className="mb-2 flex items-center justify-between">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Owners</p>
+                                <button
+                                    type="button"
+                                    className="rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+                                    onClick={addEditingOwnerInput}
+                                >
+                                    + Add owner
+                                </button>
+                            </div>
+                            <div className="flex flex-col gap-2">
+                                {(Array.isArray(editingClientDraft.owners) ? editingClientDraft.owners : [{ name: "", email: "", phone: "" }]).map((owner, index) => (
+                                    <div key={`editing-owner-${index}`} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_160px_auto]">
+                                        <input
+                                            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-gray-400"
+                                            type="text"
+                                            placeholder={`Owner ${index + 1} name`}
+                                            value={owner?.name || ""}
+                                            onChange={(e) => handleChangeEditingOwner(index, "name", e.target.value)}
+                                        />
+                                        <input
+                                            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-gray-400"
+                                            type="email"
+                                            placeholder="Email (optional)"
+                                            value={owner?.email || ""}
+                                            onChange={(e) => handleChangeEditingOwner(index, "email", e.target.value)}
+                                        />
+                                        <input
+                                            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-gray-400"
+                                            type="text"
+                                            placeholder="Phone (optional)"
+                                            value={owner?.phone || ""}
+                                            onChange={(e) => handleChangeEditingOwner(index, "phone", e.target.value)}
+                                        />
+                                        <button
+                                            type="button"
+                                            className="shrink-0 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-600 disabled:opacity-50"
+                                            disabled={(Array.isArray(editingClientDraft.owners) ? editingClientDraft.owners.length : 1) <= 1}
+                                            onClick={() => removeEditingOwnerInput(index)}
+                                        >
+                                            Remove
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="mt-1 flex items-center justify-end gap-2">
+                            <button
+                                type="button"
+                                className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                onClick={closeEditClientModal}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-black disabled:opacity-60"
+                                type="submit"
+                                disabled={isSubmitting}
+                            >
+                                {isSubmitting ? "Saving..." : "Save Changes"}
+                            </button>
+                        </div>
                     </form>
                 </PopupModal>
 

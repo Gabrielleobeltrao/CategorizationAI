@@ -8,11 +8,44 @@ import {
 
 function normalizeOwners(value) {
   if (!Array.isArray(value)) return []
-  return [...new Set(
-    value
-      .map((item) => String(item || "").trim())
-      .filter(Boolean)
-  )]
+
+  const normalized = []
+  const dedupe = new Set()
+
+  for (const item of value) {
+    let name = ""
+    let email = ""
+    let phone = ""
+
+    if (typeof item === "string") {
+      name = item.trim()
+    } else if (item && typeof item === "object") {
+      name = String(item.name || "").trim()
+      email = String(item.email || "").trim()
+      phone = String(item.phone || "").trim()
+    } else {
+      continue
+    }
+
+    if (!name && !email && !phone) continue
+
+    const dedupeKey = `${name.toLowerCase()}|${email.toLowerCase()}|${phone.toLowerCase()}`
+    if (dedupe.has(dedupeKey)) continue
+    dedupe.add(dedupeKey)
+
+    normalized.push({
+      name,
+      email,
+      phone,
+    })
+  }
+
+  return normalized
+}
+
+function normalizeOptionalText(value) {
+  if (value === undefined || value === null) return ""
+  return String(value).trim()
 }
 
 export async function createClientService(input) {
@@ -34,6 +67,8 @@ export async function createClientService(input) {
     mainActivity: input.mainActivity.trim(),
     state: input.state.trim(),
     owners: normalizeOwners(input.owners),
+    ownerEmail: normalizeOptionalText(input.ownerEmail),
+    ownerPhone: normalizeOptionalText(input.ownerPhone),
   })
 }
 
@@ -78,6 +113,14 @@ export async function updateClientByIdService(id, patch) {
       throw new Error("owners must be an array")
     }
     safePatch.owners = normalizeOwners(patch.owners)
+  }
+
+  if (patch.ownerEmail !== undefined) {
+    safePatch.ownerEmail = normalizeOptionalText(patch.ownerEmail)
+  }
+
+  if (patch.ownerPhone !== undefined) {
+    safePatch.ownerPhone = normalizeOptionalText(patch.ownerPhone)
   }
 
   if (Object.keys(safePatch).length === 0) {

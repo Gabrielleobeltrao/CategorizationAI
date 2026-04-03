@@ -27,7 +27,23 @@ export async function createClient(input) {
   const mainActivity = String(input?.mainActivity || "").trim()
   const state = String(input?.state || "").trim()
   const owners = Array.isArray(input?.owners)
-    ? input.owners.map((owner) => String(owner || "").trim()).filter(Boolean)
+    ? input.owners
+      .map((owner) => {
+        if (typeof owner === "string") {
+          return {
+            name: owner.trim(),
+            email: "",
+            phone: "",
+          }
+        }
+
+        return {
+          name: String(owner?.name || "").trim(),
+          email: String(owner?.email || "").trim(),
+          phone: String(owner?.phone || "").trim(),
+        }
+      })
+      .filter((owner) => owner.name || owner.email || owner.phone)
     : []
 
   if (!officeId) throw new Error("officeId is required")
@@ -37,17 +53,19 @@ export async function createClient(input) {
   if (!mainActivity) throw new Error("mainActivity is required")
   if (!state) throw new Error("state is required")
 
+  const payload = {
+    officeId,
+    name,
+    businessType,
+    description,
+    mainActivity,
+    state,
+    owners,
+  }
+
   return api("/api/clients", {
     method: "POST",
-    body: JSON.stringify({
-      officeId,
-      name,
-      businessType,
-      description,
-      mainActivity,
-      state,
-      owners,
-    }),
+    body: JSON.stringify(payload),
   })
 }
 

@@ -19,6 +19,8 @@ export async function createClient(input) {
         mainActivity: input.mainActivity,
         state: input.state,
         owners: Array.isArray(input.owners) ? input.owners : [],
+        ownerEmail: input.ownerEmail,
+        ownerPhone: input.ownerPhone,
         createdAt: new Date(),
         updatedAt: new Date(),
     }
@@ -40,6 +42,8 @@ export async function updateClientById(id, patch) {
         mainActivity: patch.mainActivity,
         state: patch.state,
         owners: patch.owners,
+        ownerEmail: patch.ownerEmail,
+        ownerPhone: patch.ownerPhone,
         updatedAt: new Date(),
     }
 
@@ -75,6 +79,11 @@ export async function listClientsByOfficeId(officeId, options = {}) {
             { mainActivity: searchRegex },
             { state: searchRegex },
             { owners: searchRegex },
+            { "owners.name": searchRegex },
+            { "owners.email": searchRegex },
+            { "owners.phone": searchRegex },
+            { ownerEmail: searchRegex },
+            { ownerPhone: searchRegex },
         ]
     }
 
