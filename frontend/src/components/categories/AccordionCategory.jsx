@@ -1,8 +1,10 @@
 import { useState } from "react"
+import { CATEGORY_TYPE_OPTIONS, normalizeCategoryType } from "../../constants/categoryTypes"
 
 function AccordionCategory({ name, type, description }) {
 
     const [edit, setEdit] = useState(false)
+    const normalizedType = normalizeCategoryType(type) || ""
 
     return (
         <form 
@@ -45,10 +47,14 @@ function AccordionCategory({ name, type, description }) {
                     <div className="relative w-full">
                         <select
                             className="w-full p-2 rounded-md bg-gray-100 appearance-none"
-                            value={type}
+                            defaultValue={normalizedType}
                         >
-                            <option value="cost of goods sold">Cost of Goods Sold</option>
-                            <option value="operating expenses">Operating Expenses</option>
+                            <option value="">Select type</option>
+                            {CATEGORY_TYPE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                    {option.label}
+                                </option>
+                            ))}
                         </select>
                         <svg
                             className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"

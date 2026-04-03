@@ -5,6 +5,7 @@ import {
   getCategoryById,
   deleteCategoryById,
 } from "../repositories/category.repository.js"
+import { normalizeCategoryType } from "../config/categoryTypes.js"
 
 export async function createCategoryService(input) {
   if (!input?.name) throw new Error("name is required")
@@ -12,9 +13,12 @@ export async function createCategoryService(input) {
   if (!input?.description) throw new Error("description is required")
   if (!input?.clientId) throw new Error("clientId is required")
 
+  const type = normalizeCategoryType(input.type)
+  if (!type) throw new Error("type is invalid")
+
   return createCategory({
     name: input.name.trim(),
-    type: input.type.trim(),
+    type,
     description: input.description.trim(),
     clientId: input.clientId,
   })
@@ -33,8 +37,8 @@ export async function updateCategoryByIdService(id, patch) {
   }
 
   if (typeof patch.type === "string") {
-    const type = patch.type.trim()
-    if (!type) throw new Error("type cannot be empty")
+    const type = normalizeCategoryType(patch.type)
+    if (!type) throw new Error("type is invalid")
     safePatch.type = type
   }
 

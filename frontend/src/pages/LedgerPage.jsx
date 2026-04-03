@@ -21,8 +21,10 @@ import {
 } from "../services/categories.service"
 import {
     listTransactionsByClientId,
+    summarizeTransactionsByClientId,
     listTransactionPeriodOptions,
     updateTransactionById,
+    updateTransactionsByIds,
     deleteTransactionById,
     deleteTransactionsByIds,
     createTransactionsBatch,
@@ -30,6 +32,8 @@ import {
 import { useNotification } from "../contexts/notification.context"
 import { useCategorizationJobs } from "../contexts/categorizationJobs.context"
 import { trackClientOpened } from "../utils/recentClients"
+import { emitDashboardRefresh } from "../utils/dashboardRefresh"
+import { CATEGORY_TYPE_OPTIONS, getCategoryTypeLabel, normalizeCategoryType } from "../constants/categoryTypes"
 
 const DEFAULT_TRANSACTIONS_FILTERS = {
     accountIds: [],
@@ -37,6 +41,7 @@ const DEFAULT_TRANSACTIONS_FILTERS = {
     includeUncategorizedIncome: false,
     includeUncategorizedExpenses: false,
     splitMode: "all",
+    amountSign: "all",
     llmProcessed: "all",
     years: [],
     months: [],
@@ -58,6 +63,7 @@ function normalizeTransactionsFilters(raw = {}) {
         includeUncategorizedIncome: Boolean(raw?.includeUncategorizedIncome),
         includeUncategorizedExpenses: Boolean(raw?.includeUncategorizedExpenses),
         splitMode: String(raw?.splitMode || "all"),
+        amountSign: String(raw?.amountSign || "all"),
         llmProcessed: String(raw?.llmProcessed || "all"),
         years: Array.isArray(raw?.years) ? raw.years : [],
         months: Array.isArray(raw?.months) ? raw.months : [],
@@ -104,7 +110,7 @@ function mapCategory(item = {}) {
         id: item?._id || item?.id || "",
         clientId: item?.clientId || "",
         name: item?.name || "",
-        type: item?.type || "",
+        type: normalizeCategoryType(item?.type) || "",
         description: item?.description || "",
     }
 }
@@ -136,6 +142,11 @@ function mapTransaction(item = {}) {
     }
 }
 
+function getDefaultUncategorizedLabelByAmount(amount = 0) {
+    const numericAmount = Number(amount || 0)
+    return numericAmount >= 0 ? "Uncategorized income" : "Uncategorized expenses"
+}
+
 function isUncategorizedEntry(entry = {}) {
     const categoryId = String(entry?.categoryId || "").trim()
     const categoryName = String(entry?.category || "").trim().toLowerCase()
@@ -157,6 +168,32 @@ function isLlmAlreadyProcessed(entry = {}) {
 
 function isEligibleForAiProcessing(entry = {}) {
     return !isSplitEntry(entry) && !isLlmAlreadyProcessed(entry) && isUncategorizedEntry(entry)
+}
+
+function formatAccountSummaryLabel(accounts = [], accountIds = []) {
+    const selectedIds = Array.isArray(accountIds) ? accountIds.filter(Boolean) : []
+    if (selectedIds.length === 0) return "All accounts"
+
+    const matchedAccounts = selectedIds
+        .map((id) => accounts.find((account) => account.id === id))
+        .filter(Boolean)
+
+    if (matchedAccounts.length === 1) {
+        return matchedAccounts[0].name || "Selected account"
+    }
+
+    if (matchedAccounts.length > 1) {
+        return `${matchedAccounts.length} accounts selected`
+    }
+
+    return "Selected account"
+}
+
+function formatCurrency(value = 0) {
+    return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+    }).format(Number(value || 0))
 }
 
 function LedgerPage() {
@@ -184,6 +221,10 @@ function LedgerPage() {
     const [transactionsPeriodOptions, setTransactionsPeriodOptions] = useState({
         years: [],
         months: [],
+    })
+    const [transactionsSummary, setTransactionsSummary] = useState({
+        totalAmount: 0,
+        totalCount: 0,
     })
     const [showUploadModal, setShowUploadModal] = useState(false)
     const [isBaseDataLoaded, setIsBaseDataLoaded] = useState(false)
@@ -401,6 +442,44 @@ function LedgerPage() {
         }
     }, [clientId])
 
+    useEffect(() => {
+        let active = true
+
+        if (!clientId) {
+            setTransactionsSummary({
+                totalAmount: 0,
+                totalCount: 0,
+            })
+            return () => {
+                active = false
+            }
+        }
+
+        summarizeTransactionsByClientId(clientId, {
+            search: transactionsSearchTerm,
+            ...transactionsFilters,
+            silentLoading: true,
+        })
+            .then((payload) => {
+                if (!active) return
+                setTransactionsSummary({
+                    totalAmount: Number(payload?.totalAmount || 0),
+                    totalCount: Number(payload?.totalCount || 0),
+                })
+            })
+            .catch(() => {
+                if (!active) return
+                setTransactionsSummary({
+                    totalAmount: 0,
+                    totalCount: 0,
+                })
+            })
+
+        return () => {
+            active = false
+        }
+    }, [clientId, transactionsSearchTerm, transactionsFilters])
+
     const loadMoreTransactions = async () => {
         if (!clientId || !transactionsHasMore || isLoadingTransactions) return
         if (loadingMoreRef.current) return
@@ -475,10 +554,73 @@ function LedgerPage() {
                     months: Array.isArray(periodOptions?.months) ? periodOptions.months : [],
                 })
             }
+            emitDashboardRefresh("transaction-updated")
             success("Transaction updated successfully")
             return updated
         } catch (err) {
             error(err.message || "Failed to update transaction")
+            throw err
+        }
+    }
+
+    const handleUpdateTransactionsBulk = async (updates = []) => {
+        const safeUpdates = Array.isArray(updates)
+            ? updates
+                .map((item) => ({
+                    id: String(item?.id || "").trim(),
+                    patch: item?.patch || {},
+                }))
+                .filter((item) => item.id && Object.keys(item.patch).length > 0)
+            : []
+
+        if (safeUpdates.length === 0) return
+
+        try {
+            await updateTransactionsByIds(safeUpdates)
+
+            const patchById = new Map(
+                safeUpdates.map((item) => [item.id, item.patch])
+            )
+
+            setLedgerEntries((current) =>
+                current.map((entry) => {
+                    const patch = patchById.get(entry.id)
+                    if (!patch) return entry
+
+                    const nextAmount = patch.amount !== undefined ? Number(patch.amount || 0) : entry.amount
+                    const nextCategoryId = patch.categoryId !== undefined ? (patch.categoryId || "") : entry.categoryId
+                    const nextCategory = patch.category !== undefined
+                        ? (patch.category || (nextCategoryId ? "" : getDefaultUncategorizedLabelByAmount(nextAmount)))
+                        : entry.category
+
+                    return {
+                        ...entry,
+                        date: patch.date !== undefined ? (patch.date || "") : entry.date,
+                        accountId: patch.accountId !== undefined ? (patch.accountId || "") : entry.accountId,
+                        account: patch.accountName !== undefined ? (patch.accountName || "") : entry.account,
+                        categoryId: nextCategoryId,
+                        category: nextCategory,
+                    }
+                })
+            )
+
+            const touchedDate = safeUpdates.some((item) => Object.prototype.hasOwnProperty.call(item.patch, "date"))
+            if (touchedDate) {
+                const periodOptions = await listTransactionPeriodOptions(clientId, { silentLoading: true })
+                setTransactionsPeriodOptions({
+                    years: Array.isArray(periodOptions?.years) ? periodOptions.years : [],
+                    months: Array.isArray(periodOptions?.months) ? periodOptions.months : [],
+                })
+            }
+
+            emitDashboardRefresh("transactions-batch-updated")
+            success(
+                safeUpdates.length === 1
+                    ? "Transaction updated successfully"
+                    : `${safeUpdates.length} transactions updated successfully`
+            )
+        } catch (err) {
+            error(err.message || "Failed to update transactions")
             throw err
         }
     }
@@ -492,6 +634,7 @@ function LedgerPage() {
                 years: Array.isArray(periodOptions?.years) ? periodOptions.years : [],
                 months: Array.isArray(periodOptions?.months) ? periodOptions.months : [],
             })
+            emitDashboardRefresh("transaction-deleted")
             success("Transaction deleted successfully")
         } catch (err) {
             error(err.message || "Failed to delete transaction")
@@ -516,6 +659,7 @@ function LedgerPage() {
                 years: Array.isArray(periodOptions?.years) ? periodOptions.years : [],
                 months: Array.isArray(periodOptions?.months) ? periodOptions.months : [],
             })
+            emitDashboardRefresh("transactions-batch-deleted")
             success(
                 targetIds.length === 1
                     ? "Transaction deleted successfully"
@@ -579,6 +723,7 @@ function LedgerPage() {
         success(
             `${insertedCount} transactions imported from ${filesCount} file(s). ${skippedRows} skipped out of ${totalRows} row(s).`
         )
+        emitDashboardRefresh("transactions-imported")
 
         const periodOptions = await listTransactionPeriodOptions(clientId, { silentLoading: true })
         setTransactionsPeriodOptions({
@@ -640,6 +785,7 @@ function LedgerPage() {
             transactionIds: mode === "selected" ? targetIds : [],
         })
             .then((result) => {
+                emitDashboardRefresh("categorization-job-queued")
                 success(`AI categorization added to queue. Job ${result.jobId}`)
             })
             .catch((err) => {
@@ -891,7 +1037,12 @@ function LedgerPage() {
                     {activeSection === "ledger" && (
                         <section className="min-h-0 h-full p-1 flex flex-col gap-3">
                             <div className="relative z-20 flex items-center justify-between bg-white">
-                                <h3 className="text-base font-bold">Transactions</h3>
+                                <div>
+                                    <h3 className="text-base font-bold">Transactions</h3>
+                                    <p className="mt-1 text-sm text-gray-600">
+                                        {formatAccountSummaryLabel(accounts, transactionsFilters.accountIds)} · {formatCurrency(transactionsSummary.totalAmount)} · {transactionsSummary.totalCount.toLocaleString("en-US")} transaction(s)
+                                    </p>
+                                </div>
                                 <button
                                     type="button"
                                     className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
@@ -918,6 +1069,7 @@ function LedgerPage() {
                                     onApplyFilters={handleApplyTransactionsFilters}
                                     onSearchTermChange={setTransactionsSearchTerm}
                                     onUpdateEntry={handleUpdateTransaction}
+                                    onUpdateEntries={handleUpdateTransactionsBulk}
                                     onDeleteEntry={handleDeleteTransaction}
                                     onDeleteEntries={handleDeleteTransactionsBulk}
                                     onImportTransactions={handleImportTransactions}
@@ -957,60 +1109,111 @@ function LedgerPage() {
 
             <PopupModal
                 isOpen={showAccountForm}
-                title="New Account"
+                title="Create Account"
                 onClose={() => setShowAccountForm(false)}
             >
-                <form className="flex flex-col gap-2" onSubmit={handleCreateAccount}>
-                    <input
-                        className="border-2 border-gray-100 rounded-md px-3 py-2 placeholder:text-black"
-                        type="text"
-                        placeholder="Account name"
-                        value={newAccountName}
-                        onChange={(e) => setNewAccountName(e.target.value)}
-                    />
-                    <input
-                        className="border-2 border-gray-100 rounded-md px-3 py-2 placeholder:text-black"
-                        type="text"
-                        placeholder="Type"
-                        value={newAccountType}
-                        onChange={(e) => setNewAccountType(e.target.value)}
-                    />
-                    <button className="bg-gray-100 rounded-md p-2" type="submit" disabled={isSubmitting}>
-                        {isSubmitting ? "Saving..." : "Save"}
-                    </button>
+                <form className="flex flex-col gap-4" onSubmit={handleCreateAccount}>
+                    <label className="flex flex-col gap-1">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Account name</span>
+                        <input
+                            className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none transition focus:border-gray-400 focus:bg-white"
+                            type="text"
+                            placeholder="Chase Business Checking"
+                            value={newAccountName}
+                            onChange={(e) => setNewAccountName(e.target.value)}
+                        />
+                    </label>
+                    <label className="flex flex-col gap-1">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Type</span>
+                        <input
+                            className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none transition focus:border-gray-400 focus:bg-white"
+                            type="text"
+                            placeholder="checking"
+                            value={newAccountType}
+                            onChange={(e) => setNewAccountType(e.target.value)}
+                        />
+                    </label>
+                    <div className="mt-1 flex items-center justify-end gap-2">
+                        <button
+                            type="button"
+                            className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                            onClick={() => setShowAccountForm(false)}
+                        >
+                            Cancel
+                        </button>
+                        <button className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-black disabled:opacity-60" type="submit" disabled={isSubmitting}>
+                            {isSubmitting ? "Saving..." : "Save Account"}
+                        </button>
+                    </div>
                 </form>
             </PopupModal>
 
             <PopupModal
                 isOpen={showCategoryForm}
-                title="New Category"
+                title="Create Category"
                 onClose={() => setShowCategoryForm(false)}
             >
-                <form className="flex flex-col gap-2" onSubmit={handleCreateCategory}>
-                    <input
-                        className="border-2 border-gray-100 rounded-md px-3 py-2 placeholder:text-black"
-                        type="text"
-                        placeholder="Category name"
-                        value={newCategoryName}
-                        onChange={(e) => setNewCategoryName(e.target.value)}
-                    />
-                    <input
-                        className="border-2 border-gray-100 rounded-md px-3 py-2 placeholder:text-black"
-                        type="text"
-                        placeholder="Type"
-                        value={newCategoryType}
-                        onChange={(e) => setNewCategoryType(e.target.value)}
-                    />
-                    <input
-                        className="border-2 border-gray-100 rounded-md px-3 py-2 placeholder:text-black"
-                        type="text"
-                        placeholder="Description"
-                        value={newCategoryDescription}
-                        onChange={(e) => setNewCategoryDescription(e.target.value)}
-                    />
-                    <button className="bg-gray-100 rounded-md p-2" type="submit" disabled={isSubmitting}>
-                        {isSubmitting ? "Saving..." : "Save"}
-                    </button>
+                <form className="flex flex-col gap-4" onSubmit={handleCreateCategory}>
+                    <label className="flex flex-col gap-1">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Category name</span>
+                        <input
+                            className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none transition focus:border-gray-400 focus:bg-white"
+                            type="text"
+                            placeholder="Supplies"
+                            value={newCategoryName}
+                            onChange={(e) => setNewCategoryName(e.target.value)}
+                        />
+                    </label>
+                        <label className="flex flex-col gap-1">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Type</span>
+                            <div className="relative w-full">
+                                <select
+                                    className="w-full appearance-none rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 pr-10 text-sm outline-none transition focus:border-gray-400 focus:bg-white"
+                                    value={newCategoryType}
+                                    onChange={(e) => setNewCategoryType(e.target.value)}
+                                >
+                                    <option value="">Select type</option>
+                                    {CATEGORY_TYPE_OPTIONS.map((option) => (
+                                        <option key={option.value} value={option.value}>
+                                            {option.label}
+                                        </option>
+                                    ))}
+                                </select>
+                                <svg
+                                    className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2.5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                >
+                                    <path d="M6 9l6 6 6-6" />
+                                </svg>
+                            </div>
+                        </label>
+                    <label className="flex flex-col gap-1">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Description</span>
+                        <input
+                            className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none transition focus:border-gray-400 focus:bg-white"
+                            type="text"
+                            placeholder="Materials and supplies"
+                            value={newCategoryDescription}
+                            onChange={(e) => setNewCategoryDescription(e.target.value)}
+                        />
+                    </label>
+                    <div className="mt-1 flex items-center justify-end gap-2">
+                        <button
+                            type="button"
+                            className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                            onClick={() => setShowCategoryForm(false)}
+                        >
+                            Cancel
+                        </button>
+                        <button className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-black disabled:opacity-60" type="submit" disabled={isSubmitting}>
+                            {isSubmitting ? "Saving..." : "Save Category"}
+                        </button>
+                    </div>
                 </form>
             </PopupModal>
 

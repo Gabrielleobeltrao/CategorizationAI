@@ -1,11 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-
-function formatOptionLabel(value = "") {
-    return String(value || "")
-        .split("_")
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-        .join(" ")
-}
+import { CATEGORY_TYPE_OPTIONS, getCategoryTypeLabel, normalizeCategoryType } from "../../constants/categoryTypes"
 
 function CategoriesSection({ categories, onCreate, onSaveEdit, onDelete, onDeleteMany }) {
     const [editingId, setEditingId] = useState("")
@@ -21,18 +15,10 @@ function CategoriesSection({ categories, onCreate, onSaveEdit, onDelete, onDelet
         setSelectedIds((current) => current.filter((id) => validIds.has(id)))
     }, [categories])
 
-    const categoryTypeOptions = useMemo(() => {
-        const defaults = ["income", "cost_of_goods_sold", "expense", "other"]
-        const existing = (Array.isArray(categories) ? categories : [])
-            .map((category) => String(category?.type || "").trim())
-            .filter(Boolean)
-        return Array.from(new Set([...existing, ...defaults]))
-    }, [categories])
-
     const startEdit = (category) => {
         setEditingId(category.id)
         setDraftName(category.name || "")
-        setDraftType(category.type || "")
+        setDraftType(normalizeCategoryType(category.type) || "")
         setDraftDescription(category.description || "")
     }
 
@@ -143,9 +129,9 @@ function CategoriesSection({ categories, onCreate, onSaveEdit, onDelete, onDelet
                                                 onChange={(e) => setDraftType(e.target.value)}
                                             >
                                                 <option value="">Select type</option>
-                                                {categoryTypeOptions.map((typeOption) => (
-                                                    <option key={typeOption} value={typeOption}>
-                                                        {formatOptionLabel(typeOption)}
+                                                {CATEGORY_TYPE_OPTIONS.map((typeOption) => (
+                                                    <option key={typeOption.value} value={typeOption.value}>
+                                                        {typeOption.label}
                                                     </option>
                                                 ))}
                                             </select>
@@ -210,7 +196,7 @@ function CategoriesSection({ categories, onCreate, onSaveEdit, onDelete, onDelet
                                 </div>
                                 <div className="min-w-0 flex-1 text-left">
                                     <h3 className="text-sm font-semibold truncate">{category.name}</h3>
-                                    <p className="text-xs text-gray-500">{category.type}</p>
+                                    <p className="text-xs text-gray-500">{getCategoryTypeLabel(category.type)}</p>
                                     <p className="text-xs text-gray-400 truncate">{category.description}</p>
                                 </div>
                                 <div className="flex items-center gap-2">

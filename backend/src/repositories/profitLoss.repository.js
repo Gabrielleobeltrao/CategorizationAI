@@ -1,5 +1,6 @@
 import { ObjectId } from "mongodb"
 import { getDB } from "../db.js"
+import { normalizeCategoryType } from "../config/categoryTypes.js"
 
 function monthLabel(dateString) {
   const date = new Date(`${dateString}T00:00:00Z`)
@@ -17,8 +18,7 @@ const UNCATEGORIZED_INCOME_LABEL = "Uncategorized income"
 const UNCATEGORIZED_EXPENSES_LABEL = "Uncategorized expenses"
 
 function isCogsCategory(type) {
-  const normalized = String(type || "").toLowerCase()
-  return normalized.includes("cost") || normalized.includes("cogs")
+  return normalizeCategoryType(type) === "cost_of_goods_sold"
 }
 
 function normalizeAmount(value) {

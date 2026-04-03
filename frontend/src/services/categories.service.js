@@ -1,4 +1,5 @@
 import { api } from "../lib/api"
+import { normalizeCategoryType } from "../constants/categoryTypes"
 
 export async function listCategoriesByClientId(clientId) {
   const cleanClientId = String(clientId || "").trim()
@@ -10,7 +11,7 @@ export async function listCategoriesByClientId(clientId) {
 export async function createCategory(input) {
   const clientId = String(input?.clientId || "").trim()
   const name = String(input?.name || "").trim()
-  const type = String(input?.type || "").trim()
+  const type = normalizeCategoryType(input?.type)
   const description = String(input?.description || "").trim()
 
   if (!clientId) throw new Error("clientId is required")
@@ -29,9 +30,14 @@ export async function updateCategoryById(categoryId, patch) {
   if (!id) throw new Error("categoryId is required")
   if (!patch || typeof patch !== "object") throw new Error("patch is required")
 
+  const nextPatch = { ...patch }
+  if (typeof patch.type === "string") {
+    nextPatch.type = normalizeCategoryType(patch.type)
+  }
+
   return api(`/api/categories/${id}`, {
     method: "PATCH",
-    body: JSON.stringify(patch),
+    body: JSON.stringify(nextPatch),
   })
 }
 
