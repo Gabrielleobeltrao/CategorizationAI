@@ -90,6 +90,70 @@ function normalizeNameKey(value = "") {
     .trim()
 }
 
+function normalizeDescriptionForLlmGrouping(value = "") {
+  const normalized = String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter((token) => !/^\d+$/.test(token))
+    .filter((token) => !/[0-9]/.test(token))
+    .filter((token) => !["pos", "dbt", "debit", "credit", "card", "purchase", "auth", "ref", "trace"].includes(token))
+    .join(" ")
+    .trim()
+
+  return normalized
+}
+
+function getTransactionDirectionKey(amount = 0) {
+  return Number(amount || 0) >= 0 ? "positive" : "negative"
+}
+
+function buildLlmFingerprint(transaction = {}) {
+  const direction = getTransactionDirectionKey(transaction.amount)
+  const normalizedDescription = normalizeDescriptionForLlmGrouping(transaction.description || "")
+
+  return {
+    direction,
+    normalizedDescription,
+    fingerprint: `${direction}:${normalizedDescription || `tx_${String(transaction?._id || transaction?.id || "").trim()}`}`,
+  }
+}
+
+function groupTransactionsForLlm(transactions = []) {
+  const groups = new Map()
+
+  for (const transaction of Array.isArray(transactions) ? transactions : []) {
+    const { fingerprint, normalizedDescription } = buildLlmFingerprint(transaction)
+    const existing = groups.get(fingerprint)
+
+    if (!existing) {
+      groups.set(fingerprint, {
+        fingerprint,
+        normalizedDescription,
+        representativeId: String(transaction?._id || transaction?.id || ""),
+        representativeDescription: String(transaction?.description || "").trim(),
+        representativeAmount: Number(transaction?.amount || 0),
+        members: [transaction],
+      })
+      continue
+    }
+
+    existing.members.push(transaction)
+
+    const currentDescription = String(transaction?.description || "").trim()
+    if (currentDescription.length > existing.representativeDescription.length) {
+      existing.representativeId = String(transaction?._id || transaction?.id || "")
+      existing.representativeDescription = currentDescription
+      existing.representativeAmount = Number(transaction?.amount || 0)
+    }
+  }
+
+  return Array.from(groups.values())
+}
+
 function toDisplayName(value = "") {
   const normalized = String(value || "")
     .replace(/[^a-zA-Z0-9\s'-]/g, " ")
@@ -550,6 +614,8 @@ export async function categorizeTransactionsWithLlmService(input) {
     throw new Error("No non-Zelle categories available for LLM")
   }
 
+  const transactionGroups = groupTransactionsForLlm(eligibleTransactions)
+
   const llmResults = await categorizeTransaction(
     categoriesForLlm.map((category) => ({
       id: String(category._id),
@@ -557,10 +623,10 @@ export async function categorizeTransactionsWithLlmService(input) {
       type: category.type,
       description: category.description,
     })),
-    eligibleTransactions.map((transaction) => ({
-      id: String(transaction._id),
-      description: transaction.description || "",
-      amount: Number(transaction.amount || 0),
+    transactionGroups.map((group) => ({
+      id: group.representativeId,
+      description: group.representativeDescription,
+      amount: group.representativeAmount,
     })),
     {
       name: client.name || "",
@@ -573,9 +639,15 @@ export async function categorizeTransactionsWithLlmService(input) {
   const categoryById = new Map(
     categories.map((category) => [String(category._id), category.name])
   )
+  const groupByRepresentativeId = new Map(
+    transactionGroups.map((group) => [group.representativeId, group])
+  )
   const now = new Date()
 
-  const updates = llmResults.map((result) => {
+  const updates = llmResults.flatMap((result) => {
+    const group = groupByRepresentativeId.get(String(result?.id || ""))
+    if (!group) return []
+
     const confidence = Number(result?.confidence || 0)
     const ambiguous = Boolean(result?.ambiguous)
     const meetsConfidenceThreshold = confidence >= LLM_CONFIDENCE_THRESHOLD
@@ -585,8 +657,8 @@ export async function categorizeTransactionsWithLlmService(input) {
     const categoryName = categoryId ? categoryById.get(categoryId) || null : null
     const isCategorized = Boolean(categoryId && categoryName)
 
-    return {
-      id: String(result.id),
+    return group.members.map((transaction) => ({
+      id: String(transaction._id),
       categoryId: isCategorized ? categoryId : null,
       category: isCategorized ? categoryName : null,
       llmStatus: isCategorized ? "suggested" : "empty",
@@ -595,7 +667,7 @@ export async function categorizeTransactionsWithLlmService(input) {
       llmCategorySuggestionName: isCategorized ? categoryName : null,
       llmConfidence: confidence,
       llmAmbiguous: ambiguous,
-    }
+    }))
   })
 
   const writeResult = await applyLlmCategorizationUpdates(updates)
