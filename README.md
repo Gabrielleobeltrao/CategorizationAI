@@ -2,75 +2,97 @@
 
 ## PT-BR
 
-Sistema SaaS de contabilidade com:
-- gestão de clientes, funcionários, contas, categorias e transações
-- importação de CSV com preview e mapeamento de colunas
-- categorização por IA (incluindo fluxo específico de Zelle)
-- painel de Profit & Loss por período
-- autenticação com Better Auth + MongoDB
-- controle de permissão por roles (RBAC)
+SaaS de contabilidade para escritórios contábeis com:
+- autenticação e sessão com Better Auth
+- multi-office com funcionários, roles e permissões
+- gestão de clients, accounts, categories e transactions
+- upload de CSV com preview e mapeamento de colunas
+- categorização por IA em background
+- tratamento específico para transações Zelle
+- Profit & Loss por client e período
+- dashboard operacional do office
 
-### Stack
+## Stack
 
-#### Frontend
+### Frontend
 - React 19
 - Vite 7
 - React Router 7
 - Tailwind CSS 4
 
-#### Backend
-- Node.js (ESM)
+### Backend
+- Node.js ESM
 - Express 5
 - MongoDB Driver 7
 - Better Auth
-- OpenAI SDK
+- OpenAI API
 - Zod
 
-### Estrutura do projeto
+## Estrutura do projeto
 
 ```text
 CategorizationAI/
   frontend/
     src/
       components/
+        auth/
+        categories/
+        layout/
+        ledger/
+        ui/
+      constants/
       contexts/
+      lib/
+      mocks/
       pages/
       services/
       styles/
+      utils/
   backend/
     src/
+      config/
       controllers/
-      services/
-      repositories/
-      routes/
-      middlewares/
       lib/
         ai/
+      middlewares/
+      repositories/
+      routes/
+      services/
       workers/
     scripts/
 ```
 
-### Variáveis de ambiente
+## Variáveis de ambiente
 
-#### `backend/.env`
+### `backend/.env`
 
 ```env
 PORT=3001
-MONGODB_URI=mongodb+srv://<user>:<password>@<cluster>/<db>?retryWrites=true&w=majority
-MONGODB_DB_NAME=categorization_ai
-OPENAI_API_KEY=<your_openai_key>
+
+MONGODB_URI=mongodb+srv://<user>:<password>@<cluster>/?appName=CategorizationAI
+MONGODB_DB_NAME=<database_name>
+
 BETTER_AUTH_URL=http://localhost:3001
+BETTER_AUTH_SECRET=<long_random_secret>
+
+OPENAI_API_KEY=<your_openai_key>
+
+# opcionais para tuning da LLM
+LLM_BATCH_SIZE=20
+LLM_TIMEOUT_MS=60000
+LLM_MAX_RETRIES=4
+LLM_BACKOFF_MS=1200
 ```
 
-#### `frontend/.env`
+### `frontend/.env`
 
 ```env
 VITE_API_URL=http://localhost:3001
 ```
 
-### Como rodar
+## Como rodar
 
-#### 1) Backend
+### Backend
 
 ```bash
 cd backend
@@ -78,9 +100,9 @@ npm install
 npm run dev
 ```
 
-Servidor API em `http://localhost:3001`.
+API em `http://localhost:3001`
 
-#### 2) Frontend
+### Frontend
 
 ```bash
 cd frontend
@@ -88,32 +110,46 @@ npm install
 npm run dev
 ```
 
-App em `http://localhost:5173`.
+App em `http://localhost:5173`
 
-### Fluxo de autenticação
+## Autenticação
 
-- Auth endpoints ficam em `POST /api/auth/*` (Better Auth).
-- Registro no frontend (`Register`) cria:
-  1. usuário auth (`/api/auth/sign-up/email`)
-  2. office (`POST /api/offices`)
-  3. user_profile owner (`POST /api/user-profiles`)
-- Sessão usa cookie (`credentials: include`).
+- Better Auth usa sessão por cookie
+- frontend chama a API com `credentials: include`
+- origem confiável atual está em [auth.js](/Users/gabrielbeltrao/Desktop/CategorizationAI/backend/src/lib/auth.js)
+- o cadastro principal cria:
+  1. auth user
+  2. office
+  3. user profile owner
 
-### Roles e permissões
+### Fluxo de senha temporária
 
-Definidas em `backend/src/config/roles.js`:
-- `viewer`
-- `staff`
-- `manager`
-- `owner`
+- admin/owner pode resetar senha temporária de funcionário
+- funcionário faz login com a senha temporária
+- depois conclui troca em:
+  - `POST /api/user-profiles/me/complete-password-reset`
 
-Middleware:
-- `requireAuth` valida sessão e bloqueia perfil com status `inactive`
-- `requirePermission` valida permissões por recurso/ação
-- `validateObjectId` valida ids
-- `ensureResourceExists` garante escopo e existência de recurso
+## RBAC
 
-### Principais coleções MongoDB
+Permissões são aplicadas por:
+- `requireAuth`
+- `requirePermission`
+- `authorizeScope`
+- `validateObjectId`
+
+Existem roles base e roles customizadas por office.
+
+Principais áreas protegidas:
+- offices
+- user profiles
+- roles
+- clients
+- accounts
+- categories
+- transactions
+- profit loss
+
+## Principais coleções MongoDB
 
 - `offices`
 - `user_profile`
@@ -122,240 +158,362 @@ Middleware:
 - `categories`
 - `transactions`
 - `categorization_jobs`
+- `transaction_memory`
 
-### API (resumo)
+## API
 
 Base: `/api`
 
-#### Health
+### Health
 - `GET /health`
 
-#### Offices
+### Offices
 - `POST /offices`
 - `GET /offices/:id`
 - `PATCH /offices/:id`
+- `GET /offices/:id/dashboard`
 
-#### User Profiles (funcionários)
+### User Profiles
 - `POST /user-profiles`
 - `GET /user-profiles/me`
+- `POST /user-profiles/me/complete-password-reset`
 - `GET /offices/:officeId/user-profiles`
 - `GET /user-profiles/:id`
 - `PATCH /user-profiles/:id`
 - `DELETE /user-profiles/:id`
+- `POST /user-profiles/:id/reset-password-temp`
 
-#### Roles
+### Roles
 - `GET /roles`
+- `GET /roles/permissions`
+- `POST /roles/custom`
+- `PATCH /roles/custom/:id`
+- `DELETE /roles/custom/:id`
 
-#### Clients
+### Clients
 - `POST /clients`
 - `GET /offices/:officeId/clients`
 - `GET /clients/:id`
 - `PATCH /clients/:id`
 - `DELETE /clients/:id`
 
-#### Accounts
+### Accounts
 - `POST /accounts`
 - `GET /clients/:clientId/accounts`
 - `GET /accounts/:id`
 - `PATCH /accounts/:id`
 - `DELETE /accounts/:id`
 
-#### Categories
+### Categories
 - `POST /categories`
 - `GET /clients/:clientId/categories`
 - `GET /categories/:id`
 - `PATCH /categories/:id`
 - `DELETE /categories/:id`
 
-#### Transactions
+### Transactions
 - `POST /transactions/batch`
-- `GET /transactions/filter-options?clientId=...`
-- `GET /transactions?...` (busca/filtros/paginação)
+- `GET /transactions`
+- `GET /transactions/summary`
+- `GET /transactions/filter-options`
 - `PATCH /transactions/:id`
+- `PATCH /transactions/batch-update`
 - `DELETE /transactions/:id`
+- `POST /transactions/batch-delete`
 - `POST /transactions/categorize-zelle`
 - `POST /transactions/categorize-llm`
 - `POST /transactions/categorize-all-llm`
 
-#### Jobs assíncronos de categorização
-- `POST /transactions/categorize-all-llm/jobs` (retorna `202` + `jobId`)
+### Jobs assíncronos de categorização
+- `POST /transactions/categorize-all-llm/jobs`
 - `GET /transactions/categorize-all-llm/jobs`
 - `GET /transactions/categorize-all-llm/jobs/:jobId`
 
-#### Profit & Loss
+### Profit & Loss
 - `GET /clients/:clientId/profit-loss/period-options`
 - `GET /clients/:clientId/profit-loss`
 
-### Ledger (frontend)
+## Frontend
 
-Página `Ledger` inclui:
-- tabela de transações com edição inline
-- seleção múltipla
-- ações em lote (editar campos permitidos, deletar em lote)
-- split de transação
-- filtros avançados (conta, categoria, período, valor, split, LLM)
+### Páginas principais
+
+- `Home`
+- `Ledger`
+- `Profit & Loss`
+- `Clients`
+- `Employees`
+- `Register`
+- `Login`
+
+### Ledger
+
+A página `Ledger` concentra:
+- tabela de transactions com edição inline
+- edição individual e em lote
+- delete individual e em lote
+- split de transaction
+- filtros avançados
 - busca com paginação no backend
-- upload de CSV com:
-  - preview
-  - mapeamento de colunas
-  - validação de campos obrigatórios (`date`, `description`, `amount`)
+- upload de CSV com preview e mapeamento
+- categorização por IA
+- accounts e categories do client no mesmo fluxo da página
 
-### Categorização por IA
+### Profit & Loss
 
-#### 1) Fluxo Zelle
-Arquivo: `backend/src/lib/ai/categorizeZelle.js`
-- processa apenas transações elegíveis Zelle
-- separa lotes positivos e negativos
-- cria/normaliza categorias retornadas
+Inclui:
+- filtros por mês, ano e período manual
+- tabela de statement
+- fórmula visual de performance
+- export para PDF
+- integração com categories do client
+- navegação para o Ledger com filtro de category
 
-#### 2) Fluxo geral de categorias
-Arquivo: `backend/src/lib/ai/categorizeTransaction.js`
-- processa transações sem categoria (elegíveis)
-- usa lista de categorias disponíveis
-- retorna `categoryId` por transação
+### Clients
 
-#### 3) Job em segundo plano
-- worker em `backend/src/workers/categorization.worker.js`
-- inicializa no startup (`startCategorizationWorker`)
-- job queue persistida em `categorization_jobs`
-- front acompanha progresso via polling (`CategorizationJobsProvider`)
+Inclui:
+- lista paginada
+- busca no backend
+- criação e edição por popup
+- owners múltiplos por client
+- dados extras do owner:
+  - `name`
+  - `email`
+  - `phone`
 
-### Scripts úteis (backend)
+### Employees
+
+Inclui:
+- lista por office
+- criação de funcionário
+- reset de senha temporária
+- ativação/inativação
+- roles base e customizadas
+
+## Upload de CSV
+
+Fluxo atual:
+- escolher account do client
+- enviar um ou mais arquivos
+- preview das colunas
+- editar mapeamento do header
+- validar colunas obrigatórias
+- confirmar importação
+
+Campos úteis no mapeamento:
+- `date`
+- `description`
+- `amount`
+
+Campos como `account` e `category` não dependem do arquivo:
+- `account` vem da seleção do usuário
+- `category` é definida depois no sistema/IA
+
+## Categorização por IA
+
+### Fluxos
+
+#### 1. Zelle
+Arquivo:
+- [categorizeZelle.js](/Users/gabrielbeltrao/Desktop/CategorizationAI/backend/src/lib/ai/categorizeZelle.js)
+
+Regras:
+- roda separado do fluxo geral
+- considera contexto do client e owners
+- cria/usa categories específicas de Zelle quando necessário
+
+#### 2. Categorias gerais
+Arquivo:
+- [categorizeTransaction.js](/Users/gabrielbeltrao/Desktop/CategorizationAI/backend/src/lib/ai/categorizeTransaction.js)
+
+Regras:
+- só processa transactions elegíveis
+- usa `confidence`
+- usa `ambiguous`
+- respeita threshold antes de aplicar categoria
+
+#### 3. Job assíncrono
+
+Arquivo:
+- [categorization.worker.js](/Users/gabrielbeltrao/Desktop/CategorizationAI/backend/src/workers/categorization.worker.js)
+
+Fluxo:
+- cria job persistido
+- worker processa em background
+- frontend acompanha progresso por polling
+- UI continua livre durante a categorização
+
+## Memória viva
+
+Arquivo principal:
+- [transactions.service.js](/Users/gabrielbeltrao/Desktop/CategorizationAI/backend/src/services/transactions.service.js)
+
+Coleção:
+- `transaction_memory`
+
+### Objetivo
+
+Reduzir inconsistência entre categorizações repetidas e reaproveitar histórico do próprio client antes de chamar a LLM.
+
+### Identidade enriquecida da transação
+
+Antes de consultar a memória, o backend gera:
+- `direction`
+- `channel`
+- `normalizedDescription`
+- `merchantCandidate`
+- `exactFingerprint`
+- `semanticFingerprint`
+
+`merchantCandidate` hoje é derivado por normalização sintática mínima da descrição.
+O sistema não depende mais de um catálogo grande de aliases hardcoded para funcionar.
+O centro da decisão é a própria memória viva do client.
+
+### `exactFingerprint`
+
+Mais específico.
+
+Usa:
+- `accountId`
+- `direction`
+- `channel`
+- `normalizedDescription`
+
+Exemplo:
+- `acc_1:negative:card:eleven deerfield fl`
+
+### `semanticFingerprint`
+
+Mais estável.
+
+Usa:
+- `accountId`
+- `direction`
+- `channel`
+- `merchantCandidate`
+
+Exemplo:
+- `acc_1:negative:card:eleven`
+
+### Lookup
+
+Ordem:
+1. tenta memória `exact`
+2. tenta memória `semantic`
+3. se nada resolver, chama a LLM
+
+### Regras de prioridade
+
+- humano sempre vence LLM
+- `exact` vence `semantic`
+- memória `semantic` só autoaplica se estiver forte e confirmada
+
+### Criação de memória
+
+#### Memória humana
+
+Nasce quando o usuário:
+- altera manualmente a category de uma transaction
+- altera em lote categories de transactions
+
+O backend grava:
+- `exact`
+- `semantic`
+
+### Proteção contra memória humana acidental
+
+Memória `semantic` humana pode começar como:
+- `reviewStatus = pending`
+
+Ela só autoaplica quando estiver estável o bastante.
+
+### Remoção manual de category
+
+Se o usuário limpar a category manualmente:
+- as memórias correspondentes são marcadas como `rejected`
+- isso evita reaplicação automática do mesmo padrão errado
+
+### Memória da LLM
+
+Só nasce quando:
+- `confidence` é alto
+- `ambiguous === false`
+- houve suporte mínimo no lote
+
+Para `semantic`, a regra é ainda mais conservadora.
+
+### Estatísticas guardadas na memória
+
+Cada documento pode guardar:
+- `reviewStatus`
+- `conflictCount`
+- `categoryIdsSeen`
+- `lastConflictAt`
+- `supportCount`
+- `confidence`
+
+Isso permite:
+- bloquear autoaplicação de memória conflitada
+- usar memórias fracas apenas como contexto
+
+### Hint histórico para a LLM
+
+Quando a memória `semantic` existe, mas ainda não é forte o bastante para autoaplicar, o backend envia um hint compacto para a LLM:
+
+Exemplo:
+
+```text
+merchant=eleven | prior=Fuel | review=pending | source=human | support=1
+```
+
+Esse hint:
+- não força resposta
+- só adiciona contexto histórico do client
+- foi otimizado para gastar poucos tokens
+
+### Índices da memória
+
+No startup:
+- índice único em `clientId + memoryType + fingerprint`
+- índice por `clientId + memoryType + updatedAt`
+
+## Dashboard do office
+
+`GET /offices/:id/dashboard`
+
+Informações usadas no frontend incluem:
+- jobs recentes
+- atividade recente
+- contadores operacionais do office
+- métricas do mês
+
+## Scripts úteis
+
+Dentro de `backend`:
 
 ```bash
 # vincular usuário a office
 npm run set:user-office -- --email user@email.com --officeId <officeId> --role staff --status active
 
-# seed de contas/categorias/transações para um client
+# popular ledger de um client
 npm run seed:client-ledger -- --clientId <clientId>
 
 # marcar amostra como processada pela LLM
 CLIENT_ID=<clientId> LIMIT=6 npm run seed:llm-processed
 ```
 
-### Índices criados
+## Índices criados no startup
 
-No startup:
-- `transactions`: `{ clientId: 1, date: -1 }`
-- `categorization_jobs`: índices por `createdBy`, `status`, `clientId`
+- `transactions`
+  - `{ clientId: 1, date: -1 }`
+- `categorization_jobs`
+  - índices por fluxo do worker
+- `transaction_memory`
+  - `{ clientId: 1, memoryType: 1, fingerprint: 1 }` único
+  - `{ clientId: 1, memoryType: 1, updatedAt: -1 }`
 
-### Troubleshooting
+## Troubleshooting
 
-#### `vite: command not found`
-No `frontend`:
-```bash
-npm install
-npm run dev
-```
-
-#### `MongoServerSelectionError` / TLS / timeout
-- conferir `MONGODB_URI` e `MONGODB_DB_NAME`
-- liberar IP no MongoDB Atlas Network Access
-- verificar usuário/senha do cluster
-
-#### `Invalid origin` no auth
-- frontend deve rodar em `http://localhost:5173`
-- `BETTER_AUTH_URL` deve apontar para o backend
-- `trustedOrigins` em `backend/src/lib/auth.js` deve conter origem do frontend
-
-#### CORS / Preflight 404
-- confirmar `app.all('/api/auth/*splat', ...)` em `backend/src/app.js`
-- confirmar `app.use('/api', routes)`
-
-#### ESM import error (`Cannot find module .../src/db`)
-- em ESM, usar extensão `.js` nos imports locais
-
-### Estado atual do projeto
-
-- Backend em arquitetura `routes -> controllers -> services -> repositories`
-- Frontend organizado por páginas/componentes/serviços/contextos
-- IA e jobs assíncronos integrados
-- RBAC ativo por role
-- Fluxo completo de ledger + profit/loss funcionando com backend
-
----
-
-## EN
-
-Accounting SaaS platform with:
-- client, employee, account, category and transaction management
-- CSV import with preview and column mapping
-- AI categorization (including a dedicated Zelle flow)
-- period-based Profit & Loss dashboard
-- Better Auth + MongoDB authentication
-- role-based access control (RBAC)
-
-### Stack
-
-#### Frontend
-- React 19
-- Vite 7
-- React Router 7
-- Tailwind CSS 4
-
-#### Backend
-- Node.js (ESM)
-- Express 5
-- MongoDB Driver 7
-- Better Auth
-- OpenAI SDK
-- Zod
-
-### Project structure
-
-```text
-CategorizationAI/
-  frontend/
-    src/
-      components/
-      contexts/
-      pages/
-      services/
-      styles/
-  backend/
-    src/
-      controllers/
-      services/
-      repositories/
-      routes/
-      middlewares/
-      lib/
-        ai/
-      workers/
-    scripts/
-```
-
-### Environment variables
-
-#### `backend/.env`
-
-```env
-PORT=3001
-MONGODB_URI=mongodb+srv://<user>:<password>@<cluster>/<db>?retryWrites=true&w=majority
-MONGODB_DB_NAME=categorization_ai
-OPENAI_API_KEY=<your_openai_key>
-BETTER_AUTH_URL=http://localhost:3001
-```
-
-#### `frontend/.env`
-
-```env
-VITE_API_URL=http://localhost:3001
-```
-
-### Run locally
-
-#### 1) Backend
-
-```bash
-cd backend
-npm install
-npm run dev
-```
-
-API server runs on `http://localhost:3001`.
-
-#### 2) Frontend
+### `vite: command not found`
 
 ```bash
 cd frontend
@@ -363,187 +521,92 @@ npm install
 npm run dev
 ```
 
-App runs on `http://localhost:5173`.
+### `Invalid package config`
 
-### Authentication flow
+Normalmente indica `package.json` corrompido ou `node_modules` inconsistente.
 
-- Auth endpoints are under `POST /api/auth/*` (Better Auth).
-- Frontend signup (`Register`) creates:
-  1. auth user (`/api/auth/sign-up/email`)
-  2. office (`POST /api/offices`)
-  3. owner user_profile (`POST /api/user-profiles`)
-- Session is cookie-based (`credentials: include`).
-
-### Roles and permissions
-
-Defined in `backend/src/config/roles.js`:
-- `viewer`
-- `staff`
-- `manager`
-- `owner`
-
-Middlewares:
-- `requireAuth` validates session and blocks users with `inactive` status
-- `requirePermission` validates resource/action permissions
-- `validateObjectId` validates ids
-- `ensureResourceExists` validates scope and resource existence
-
-### Main MongoDB collections
-
-- `offices`
-- `user_profile`
-- `clients`
-- `account`
-- `categories`
-- `transactions`
-- `categorization_jobs`
-
-### API (summary)
-
-Base: `/api`
-
-#### Health
-- `GET /health`
-
-#### Offices
-- `POST /offices`
-- `GET /offices/:id`
-- `PATCH /offices/:id`
-
-#### User Profiles (employees)
-- `POST /user-profiles`
-- `GET /user-profiles/me`
-- `GET /offices/:officeId/user-profiles`
-- `GET /user-profiles/:id`
-- `PATCH /user-profiles/:id`
-- `DELETE /user-profiles/:id`
-
-#### Roles
-- `GET /roles`
-
-#### Clients
-- `POST /clients`
-- `GET /offices/:officeId/clients`
-- `GET /clients/:id`
-- `PATCH /clients/:id`
-- `DELETE /clients/:id`
-
-#### Accounts
-- `POST /accounts`
-- `GET /clients/:clientId/accounts`
-- `GET /accounts/:id`
-- `PATCH /accounts/:id`
-- `DELETE /accounts/:id`
-
-#### Categories
-- `POST /categories`
-- `GET /clients/:clientId/categories`
-- `GET /categories/:id`
-- `PATCH /categories/:id`
-- `DELETE /categories/:id`
-
-#### Transactions
-- `POST /transactions/batch`
-- `GET /transactions/filter-options?clientId=...`
-- `GET /transactions?...` (search/filters/pagination)
-- `PATCH /transactions/:id`
-- `DELETE /transactions/:id`
-- `POST /transactions/categorize-zelle`
-- `POST /transactions/categorize-llm`
-- `POST /transactions/categorize-all-llm`
-
-#### Async categorization jobs
-- `POST /transactions/categorize-all-llm/jobs` (returns `202` + `jobId`)
-- `GET /transactions/categorize-all-llm/jobs`
-- `GET /transactions/categorize-all-llm/jobs/:jobId`
-
-#### Profit & Loss
-- `GET /clients/:clientId/profit-loss/period-options`
-- `GET /clients/:clientId/profit-loss`
-
-### Ledger (frontend)
-
-`Ledger` page includes:
-- inline-edit transactions table
-- multi-select
-- bulk actions (allowed field edits, bulk delete)
-- transaction split
-- advanced filters (account, category, period, amount, split, LLM)
-- backend pagination + search
-- CSV upload with:
-  - preview
-  - column mapping
-  - required fields validation (`date`, `description`, `amount`)
-
-### AI categorization
-
-#### 1) Zelle flow
-File: `backend/src/lib/ai/categorizeZelle.js`
-- processes only eligible Zelle transactions
-- splits positive and negative batches
-- creates/normalizes returned categories
-
-#### 2) General categorization flow
-File: `backend/src/lib/ai/categorizeTransaction.js`
-- processes uncategorized eligible transactions
-- uses available category list
-- returns `categoryId` per transaction
-
-#### 3) Background jobs
-- worker in `backend/src/workers/categorization.worker.js`
-- starts on server startup (`startCategorizationWorker`)
-- persistent queue in `categorization_jobs`
-- frontend tracks progress via polling (`CategorizationJobsProvider`)
-
-### Useful scripts (backend)
+Tente:
 
 ```bash
-# link user profile to an office
-npm run set:user-office -- --email user@email.com --officeId <officeId> --role staff --status active
-
-# seed accounts/categories/transactions for one client
-npm run seed:client-ledger -- --clientId <clientId>
-
-# mark a sample as LLM processed
-CLIENT_ID=<clientId> LIMIT=6 npm run seed:llm-processed
+rm -rf node_modules package-lock.json
+npm install
 ```
 
-### Created indexes
+### `MongoServerSelectionError` / TLS / timeout
 
-At startup:
-- `transactions`: `{ clientId: 1, date: -1 }`
-- `categorization_jobs`: indexes for `createdBy`, `status`, `clientId`
+Verifique:
+- `MONGODB_URI`
+- `MONGODB_DB_NAME`
+- IP liberado no Atlas
+- usuário/senha do cluster
 
-### Troubleshooting
+### Dois databases no Atlas
 
-#### `vite: command not found`
-In `frontend`:
+O backend usa o database definido em:
+- `MONGODB_DB_NAME`
+
+Se você vir dois databases no Atlas, normalmente um deles é legado de configuração antiga.
+
+### `Invalid origin`
+
+Verifique:
+- frontend em `http://localhost:5173`
+- `BETTER_AUTH_URL=http://localhost:3001`
+- `trustedOrigins` em [auth.js](/Users/gabrielbeltrao/Desktop/CategorizationAI/backend/src/lib/auth.js)
+
+### Memória viva não aparece no Mongo
+
+Verifique:
+1. backend reiniciado após mudanças
+2. database correto em `MONGODB_DB_NAME`
+3. teste de edição manual de category ou categorização LLM
+
+---
+
+## EN
+
+Accounting SaaS for bookkeeping offices with:
+- Better Auth authentication
+- office, employee, role and permission management
+- clients, accounts, categories and transaction management
+- CSV import with preview and column mapping
+- background AI categorization
+- Zelle-specific categorization flow
+- Profit & Loss per client and period
+- office dashboard
+
+### Key modules
+- `frontend/src/pages/LedgerPage.jsx`
+- `frontend/src/pages/ProfitLossPage.jsx`
+- `backend/src/services/transactions.service.js`
+- `backend/src/lib/ai/categorizeTransaction.js`
+- `backend/src/lib/ai/categorizeZelle.js`
+- `backend/src/workers/categorization.worker.js`
+
+### Living memory
+
+The backend uses a `transaction_memory` collection with:
+- `exact` memory
+- `semantic` memory
+- human decisions overriding LLM decisions
+- conflict tracking
+- rejection when a user manually removes a category
+- compact historical hints sent to the LLM only when semantic memory is not strong enough for auto-apply
+
+### Run
+
+Backend:
+
 ```bash
+cd backend
 npm install
 npm run dev
 ```
 
-#### `MongoServerSelectionError` / TLS / timeout
-- check `MONGODB_URI` and `MONGODB_DB_NAME`
-- allow your IP in MongoDB Atlas Network Access
-- validate cluster username/password
+Frontend:
 
-#### `Invalid origin` in auth
-- frontend should run at `http://localhost:5173`
-- `BETTER_AUTH_URL` should point to backend
-- `trustedOrigins` in `backend/src/lib/auth.js` must include frontend origin
-
-#### CORS / Preflight 404
-- verify `app.all('/api/auth/*splat', ...)` in `backend/src/app.js`
-- verify `app.use('/api', routes)`
-
-#### ESM import error (`Cannot find module .../src/db`)
-- for ESM local imports, always use `.js` extension
-
-### Current project status
-
-- Backend uses `routes -> controllers -> services -> repositories`
-- Frontend is organized by pages/components/services/contexts
-- AI and async background jobs are integrated
-- RBAC is active by role
-- End-to-end ledger + profit/loss flow is connected to backend
+```bash
+cd frontend
+npm install
+npm run dev
+```
