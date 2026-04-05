@@ -24,6 +24,7 @@ const TransactionSchema = z.object({
   id: z.union([z.string(), z.number()]),
   description: z.string().optional().nullable(),
   amount: z.number(),
+  memoryHint: z.string().optional().nullable(),
 })
 
 const BusinessSchema = z.object({
@@ -87,7 +88,7 @@ function promptTransactions(transactions) {
       (transaction) =>
         `id: ${transaction.id}, description: ${transaction.description || ""}, amount: ${
           transaction.amount
-        }`
+        }${transaction.memoryHint ? `, historical_hint: ${transaction.memoryHint}` : ""}`
     )
     .join("\n")
 }
@@ -164,6 +165,7 @@ Rules:
 - if unclear, categoryId must be "".
 - confidence must be a number from 0 to 1.
 - confidence should reflect how certain you are about the chosen category.
+- historical_hint is optional compact history metadata from prior client patterns. Treat it only as supporting evidence.
 - ambiguous must be true when the merchant or description could reasonably fit more than one category.
 - if ambiguous is true, prefer categoryId = "" unless the description is still clearly decisive.
 - if confidence is low, prefer categoryId = "".

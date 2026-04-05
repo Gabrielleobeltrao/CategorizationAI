@@ -144,6 +144,20 @@ export async function getTransactionById(id) {
   return db.collection("transactions").findOne({ _id: new ObjectId(id) })
 }
 
+export async function listTransactionsByIds(ids = []) {
+  const db = getDB()
+  const objectIds = Array.isArray(ids)
+    ? ids
+        .map((id) => String(id || "").trim())
+        .filter((id) => id && ObjectId.isValid(id))
+        .map((id) => new ObjectId(id))
+    : []
+
+  if (objectIds.length === 0) return []
+
+  return db.collection("transactions").find({ _id: { $in: objectIds } }).toArray()
+}
+
 export async function deleteTransactionById(id) {
   const db = getDB()
   return db.collection("transactions").deleteOne({ _id: new ObjectId(id) })
