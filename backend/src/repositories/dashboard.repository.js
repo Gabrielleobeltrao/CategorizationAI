@@ -745,7 +745,7 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
     recentActivitiesRaw.push({
       at: job.updatedAt || job.createdAt,
       title: statusToActivityLabel(job.status),
-      detail: `${toFriendlyJobLabel(job._id)} • ${clientNameById.get(String(job.clientId)) || "Unknown client"} • ${Number(job.processed || 0)}/${Number(job.total || 0)}`,
+      detail: `${toFriendlyJobLabel(job._id)} • ${clientNameById.get(String(job.clientId)) || "Unknown client"} • ${Number(job.processed || 0)}/${Number(job.total || 0)} transactions`,
     })
   }
 
