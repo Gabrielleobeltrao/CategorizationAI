@@ -78,6 +78,18 @@ const CHART_SERIES = [
   { key: "pending", label: "Pending", color: "#d97706" },
 ]
 
+const OVERVIEW_VIEW_STORAGE_KEY = "home.performanceOverview.view"
+const OVERVIEW_PERIOD_STORAGE_KEY = "home.performanceOverview.period"
+const ALLOWED_OVERVIEW_VIEWS = new Set(["blocks", "line", "columns"])
+const ALLOWED_OVERVIEW_PERIODS = new Set(["month", "week"])
+
+function readStoredOverviewOption(storageKey, allowedValues, fallbackValue) {
+  if (typeof window === "undefined") return fallbackValue
+
+  const storedValue = window.localStorage.getItem(storageKey)
+  return allowedValues.has(storedValue) ? storedValue : fallbackValue
+}
+
 function OverviewTooltip({ active, payload, label }) {
   if (!active || !Array.isArray(payload) || payload.length === 0) return null
 
@@ -182,8 +194,20 @@ function Home() {
   })
   const [dashboard, setDashboard] = useState(EMPTY_DASHBOARD)
   const [isLoadingDashboard, setIsLoadingDashboard] = useState(true)
-  const [overviewView, setOverviewView] = useState("blocks")
-  const [overviewPeriod, setOverviewPeriod] = useState("month")
+  const [overviewView, setOverviewView] = useState(() =>
+    readStoredOverviewOption(
+      OVERVIEW_VIEW_STORAGE_KEY,
+      ALLOWED_OVERVIEW_VIEWS,
+      "blocks"
+    )
+  )
+  const [overviewPeriod, setOverviewPeriod] = useState(() =>
+    readStoredOverviewOption(
+      OVERVIEW_PERIOD_STORAGE_KEY,
+      ALLOWED_OVERVIEW_PERIODS,
+      "month"
+    )
+  )
 
   const loadDashboard = useCallback(async (officeId, options = {}) => {
     const safeOfficeId = String(officeId || "").trim()
@@ -244,6 +268,14 @@ function Home() {
     })
     return unsubscribe
   }, [])
+
+  useEffect(() => {
+    window.localStorage.setItem(OVERVIEW_VIEW_STORAGE_KEY, overviewView)
+  }, [overviewView])
+
+  useEffect(() => {
+    window.localStorage.setItem(OVERVIEW_PERIOD_STORAGE_KEY, overviewPeriod)
+  }, [overviewPeriod])
 
   useEffect(() => {
     let active = true
