@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import LedgerEntryRow from "./LedgerEntryRow"
 import ConfirmModal from "../ui/ConfirmModal"
 import PopupModal from "../ui/PopupModal"
 import { getTransactionAmountPresentation } from "../../utils/amountPresentation"
+import { CATEGORY_TYPE_OPTIONS } from "../../constants/categoryTypes"
+import { getCategoryDisplayName } from "../../utils/categoryPresentation"
 
 const UNCATEGORIZED_INCOME_FILTER_VALUE = "__uncategorized_income__"
 const UNCATEGORIZED_EXPENSES_FILTER_VALUE = "__uncategorized_expenses__"
@@ -295,6 +298,72 @@ function getDefaultUncategorizedLabelByAmount(amount = 0) {
     return numericAmount >= 0 ? "Uncategorized income" : "Uncategorized expenses"
 }
 
+function getCategoryPickerPosition(anchorElement, isCreating = false, popupElement = null, boundaryElement = null) {
+    if (!anchorElement || typeof window === "undefined") {
+        return {
+            top: 16,
+            left: 16,
+            width: 360,
+        }
+    }
+
+    const viewportPadding = 16
+    const boundaryRect = boundaryElement?.getBoundingClientRect?.() || {
+        top: 0,
+        left: 0,
+        right: window.innerWidth,
+        bottom: window.innerHeight,
+        width: window.innerWidth,
+        height: window.innerHeight,
+    }
+    const boundaryScrollTop = Number(boundaryElement?.scrollTop || 0)
+    const boundaryScrollLeft = Number(boundaryElement?.scrollLeft || 0)
+    const boundaryClientWidth = Number(boundaryElement?.clientWidth || boundaryRect.width)
+    const boundaryClientHeight = Number(boundaryElement?.clientHeight || boundaryRect.height)
+    const rect = anchorElement.getBoundingClientRect()
+    const maxWidth = Math.max(320, boundaryClientWidth - viewportPadding * 2)
+    const width = Math.min(maxWidth, Math.max(360, Math.round(rect.width + 40)))
+    const popupHeight = popupElement
+        ? Math.round(popupElement.getBoundingClientRect().height)
+        : (isCreating ? 420 : 360)
+    const estimatedHeight = popupHeight
+    const anchorTopInBoundary = rect.top - boundaryRect.top + boundaryScrollTop
+    const anchorBottomInBoundary = rect.bottom - boundaryRect.top + boundaryScrollTop
+    const anchorLeftInBoundary = rect.left - boundaryRect.left + boundaryScrollLeft
+    const visibleBottom = boundaryScrollTop + boundaryClientHeight
+    const visibleRight = boundaryScrollLeft + boundaryClientWidth
+    const availableBelow = visibleBottom - anchorBottomInBoundary - viewportPadding
+    const availableAbove = anchorTopInBoundary - boundaryScrollTop - viewportPadding
+    const shouldOpenAbove = availableBelow < Math.min(estimatedHeight, 280) && availableAbove > availableBelow
+    const top = shouldOpenAbove
+        ? Math.max(boundaryScrollTop + viewportPadding, anchorTopInBoundary - estimatedHeight - 8)
+        : Math.min(visibleBottom - estimatedHeight - viewportPadding, anchorBottomInBoundary + 8)
+    const left = Math.min(
+        Math.max(boundaryScrollLeft + viewportPadding, anchorLeftInBoundary),
+        visibleRight - width - viewportPadding
+    )
+
+    return {
+        top: Math.max(boundaryScrollTop + viewportPadding, top),
+        left,
+        width,
+    }
+}
+
+function isAnchorInsideBoundary(anchorElement, boundaryElement = null) {
+    if (!anchorElement || !boundaryElement?.getBoundingClientRect) return true
+
+    const anchorRect = anchorElement.getBoundingClientRect()
+    const boundaryRect = boundaryElement.getBoundingClientRect()
+
+    return (
+        anchorRect.top >= boundaryRect.top &&
+        anchorRect.bottom <= boundaryRect.bottom &&
+        anchorRect.left >= boundaryRect.left &&
+        anchorRect.right <= boundaryRect.right
+    )
+}
+
 function isZelleEntry(entry = {}) {
     return String(entry?.description || "").toLowerCase().includes("zelle")
 }
@@ -315,6 +384,8 @@ function LedgerEntriesTable({
     onDeleteEntry,
     onDeleteEntries,
     onImportTransactions,
+    onCreateCategory,
+    overlayBoundaryRef,
     isLoading = false,
     isLoadingMore,
     isCategorizingWithLlm = false,
@@ -347,6 +418,23 @@ function LedgerEntriesTable({
         total: 0,
         insertedCount: 0,
     })
+    const [categoryPickerState, setCategoryPickerState] = useState({
+        entryId: "",
+        isEditing: false,
+        search: "",
+        isCreating: false,
+        amount: 0,
+        top: 0,
+        left: 0,
+        width: 360,
+    })
+    const [newCategoryDraft, setNewCategoryDraft] = useState({
+        name: "",
+        type: "",
+        description: "",
+    })
+    const [isCreatingCategory, setIsCreatingCategory] = useState(false)
+    const [expandedCategoryTypes, setExpandedCategoryTypes] = useState({})
     const appliedFilters = useMemo(() => ({
         accountIds: [],
         categoryIds: [],
@@ -369,6 +457,8 @@ function LedgerEntriesTable({
     const scrollContainerRef = useRef(null)
     const selectAllRef = useRef(null)
     const csvFileInputRef = useRef(null)
+    const categoryPickerRef = useRef(null)
+    const categoryPickerAnchorRef = useRef(null)
     const pendingLlmEntryIdSet = useMemo(
         () => new Set(Array.isArray(pendingLlmEntryIds) ? pendingLlmEntryIds : []),
         [pendingLlmEntryIds]
@@ -543,6 +633,162 @@ function LedgerEntriesTable({
             }),
         [uploadedCsvFiles]
     )
+    const closeCategoryPicker = useCallback(() => {
+        categoryPickerAnchorRef.current = null
+        setCategoryPickerState({
+            entryId: "",
+            isEditing: false,
+            search: "",
+            isCreating: false,
+            amount: 0,
+            top: 0,
+            left: 0,
+            width: 360,
+        })
+        setNewCategoryDraft({
+            name: "",
+            type: "",
+            description: "",
+        })
+        setIsCreatingCategory(false)
+    }, [])
+
+    const updateCategoryPickerPosition = useCallback(() => {
+        const anchorElement = categoryPickerAnchorRef.current
+        if (!anchorElement) return
+        const boundaryElement = overlayBoundaryRef?.current || null
+
+        if (!isAnchorInsideBoundary(anchorElement, boundaryElement)) {
+            closeCategoryPicker()
+            return
+        }
+
+        const position = getCategoryPickerPosition(
+            anchorElement,
+            categoryPickerState.isCreating,
+            categoryPickerRef.current,
+            boundaryElement
+        )
+
+        setCategoryPickerState((current) => (
+            current.entryId
+                ? {
+                    ...current,
+                    ...position,
+                }
+                : current
+        ))
+    }, [categoryPickerState.isCreating, closeCategoryPicker, overlayBoundaryRef])
+
+    const openCategoryPicker = useCallback((payload = {}) => {
+        const entryId = String(payload?.entryId || "").trim()
+        if (!entryId || !payload?.anchorElement) return
+
+        const isSameEntryOpen = categoryPickerState.entryId === entryId
+        if (isSameEntryOpen) {
+            closeCategoryPicker()
+            return
+        }
+
+        categoryPickerAnchorRef.current = payload.anchorElement
+        const defaultType = Number(payload?.amount || 0) >= 0 ? "income" : "operating_expense"
+        const initialPosition = getCategoryPickerPosition(
+            payload.anchorElement,
+            false,
+            null,
+            overlayBoundaryRef?.current || null
+        )
+
+        setCategoryPickerState({
+            entryId,
+            isEditing: Boolean(payload?.isEditing),
+            search: "",
+            isCreating: false,
+            amount: Number(payload?.amount || 0),
+            ...initialPosition,
+        })
+        setNewCategoryDraft({
+            name: "",
+            type: defaultType,
+            description: "",
+        })
+    }, [categoryPickerState.entryId, closeCategoryPicker])
+
+    const categoryPickerOptions = useMemo(() => {
+        const normalizedSearch = String(categoryPickerState.search || "").trim().toLowerCase()
+        const baseOptions = [
+            {
+                id: "__uncategorized_income__",
+                name: "Uncategorized income",
+                type: "income",
+                typeLabel: "Income",
+                description: "Keep this transaction as uncategorized income",
+                displayName: "Uncategorized income",
+            },
+            {
+                id: "__uncategorized_expenses__",
+                name: "Uncategorized expenses",
+                type: "operating_expense",
+                typeLabel: "Operating Expense",
+                description: "Keep this transaction as uncategorized expense",
+                displayName: "Uncategorized expenses",
+            },
+            ...categories.map((category) => ({
+                id: category.id,
+                name: category.name,
+                type: category.type || "",
+                displayName: getCategoryDisplayName({
+                    categoryName: category.name,
+                    categoryType: category.type,
+                    amount: categoryPickerState.amount,
+                }),
+                typeLabel: category.type
+                    ? CATEGORY_TYPE_OPTIONS.find((option) => option.value === category.type)?.label || category.type
+                    : "",
+                description: category.description || "",
+            })),
+        ]
+
+        if (!normalizedSearch) return baseOptions
+
+        return baseOptions.filter((option) => {
+            const haystack = [
+                option.name,
+                option.displayName,
+                option.typeLabel,
+                option.description,
+                `refund ${option.name}`,
+            ].join(" ").toLowerCase()
+
+            return haystack.includes(normalizedSearch)
+        })
+    }, [categories, categoryPickerState.amount, categoryPickerState.search])
+    const categoryPickerGroups = useMemo(() => {
+        const groups = []
+        const order = CATEGORY_TYPE_OPTIONS.map((option) => option.value)
+
+        order.forEach((typeValue) => {
+            const items = categoryPickerOptions.filter((option) => option.type === typeValue)
+            if (items.length === 0) return
+            const label = CATEGORY_TYPE_OPTIONS.find((option) => option.value === typeValue)?.label || typeValue
+            groups.push({
+                id: typeValue,
+                label,
+                items,
+            })
+        })
+
+        const uncategorizedItems = categoryPickerOptions.filter((option) => !order.includes(option.type))
+        if (uncategorizedItems.length > 0) {
+            groups.push({
+                id: "other",
+                label: "Other",
+                items: uncategorizedItems,
+            })
+        }
+
+        return groups
+    }, [categoryPickerOptions])
 
     const activeFiltersCount = useMemo(() => {
         const selectedAccounts = Array.isArray(appliedFilters.accountIds) ? appliedFilters.accountIds : []
@@ -578,6 +824,45 @@ function LedgerEntriesTable({
         document.addEventListener("mousedown", onPointerDown)
         return () => document.removeEventListener("mousedown", onPointerDown)
     }, [showFilterModal])
+
+    useEffect(() => {
+        if (!categoryPickerState.entryId) return undefined
+
+        const frameId = window.requestAnimationFrame(() => {
+            updateCategoryPickerPosition()
+        })
+
+        const handlePointerDown = (event) => {
+            if (categoryPickerRef.current?.contains(event.target)) return
+            if (categoryPickerAnchorRef.current?.contains(event.target)) return
+            closeCategoryPicker()
+        }
+
+        const handleEscape = (event) => {
+            if (event.key === "Escape") {
+                closeCategoryPicker()
+            }
+        }
+
+        const handleReposition = () => {
+            updateCategoryPickerPosition()
+        }
+
+        document.addEventListener("mousedown", handlePointerDown)
+        window.addEventListener("keydown", handleEscape)
+        window.addEventListener("resize", handleReposition)
+        overlayBoundaryRef?.current?.addEventListener("scroll", handleReposition)
+        scrollContainerRef.current?.addEventListener("scroll", handleReposition)
+
+        return () => {
+            window.cancelAnimationFrame(frameId)
+            document.removeEventListener("mousedown", handlePointerDown)
+            window.removeEventListener("keydown", handleEscape)
+            window.removeEventListener("resize", handleReposition)
+            overlayBoundaryRef?.current?.removeEventListener("scroll", handleReposition)
+            scrollContainerRef.current?.removeEventListener("scroll", handleReposition)
+        }
+    }, [categoryPickerState.entryId, closeCategoryPicker, overlayBoundaryRef, updateCategoryPickerPosition])
 
     const startEditEntry = (entry) => {
         const shouldStartBatchEdit =
@@ -891,6 +1176,41 @@ function LedgerEntriesTable({
         }
     }, [splittingEntryId, ledgerEntries])
 
+    useEffect(() => {
+        if (!categoryPickerState.entryId) return
+        const exists = ledgerEntries.some((entry) => entry.id === categoryPickerState.entryId)
+        if (!exists) {
+            closeCategoryPicker()
+        }
+    }, [categoryPickerState.entryId, ledgerEntries, closeCategoryPicker])
+
+    useEffect(() => {
+        if (!categoryPickerState.entryId || categoryPickerState.isCreating) return
+
+        setExpandedCategoryTypes((current) => {
+            const next = { ...current }
+            categoryPickerGroups.forEach((group) => {
+                if (next[group.id] === undefined) {
+                    next[group.id] = true
+                }
+            })
+            return next
+        })
+    }, [categoryPickerState.entryId, categoryPickerState.isCreating, categoryPickerGroups])
+
+    useEffect(() => {
+        const hasSearch = String(categoryPickerState.search || "").trim() !== ""
+        if (!hasSearch) return
+
+        setExpandedCategoryTypes((current) => {
+            const next = { ...current }
+            categoryPickerGroups.forEach((group) => {
+                next[group.id] = true
+            })
+            return next
+        })
+    }, [categoryPickerState.search, categoryPickerGroups])
+
     const changeEntryCategory = async (id, categoryName) => {
         try {
             const selectedCategory = categories.find((item) => item.name === categoryName)
@@ -918,6 +1238,65 @@ function LedgerEntriesTable({
             console.error(err)
         } finally {
             setIsApplyingCategoryBulk(false)
+        }
+    }
+
+    const selectCategoryFromPicker = async (categoryName) => {
+        if (!categoryPickerState.entryId) return
+
+        if (categoryPickerState.isEditing) {
+            setEditingDraft((current) => ({
+                ...current,
+                category: categoryName,
+            }))
+            setEditingTouched((current) => ({
+                ...current,
+                category: true,
+            }))
+            closeCategoryPicker()
+            return
+        }
+
+        await changeEntryCategory(categoryPickerState.entryId, categoryName)
+        closeCategoryPicker()
+    }
+
+    const handleCreateCategoryFromPicker = async () => {
+        if (!categoryPickerState.entryId || !onCreateCategory) return
+
+        try {
+            setIsCreatingCategory(true)
+            const createdCategory = await onCreateCategory({
+                name: newCategoryDraft.name,
+                type: newCategoryDraft.type,
+                description: newCategoryDraft.description,
+            })
+
+            if (!createdCategory?.name) {
+                throw new Error("Failed to create category")
+            }
+
+            if (categoryPickerState.isEditing) {
+                setEditingDraft((current) => ({
+                    ...current,
+                    category: createdCategory.name,
+                }))
+                setEditingTouched((current) => ({
+                    ...current,
+                    category: true,
+                }))
+            } else {
+                await onUpdateEntry?.(categoryPickerState.entryId, {
+                    category: createdCategory.name,
+                    categoryId: createdCategory.id,
+                })
+            }
+
+            closeCategoryPicker()
+        } catch (error) {
+            console.error(error)
+        } finally {
+            setIsCreatingCategory(false)
         }
     }
 
@@ -1234,7 +1613,7 @@ function LedgerEntriesTable({
                                 isSavingSplit={isSavingSplit}
                                 onSaveSplit={() => saveSplitEntry(entry)}
                                 onCancelSplit={cancelSplitEntry}
-                                onCategoryChange={changeEntryCategory}
+                                onOpenCategoryPicker={openCategoryPicker}
                                 isSelected={effectiveSelectedEntryIds.includes(entry.id)}
                                 onToggleSelect={(isChecked) =>
                                     toggleSingleEntrySelection(entry.id, isChecked)
@@ -1243,6 +1622,7 @@ function LedgerEntriesTable({
                                 isBatchEditing={isBatchEditing}
                                 editingTouched={editingTouched}
                                 isApplyingCategoryBulk={isApplyingCategoryBulk}
+                                isCategoryPickerOpen={categoryPickerState.entryId === entry.id}
                             />
 
                             {splittingEntryId === entry.id && (
@@ -1867,6 +2247,233 @@ function LedgerEntriesTable({
                     )}
                 </div>
             </div>
+
+            {categoryPickerState.entryId && typeof document !== "undefined" && createPortal(
+                <div
+                    ref={categoryPickerRef}
+                    className="absolute z-[170] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-[0_24px_70px_-24px_rgba(15,23,42,0.45)] ring-1 ring-black/5"
+                    style={{
+                        top: `${categoryPickerState.top}px`,
+                        left: `${categoryPickerState.left}px`,
+                        width: `${categoryPickerState.width}px`,
+                        maxHeight: "28rem",
+                    }}
+                >
+                    <div className="border-b border-gray-100 bg-gradient-to-b from-gray-50/90 to-white px-4 py-3">
+                        {categoryPickerState.isCreating ? (
+                            <div className="space-y-1">
+                                <p className="text-sm font-semibold text-gray-900">Create category</p>
+                            </div>
+                        ) : (
+                            <label className="relative block">
+                                <input
+                                    type="text"
+                                    autoFocus
+                                    value={categoryPickerState.search}
+                                    onChange={(event) =>
+                                        setCategoryPickerState((current) => ({
+                                            ...current,
+                                            search: event.target.value,
+                                        }))
+                                    }
+                                    placeholder="Search categories"
+                                    className="w-full rounded-xl border border-gray-200 bg-white px-10 py-2.5 text-sm outline-none transition focus:border-gray-400"
+                                />
+                                <svg
+                                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                >
+                                    <path d="M15.5 15.5 21 21" />
+                                    <circle cx="10.5" cy="10.5" r="6.5" />
+                                </svg>
+                            </label>
+                        )}
+                    </div>
+
+                    {categoryPickerState.isCreating ? (
+                        <div className="flex max-h-[22rem] flex-col gap-3 overflow-y-auto px-4 py-4">
+                            <label className="flex flex-col gap-1.5">
+                                <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Category name</span>
+                                <input
+                                    type="text"
+                                    autoFocus
+                                    value={newCategoryDraft.name}
+                                    onChange={(event) =>
+                                        setNewCategoryDraft((current) => ({
+                                            ...current,
+                                            name: event.target.value,
+                                        }))
+                                    }
+                                    className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none transition focus:border-gray-400 focus:bg-white"
+                                    placeholder="Fuel"
+                                />
+                            </label>
+                            <label className="flex flex-col gap-1.5">
+                                <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Type</span>
+                                <div className="relative">
+                                    <select
+                                        value={newCategoryDraft.type}
+                                        onChange={(event) =>
+                                            setNewCategoryDraft((current) => ({
+                                                ...current,
+                                                type: event.target.value,
+                                            }))
+                                        }
+                                        className="w-full appearance-none rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 pr-10 text-sm outline-none transition focus:border-gray-400 focus:bg-white"
+                                    >
+                                        <option value="">Select type</option>
+                                        {CATEGORY_TYPE_OPTIONS.map((option) => (
+                                            <option key={option.value} value={option.value}>
+                                                {option.label}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <svg
+                                        className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2.5"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                    >
+                                        <path d="M6 9l6 6 6-6" />
+                                    </svg>
+                                </div>
+                            </label>
+                            <label className="flex flex-col gap-1.5">
+                                <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Description</span>
+                                <textarea
+                                    value={newCategoryDraft.description}
+                                    onChange={(event) =>
+                                        setNewCategoryDraft((current) => ({
+                                            ...current,
+                                            description: event.target.value,
+                                        }))
+                                    }
+                                    className="min-h-[96px] rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none transition focus:border-gray-400 focus:bg-white"
+                                    placeholder="Describe when this category should be used"
+                                />
+                            </label>
+                        </div>
+                    ) : (
+                        <div className="max-h-[20rem] overflow-y-auto px-2 py-2">
+                            {categoryPickerGroups.length === 0 ? (
+                                <div className="px-2 py-8 text-center text-sm text-gray-500">
+                                    No categories found for this search.
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    {categoryPickerGroups.map((group) => {
+                                        const isExpanded = expandedCategoryTypes[group.id] !== false
+
+                                        return (
+                                            <section key={group.id} className="space-y-2">
+                                                <button
+                                                    type="button"
+                                                    className="inline-flex items-center gap-2 px-0 py-1 text-xs font-semibold uppercase tracking-wide text-gray-600 transition hover:text-gray-900"
+                                                    onClick={() =>
+                                                        setExpandedCategoryTypes((current) => ({
+                                                            ...current,
+                                                            [group.id]: !isExpanded,
+                                                        }))
+                                                    }
+                                                >
+                                                    <span>{group.label}</span>
+                                                    <span className="text-[10px] text-gray-400">
+                                                        {group.items.length}
+                                                    </span>
+                                                    <svg
+                                                        className={`h-3.5 w-3.5 transition ${isExpanded ? "rotate-180" : ""}`}
+                                                        viewBox="0 0 24 24"
+                                                        fill="none"
+                                                        stroke="currentColor"
+                                                        strokeWidth="2.5"
+                                                        strokeLinecap="round"
+                                                        strokeLinejoin="round"
+                                                    >
+                                                        <path d="M6 9l6 6 6-6" />
+                                                    </svg>
+                                                </button>
+
+                                                {isExpanded ? (
+                                                    <div className="space-y-0 divide-y divide-gray-100">
+                                                        {group.items.map((option) => (
+                                                            <button
+                                                                key={option.id}
+                                                                type="button"
+                                                                className="flex w-full items-start justify-between gap-3 px-1 py-2.5 text-left transition hover:bg-gray-50"
+                                                                onClick={() => selectCategoryFromPicker(option.name)}
+                                                            >
+                                                                <div className="min-w-0">
+                                                                    <p className="truncate text-sm font-medium text-gray-900">{option.displayName || option.name}</p>
+                                                                    {option.description ? (
+                                                                        <p className="mt-0.5 line-clamp-2 text-xs text-gray-500">{option.description}</p>
+                                                                    ) : null}
+                                                                </div>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                ) : null}
+                                            </section>
+                                        )
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    <div className="border-t border-gray-100 bg-white px-4 py-3">
+                        {categoryPickerState.isCreating ? (
+                            <div className="flex items-center justify-end gap-2">
+                                <button
+                                    type="button"
+                                    className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                    onClick={() =>
+                                        setCategoryPickerState((current) => ({
+                                            ...current,
+                                            isCreating: false,
+                                        }))
+                                    }
+                                >
+                                    Back
+                                </button>
+                                <button
+                                    type="button"
+                                    className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-black disabled:opacity-60"
+                                    disabled={isCreatingCategory}
+                                    onClick={handleCreateCategoryFromPicker}
+                                >
+                                    {isCreatingCategory ? "Saving..." : "Create category"}
+                                </button>
+                            </div>
+                        ) : (
+                            <button
+                                type="button"
+                                className="w-full rounded-xl border border-dashed border-gray-300 px-3 py-2.5 text-sm font-medium text-gray-700 transition hover:border-gray-900 hover:text-gray-900"
+                                onClick={() => {
+                                    setNewCategoryDraft((current) => ({
+                                        ...current,
+                                        name: categoryPickerState.search,
+                                    }))
+                                    setCategoryPickerState((current) => ({
+                                        ...current,
+                                        isCreating: true,
+                                    }))
+                                }}
+                            >
+                                Create new category
+                            </button>
+                        )}
+                    </div>
+                </div>,
+                overlayBoundaryRef?.current || document.body
+            )}
 
             <ConfirmModal
                 isOpen={pendingDeleteIds.length > 0}

@@ -910,6 +910,24 @@ function LedgerPage() {
         }
     }
 
+    const handleCreateCategoryFromTransaction = async (input = {}) => {
+        try {
+            const created = await createCategory({
+                clientId,
+                name: input?.name,
+                type: input?.type,
+                description: input?.description,
+            })
+            const mappedCategory = mapCategory(created)
+            setCategoryList((current) => [mappedCategory, ...current])
+            success("Category created successfully")
+            return mappedCategory
+        } catch (err) {
+            error(err.message || "Failed to create category")
+            throw err
+        }
+    }
+
     const handleSaveAccountEdit = async (accountId, patch) => {
         try {
             setIsSubmitting(true)
@@ -1028,7 +1046,7 @@ function LedgerPage() {
         <section
             ref={pageScrollRef}
             onScroll={handlePageScroll}
-            className="w-full h-full min-h-0 box-border p-4 overflow-y-auto"
+            className="relative w-full h-full min-h-0 box-border p-4 overflow-y-auto"
         >
             <div className="min-h-full flex flex-col gap-4 pb-4">
                 <LedgerHeader
@@ -1075,6 +1093,8 @@ function LedgerPage() {
                                     onDeleteEntry={handleDeleteTransaction}
                                     onDeleteEntries={handleDeleteTransactionsBulk}
                                     onImportTransactions={handleImportTransactions}
+                                    onCreateCategory={handleCreateCategoryFromTransaction}
+                                    overlayBoundaryRef={pageScrollRef}
                                     onCategorizeWithLlm={handleCategorizeWithLlmPreview}
                                     isCategorizingWithLlm={isCategorizingWithLlm}
                                     pendingLlmEntryIds={pendingLlmEntryIds}

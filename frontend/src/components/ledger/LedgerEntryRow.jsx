@@ -1,4 +1,5 @@
 import { getTransactionAmountPresentation } from "../../utils/amountPresentation"
+import { getCategoryDisplayName } from "../../utils/categoryPresentation"
 
 function LedgerEntryRow({
     index,
@@ -30,13 +31,14 @@ function LedgerEntryRow({
     isSavingSplit = false,
     onSaveSplit,
     onCancelSplit,
-    onCategoryChange,
+    onOpenCategoryPicker,
     isSelected = false,
     onToggleSelect,
     isMultiSelectionMode = false,
     isBatchEditing = false,
     editingTouched = {},
     isApplyingCategoryBulk = false,
+    isCategoryPickerOpen = false,
 }) {
     const shouldUseDraftDate = isEditing && (!isBatchEditing || editingTouched?.date)
     const shouldUseDraftAccount = isEditing && (!isBatchEditing || editingTouched?.accountId)
@@ -63,6 +65,13 @@ function LedgerEntryRow({
         : isLlmProcessed
             ? "ai"
             : ""
+    const matchedCategory = categories.find((item) => item.name === currentCategory)
+    const rawDisplayedCategory = currentCategory || (Number(currentAmount || 0) >= 0 ? "Uncategorized income" : "Uncategorized expenses")
+    const displayedCategory = getCategoryDisplayName({
+        categoryName: rawDisplayedCategory,
+        categoryType: matchedCategory?.type || "",
+        amount: Number(currentAmount || 0),
+    })
 
     return (
         <div className={`grid grid-cols-[24px_minmax(110px,0.7fr)_minmax(180px,2fr)_minmax(120px,1fr)_minmax(160px,1.3fr)_16px_78px_92px] items-center gap-4 px-2 py-3 text-sm ${index % 2 === 0 ? 'bg-gray-100' : 'bg-white'}`}>
@@ -132,27 +141,20 @@ function LedgerEntryRow({
                 </h4>
             ) : (
                 <div className="relative w-full">
-                    <select
-                        className="w-full rounded-full border-3 border-gray-100 bg-white p-2 pl-3 appearance-none"
-                        value={currentCategory || ""}
+                    <button
+                        type="button"
+                        className={`w-full rounded-full border-3 bg-white p-2 pl-3 pr-8 text-left ${isCategoryPickerOpen ? "border-gray-300" : "border-gray-100"} ${isApplyingCategoryBulk ? "cursor-not-allowed opacity-60" : ""}`}
                         disabled={isApplyingCategoryBulk}
-                        onChange={(e) => {
-                            const nextCategory = e.target.value
-                            if (isEditing) {
-                                onChangeDraft({ category: nextCategory })
-                                return
-                            }
-                            onCategoryChange?.(id, nextCategory)
-                        }}
+                        onClick={(event) => onOpenCategoryPicker?.({
+                            entryId: id,
+                            anchorElement: event.currentTarget,
+                            isEditing,
+                            currentCategory: displayedCategory,
+                            amount: Number(currentAmount || 0),
+                        })}
                     >
-                        <option value="Uncategorized income">Uncategorized income</option>
-                        <option value="Uncategorized expenses">Uncategorized expenses</option>
-                        {categories.map((c) => (
-                            <option key={c.id} value={c.name}>
-                                {c.name}
-                            </option>
-                        ))}
-                    </select>
+                        <span className="block truncate">{displayedCategory}</span>
+                    </button>
                     <svg
                         className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
                         viewBox="0 0 24 24"
