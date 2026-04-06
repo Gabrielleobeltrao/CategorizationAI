@@ -914,6 +914,119 @@ function buildLlmMemoryEntries(
     .flat()
 }
 
+function buildZelleMemoryEntries(
+  clientId,
+  zelleResults = [],
+  groupByRepresentativeId = new Map(),
+  categoryByNameKey = new Map(),
+  exactMemoryByFingerprint = new Map(),
+  semanticMemoryByFingerprint = new Map()
+) {
+  return zelleResults
+    .map((result) => {
+      const group = groupByRepresentativeId.get(String(result?.id || ""))
+      if (!group || !group.normalizedDescription) return null
+
+      const identity = buildTransactionIdentity(group.members[0] || {})
+      const categoryNameKey = normalizeNameKey(result?.categoryName)
+      const categoryDoc = categoryByNameKey.get(categoryNameKey)
+      const categoryId = normalizeObjectIdString(categoryDoc?._id)
+      const categoryName = String(categoryDoc?.name || "").trim() || null
+      const confidence = Number(result?.confidence || 0)
+      const ambiguous = Boolean(result?.ambiguous)
+      const existingExact = exactMemoryByFingerprint.get(String(group.exactFingerprint))
+      const existingSemantic = identity.semanticFingerprint
+        ? semanticMemoryByFingerprint.get(String(identity.semanticFingerprint))
+        : null
+
+      if (!categoryId || !categoryName) return null
+      if (confidence < LLM_MEMORY_CONFIDENCE_THRESHOLD || ambiguous) return null
+      if (group.members.length < LLM_MEMORY_MIN_OCCURRENCES) return null
+      if (existingExact?.source === "human") return null
+      if (
+        existingExact?.source === "llm" &&
+        normalizeObjectIdString(existingExact?.categoryId) &&
+        String(existingExact.categoryId) !== categoryId
+      ) {
+        return null
+      }
+
+      const exactSupportCount =
+        existingExact?.source === "llm" && String(existingExact?.categoryId || "") === categoryId
+          ? Math.max(Number(existingExact?.supportCount || 1), group.members.length)
+          : group.members.length
+
+      const exactEntry = buildMemoryEntry(
+        clientId,
+        identity,
+        categoryId,
+        categoryName,
+        "llm",
+        confidence,
+        exactSupportCount,
+        "exact",
+        {
+          reviewStatus: resolveMemoryReviewStatus(
+            "exact",
+            "llm",
+            exactSupportCount,
+            Number(existingExact?.conflictCount || 0)
+          ),
+          conflictCount: Number(existingExact?.conflictCount || 0),
+          categoryIdsSeen: normalizeCategoryIdsSeen(existingExact, categoryId),
+          lastConflictAt: existingExact?.lastConflictAt ?? null,
+        }
+      )
+
+      const entries = [exactEntry]
+
+      if (
+        identity.semanticFingerprint &&
+        confidence >= SEMANTIC_MEMORY_PROMOTION_CONFIDENCE_THRESHOLD &&
+        group.members.length >= SEMANTIC_MEMORY_MIN_OCCURRENCES &&
+        existingSemantic?.source !== "human" &&
+        !(
+          existingSemantic?.source === "llm" &&
+          normalizeObjectIdString(existingSemantic?.categoryId) &&
+          String(existingSemantic.categoryId) !== categoryId
+        )
+      ) {
+        const semanticSupportCount =
+          existingSemantic?.source === "llm" && String(existingSemantic?.categoryId || "") === categoryId
+            ? Math.max(Number(existingSemantic?.supportCount || 1), group.members.length)
+            : group.members.length
+
+        entries.push(
+          buildMemoryEntry(
+            clientId,
+            identity,
+            categoryId,
+            categoryName,
+            "llm",
+            confidence,
+            semanticSupportCount,
+            "semantic",
+            {
+              reviewStatus: resolveMemoryReviewStatus(
+                "semantic",
+                "llm",
+                semanticSupportCount,
+                Number(existingSemantic?.conflictCount || 0)
+              ),
+              conflictCount: Number(existingSemantic?.conflictCount || 0),
+              categoryIdsSeen: normalizeCategoryIdsSeen(existingSemantic, categoryId),
+              lastConflictAt: existingSemantic?.lastConflictAt ?? null,
+            }
+          )
+        )
+      }
+
+      return entries
+    })
+    .filter(Boolean)
+    .flat()
+}
+
 export async function createTransactionsBatchService(transactions) {
   if (!Array.isArray(transactions)) {
     throw new Error("transactions must be an array")
@@ -1584,7 +1697,12 @@ export async function categorizeZelleTransactionsService(input) {
     (Array.isArray(categories) ? categories : []).map((category) => [String(category._id), category.name])
   )
   const transactionGroups = groupTransactionsForLlm(eligibleTransactions)
-  const { memoryUpdates, remainingGroups } = await splitGroupsByMemory(
+  const {
+    exactMemoryByFingerprint,
+    semanticMemoryByFingerprint,
+    memoryUpdates,
+    remainingGroups,
+  } = await splitGroupsByMemory(
     clientId,
     transactionGroups,
     categoryById
@@ -1649,6 +1767,9 @@ export async function categorizeZelleTransactionsService(input) {
   const resultByTxId = new Map(
     llmResults.map((item) => [String(item?.id || ""), String(item?.categoryName || "").trim()])
   )
+  const zelleResultByTxId = new Map(
+    llmResults.map((item) => [String(item?.id || ""), item])
+  )
   const classificationRows = remainingGroups
     .flatMap((group) => {
       const categoryName = resultByTxId.get(String(group.representativeId)) || ""
@@ -1670,17 +1791,34 @@ export async function categorizeZelleTransactionsService(input) {
     .map((row) => {
       const categoryDoc = categoryByNameKey.get(row.categoryNameKey)
       if (!categoryDoc?._id) return null
+      const resultMeta = zelleResultByTxId.get(String(row.id))
       return buildCategorizationUpdate(
         row.id,
         String(categoryDoc._id),
         categoryDoc.name,
-        now
+        now,
+        {
+          llmConfidence: Number(resultMeta?.confidence || 0),
+          llmAmbiguous: Boolean(resultMeta?.ambiguous),
+        }
       )
     })
     .filter(Boolean),
   ]
 
+  const zelleMemoryEntries = buildZelleMemoryEntries(
+    clientId,
+    llmResults,
+    new Map(remainingGroups.map((group) => [group.representativeId, group])),
+    categoryByNameKey,
+    exactMemoryByFingerprint,
+    semanticMemoryByFingerprint
+  )
+
   const result = await applyLlmCategorizationUpdates(updates)
+  if (zelleMemoryEntries.length > 0) {
+    await bulkUpsertTransactionMemories(zelleMemoryEntries)
+  }
   const categorizedNames = updates.map((item) => String(item.category || "").trim()).filter(Boolean)
   const ownerIncomeCount = categorizedNames.filter((name) =>
     String(name || "").toLowerCase().startsWith("no service income -")

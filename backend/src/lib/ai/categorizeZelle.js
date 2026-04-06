@@ -43,7 +43,9 @@ const ZelleCategorySchema = z.object({
 
 const ZelleResultSchema = z.object({
   id: z.union([z.string(), z.number()]),
-  categoryName: z.string().trim().min(1),
+  categoryName: z.string(),
+  confidence: z.number().min(0).max(1),
+  ambiguous: z.boolean(),
 })
 
 const ZelleOutputSchema = z.object({
@@ -202,15 +204,18 @@ Return ONLY valid JSON in this format:
     { "name": "Category Name", "type": "income|expense" }
   ],
   "results": [
-    { "id": "transaction-id", "categoryName": "Category Name" }
+    { "id": "transaction-id", "categoryName": "Category Name or empty", "confidence": 0.0, "ambiguous": false }
   ]
 }
 
 Rules:
 - Every transaction id in this batch must appear once in results
-- categoryName in results must exist in categories
+- if categoryName is not empty, it must exist in categories
 - categories must be unique by name
 - Batch direction is "${direction}" and must be respected
+- confidence must be a number from 0 to 1
+- ambiguous must be true when the description could reasonably fit more than one Zelle category
+- if confidence is low, prefer categoryName = ""
               `.trim(),
             },
           ],
@@ -241,9 +246,11 @@ Rules:
                       additionalProperties: false,
                       properties: {
                         id: { type: ["string", "number"] },
-                        categoryName: { type: "string", minLength: 1 },
+                        categoryName: { type: "string" },
+                        confidence: { type: "number", minimum: 0, maximum: 1 },
+                        ambiguous: { type: "boolean" },
                       },
-                      required: ["id", "categoryName"],
+                      required: ["id", "categoryName", "confidence", "ambiguous"],
                     },
                   },
                 },
@@ -307,6 +314,8 @@ function mergeBatchOutput({
     mergedResultById.set(idKey, {
       id: txById.get(idKey).id,
       categoryName: normalizedCategoryName,
+      confidence: Number(item?.confidence || 0),
+      ambiguous: Boolean(item?.ambiguous),
     })
   })
 }
@@ -371,6 +380,8 @@ async function categorizeZelle(transactions, business, options = {}) {
       mergedResultById.get(idKey) || {
         id: transaction.id,
         categoryName: transaction.amount >= 0 ? "Income Zelle" : "Sub - Unknown",
+        confidence: 0,
+        ambiguous: true,
       }
     )
   })
