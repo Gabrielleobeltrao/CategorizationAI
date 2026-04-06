@@ -40,11 +40,10 @@ function buildMonthRange(monthInput) {
   const start = new Date(Date.UTC(parsed.year, parsed.month - 1, 1))
   const monthEnd = new Date(Date.UTC(parsed.year, parsed.month, 0))
   const now = new Date()
-  const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
   const isCurrentMonth =
-    parsed.year === todayUtc.getUTCFullYear() && parsed.month === todayUtc.getUTCMonth() + 1
+    parsed.year === now.getUTCFullYear() && parsed.month === now.getUTCMonth() + 1
 
-  const end = isCurrentMonth && todayUtc < monthEnd ? todayUtc : monthEnd
+  const end = isCurrentMonth ? now : monthEnd
   const label = start.toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" })
 
   return {
@@ -68,10 +67,8 @@ function buildPreviousRange(currentRange) {
 
   let previousEnd = previousMonthEnd
   if (currentRange.isCurrentMonth) {
-    const elapsedDays =
-      Math.floor((currentRange.end.getTime() - currentRange.start.getTime()) / 86400000) + 1
-    const alignedEnd = new Date(previousStart)
-    alignedEnd.setUTCDate(alignedEnd.getUTCDate() + elapsedDays - 1)
+    const elapsedMs = currentRange.end.getTime() - currentRange.start.getTime()
+    const alignedEnd = new Date(previousStart.getTime() + elapsedMs)
     previousEnd = alignedEnd > previousMonthEnd ? previousMonthEnd : alignedEnd
   }
 
@@ -135,17 +132,45 @@ function buildWeeklyBuckets(startDate, endDate) {
 
     buckets.push({
       id: `w_${index}`,
-      label: `W${index}`,
+      label: `Week ${index}`,
       start: bucketStart,
       end: bucketEnd,
       imported: 0,
       categorized: 0,
+      aiProcessed: 0,
+      aiCategorized: 0,
       pending: 0,
     })
 
     cursor = new Date(bucketEnd)
     cursor.setUTCDate(cursor.getUTCDate() + 1)
     index += 1
+  }
+
+  return buckets
+}
+
+function buildDailyBuckets(startDate, endDate) {
+  const buckets = []
+  let cursor = new Date(startDate)
+
+  while (cursor <= endDate) {
+    const bucketDate = new Date(cursor)
+    buckets.push({
+      id: toDateKey(bucketDate),
+      label: bucketDate.toLocaleString("en-US", {
+        weekday: "short",
+        timeZone: "UTC",
+      }),
+      date: bucketDate,
+      imported: 0,
+      categorized: 0,
+      aiProcessed: 0,
+      aiCategorized: 0,
+      pending: 0,
+    })
+
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
   }
 
   return buckets
@@ -163,6 +188,20 @@ function toUtcDayStart(dateValue) {
   )
 }
 
+function getUtcWeekRange(dateValue) {
+  const dayStart = toUtcDayStart(dateValue)
+  if (!dayStart) return { start: null, end: null }
+
+  const dayOfWeek = dayStart.getUTCDay()
+  const start = new Date(dayStart)
+  start.setUTCDate(start.getUTCDate() - dayOfWeek)
+
+  const end = new Date(start)
+  end.setUTCDate(end.getUTCDate() + 6)
+
+  return { start, end }
+}
+
 function getWeeklyBucketIndex(dateValue, monthStart, bucketsLength) {
   const safeDate = toUtcDayStart(dateValue)
   if (!safeDate) return -1
@@ -172,6 +211,15 @@ function getWeeklyBucketIndex(dateValue, monthStart, bucketsLength) {
 
   if (index < 0 || index >= bucketsLength) return -1
   return index
+}
+
+function getDailyBucketIndex(dateValue, dayStart, bucketsLength) {
+  const safeDate = toUtcDayStart(dateValue)
+  if (!safeDate) return -1
+
+  const diffDays = Math.floor((safeDate.getTime() - dayStart.getTime()) / 86400000)
+  if (diffDays < 0 || diffDays >= bucketsLength) return -1
+  return diffDays
 }
 
 function formatRelativeTime(dateValue) {
@@ -223,6 +271,33 @@ function normalizeQueueStatus(jobs = []) {
   return statuses[0] || "idle"
 }
 
+function buildCategorizedMonthFilter(clientIdList, start, end) {
+  return {
+    clientId: { $in: clientIdList },
+    $or: [
+      {
+        categorizedAt: { $gte: start, $lte: end },
+      },
+      {
+        $and: [
+          {
+            $or: [
+              { categorizedAt: null },
+              { categorizedAt: { $exists: false } },
+            ],
+          },
+          {
+            llmStatus: "suggested",
+          },
+          {
+            llmProcessedAt: { $gte: start, $lte: end },
+          },
+        ],
+      },
+    ],
+  }
+}
+
 export async function getOfficeDashboardSnapshot(officeId, options = {}) {
   const db = getDB()
   const range = buildMonthRange(options.month)
@@ -246,11 +321,20 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
       },
       kpis: [
         { id: "imported_month", label: "Transactions Imported (Month)", value: "0", trend: "0.0% vs previous month" },
-        { id: "categorized_month", label: "Transactions Categorized (Month)", value: "0", trend: "0.0% coverage" },
-        { id: "ai_categorized_month", label: "Auto-Categorized by AI (Month)", value: "0", trend: "0.0% of categorized" },
+        { id: "categorized_month", label: "Transactions Categorized (Month)", value: "0", trend: "0.0% of imported" },
+        { id: "ai_processed_month", label: "AI Processed (Month)", value: "0", trend: "0.0% of imported" },
+        { id: "ai_categorized_month", label: "Auto-Categorized by AI (Month)", value: "0", trend: "0.0% of AI processed" },
         { id: "pending_now", label: "Pending Categorization (Now)", value: "0", trend: "0.0% of office transactions" },
       ],
+      weekKpis: [
+        { id: "imported_week", label: "Transactions Imported (Week)", value: "0", trend: "0.0% vs previous week" },
+        { id: "categorized_week", label: "Transactions Categorized (Week)", value: "0", trend: "0.0% of imported" },
+        { id: "ai_processed_week", label: "AI Processed (Week)", value: "0", trend: "0.0% of imported" },
+        { id: "ai_categorized_week", label: "Auto-Categorized by AI (Week)", value: "0", trend: "0.0% of AI processed" },
+        { id: "pending_week", label: "Pending Categorization (Week)", value: "0", trend: "0.0% of imported" },
+      ],
       weeklyTrend: [],
+      dailyTrend: [],
       jobsQueue: [],
       recentActivities: [],
     }
@@ -264,9 +348,11 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
     importedPreviousCount,
     allOfficeTransactionsCount,
     pendingNowCount,
+    categorizedCurrentCount,
+    aiProcessedCurrentCount,
     aiCategorizedCurrentCount,
-    transactionsInPeriod,
     importedTrendTransactions,
+    aiProcessedTrendTransactions,
     categorizedTrendTransactions,
     jobsRaw,
     latestTransaction,
@@ -301,33 +387,18 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
         { category: "uncategorized expenses" },
       ],
     }),
+    transactionsCollection.countDocuments(
+      buildCategorizedMonthFilter(clientIdList, range.start, range.end)
+    ),
+    transactionsCollection.countDocuments({
+      clientId: { $in: clientIdList },
+      llmProcessedAt: { $gte: range.start, $lte: range.end },
+    }),
     transactionsCollection.countDocuments({
       clientId: { $in: clientIdList },
       llmStatus: "suggested",
       llmProcessedAt: { $gte: range.start, $lte: range.end },
     }),
-    transactionsCollection
-      .find(
-        {
-          clientId: { $in: clientIdList },
-          date: { $gte: range.startKey, $lte: range.endKey },
-        },
-        {
-          projection: {
-            _id: 1,
-            clientId: 1,
-            date: 1,
-            categoryId: 1,
-            category: 1,
-            isSplit: 1,
-            splits: 1,
-            llmProcessed: 1,
-            createdAt: 1,
-            description: 1,
-          },
-        }
-      )
-      .toArray(),
     transactionsCollection
       .find(
         {
@@ -350,12 +421,24 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
       .find(
         {
           clientId: { $in: clientIdList },
-          llmStatus: "suggested",
           llmProcessedAt: { $gte: range.start, $lte: range.monthEnd },
         },
         {
           projection: {
             _id: 1,
+            llmProcessedAt: 1,
+            llmStatus: 1,
+          },
+        }
+      )
+      .toArray(),
+    transactionsCollection
+      .find(
+        buildCategorizedMonthFilter(clientIdList, range.start, range.monthEnd),
+        {
+          projection: {
+            _id: 1,
+            categorizedAt: 1,
             llmProcessedAt: 1,
           },
         }
@@ -440,18 +523,17 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
       .toArray(),
   ])
 
-  const categorizedInPeriod = transactionsInPeriod.filter((transaction) =>
-    isTransactionCategorized(transaction)
-  )
-  const pendingInPeriodCount = transactionsInPeriod.length - categorizedInPeriod.length
-
-  const coveragePct =
-    transactionsInPeriod.length > 0
-      ? (categorizedInPeriod.length / transactionsInPeriod.length) * 100
+  const categorizedCoveragePct =
+    importedCurrentCount > 0
+      ? (Number(categorizedCurrentCount || 0) / Number(importedCurrentCount || 0)) * 100
       : 0
   const aiSharePct =
-    categorizedInPeriod.length > 0
-      ? (Number(aiCategorizedCurrentCount || 0) / categorizedInPeriod.length) * 100
+    aiProcessedCurrentCount > 0
+      ? (Number(aiCategorizedCurrentCount || 0) / Number(aiProcessedCurrentCount || 0)) * 100
+      : 0
+  const aiProcessedPct =
+    importedCurrentCount > 0
+      ? (Number(aiProcessedCurrentCount || 0) / Number(importedCurrentCount || 0)) * 100
       : 0
   const pendingNowPct =
     allOfficeTransactionsCount > 0
@@ -477,13 +559,145 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
     bucket.pending += 1
   }
 
-  for (const transaction of categorizedTrendTransactions) {
+  for (const transaction of aiProcessedTrendTransactions) {
     const index = getWeeklyBucketIndex(transaction.llmProcessedAt, range.start, weeklyBuckets.length)
+    if (index === -1) continue
+
+    const bucket = weeklyBuckets[index]
+    bucket.aiProcessed += 1
+
+    if (String(transaction.llmStatus || "").toLowerCase() === "suggested") {
+      bucket.aiCategorized += 1
+    }
+  }
+
+  for (const transaction of categorizedTrendTransactions) {
+    const categorizedReferenceDate = transaction.categorizedAt || transaction.llmProcessedAt
+    const index = getWeeklyBucketIndex(categorizedReferenceDate, range.start, weeklyBuckets.length)
     if (index === -1) continue
 
     const bucket = weeklyBuckets[index]
     bucket.categorized += 1
   }
+
+  const currentWeekIndex = Math.max(0, getWeeklyBucketIndex(range.end, range.start, weeklyBuckets.length))
+  const fallbackWeekBucket = weeklyBuckets[currentWeekIndex] || weeklyBuckets[weeklyBuckets.length - 1] || {
+    label: "Week",
+    imported: 0,
+    categorized: 0,
+    aiProcessed: 0,
+    aiCategorized: 0,
+    pending: 0,
+  }
+  const currentCalendarWeekRange = getUtcWeekRange(range.end)
+  const currentWeekRangeStart = currentCalendarWeekRange.start || fallbackWeekBucket.start || range.start
+  const currentWeekRangeEnd = currentCalendarWeekRange.end || fallbackWeekBucket.end || range.end
+
+  const currentWeekBucket = {
+    label: "Week",
+    start: currentWeekRangeStart,
+    end: currentWeekRangeEnd,
+    imported: 0,
+    categorized: 0,
+    aiProcessed: 0,
+    aiCategorized: 0,
+    pending: 0,
+  }
+  const dailyBuckets = buildDailyBuckets(currentWeekRangeStart, currentWeekRangeEnd)
+
+  for (const transaction of importedTrendTransactions) {
+    const transactionDay = toUtcDayStart(transaction.createdAt)
+    if (
+      transactionDay &&
+      transactionDay >= currentWeekRangeStart &&
+      transactionDay <= currentWeekRangeEnd
+    ) {
+      currentWeekBucket.imported += 1
+
+      if (!isTransactionCategorized(transaction)) {
+        currentWeekBucket.pending += 1
+      }
+    }
+
+    const index = getDailyBucketIndex(transaction.createdAt, currentWeekRangeStart, dailyBuckets.length)
+    if (index !== -1) {
+      const bucket = dailyBuckets[index]
+      bucket.imported += 1
+
+      if (!isTransactionCategorized(transaction)) {
+        bucket.pending += 1
+      }
+    }
+  }
+
+  for (const transaction of aiProcessedTrendTransactions) {
+    const processedDay = toUtcDayStart(transaction.llmProcessedAt)
+    const isSuggested = String(transaction.llmStatus || "").toLowerCase() === "suggested"
+
+    if (
+      processedDay &&
+      processedDay >= currentWeekRangeStart &&
+      processedDay <= currentWeekRangeEnd
+    ) {
+      currentWeekBucket.aiProcessed += 1
+
+      if (isSuggested) {
+        currentWeekBucket.aiCategorized += 1
+      }
+    }
+
+    const index = getDailyBucketIndex(transaction.llmProcessedAt, currentWeekRangeStart, dailyBuckets.length)
+    if (index !== -1) {
+      const bucket = dailyBuckets[index]
+      bucket.aiProcessed += 1
+
+      if (isSuggested) {
+        bucket.aiCategorized += 1
+      }
+    }
+  }
+
+  for (const transaction of categorizedTrendTransactions) {
+    const categorizedReferenceDate = transaction.categorizedAt || transaction.llmProcessedAt
+    const categorizedDay = toUtcDayStart(categorizedReferenceDate)
+    if (
+      categorizedDay &&
+      categorizedDay >= currentWeekRangeStart &&
+      categorizedDay <= currentWeekRangeEnd
+    ) {
+      currentWeekBucket.categorized += 1
+    }
+
+    const index = getDailyBucketIndex(categorizedReferenceDate, currentWeekRangeStart, dailyBuckets.length)
+    if (index !== -1) {
+      const bucket = dailyBuckets[index]
+      bucket.categorized += 1
+    }
+  }
+  const previousWeekBucket = weeklyBuckets[currentWeekIndex - 1] || {
+    imported: 0,
+    categorized: 0,
+    aiProcessed: 0,
+    aiCategorized: 0,
+    pending: 0,
+  }
+
+  const categorizedWeekPct =
+    currentWeekBucket.imported > 0
+      ? (Number(currentWeekBucket.categorized || 0) / Number(currentWeekBucket.imported || 0)) * 100
+      : 0
+  const aiProcessedWeekPct =
+    currentWeekBucket.imported > 0
+      ? (Number(currentWeekBucket.aiProcessed || 0) / Number(currentWeekBucket.imported || 0)) * 100
+      : 0
+  const aiCategorizedWeekPct =
+    currentWeekBucket.aiProcessed > 0
+      ? (Number(currentWeekBucket.aiCategorized || 0) / Number(currentWeekBucket.aiProcessed || 0)) * 100
+      : 0
+  const pendingWeekPct =
+    currentWeekBucket.imported > 0
+      ? (Number(currentWeekBucket.pending || 0) / Number(currentWeekBucket.imported || 0)) * 100
+      : 0
 
   const jobsQueueRaw = jobsRaw.filter((job) => {
     const status = String(job?.status || "").toLowerCase()
@@ -592,14 +806,20 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
       {
         id: "categorized_month",
         label: "Transactions Categorized (Month)",
-        value: Number(categorizedInPeriod.length || 0).toLocaleString("en-US"),
-        trend: `${coveragePct.toFixed(1)}% coverage`,
+        value: Number(categorizedCurrentCount || 0).toLocaleString("en-US"),
+        trend: `${categorizedCoveragePct.toFixed(1)}% of imported`,
+      },
+      {
+        id: "ai_processed_month",
+        label: "AI Processed (Month)",
+        value: Number(aiProcessedCurrentCount || 0).toLocaleString("en-US"),
+        trend: `${aiProcessedPct.toFixed(1)}% of imported`,
       },
       {
         id: "ai_categorized_month",
         label: "Auto-Categorized by AI (Month)",
         value: Number(aiCategorizedCurrentCount || 0).toLocaleString("en-US"),
-        trend: `${aiSharePct.toFixed(1)}% of categorized`,
+        trend: `${aiSharePct.toFixed(1)}% of AI processed`,
       },
       {
         id: "pending_now",
@@ -608,10 +828,52 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
         trend: `${pendingNowPct.toFixed(1)}% of office transactions`,
       },
     ],
+    weekKpis: [
+      {
+        id: "imported_week",
+        label: "Transactions Imported (Week)",
+        value: Number(currentWeekBucket.imported || 0).toLocaleString("en-US"),
+        trend: `${formatSignedPercent(currentWeekBucket.imported, previousWeekBucket.imported)} vs previous week`,
+      },
+      {
+        id: "categorized_week",
+        label: "Transactions Categorized (Week)",
+        value: Number(currentWeekBucket.categorized || 0).toLocaleString("en-US"),
+        trend: `${categorizedWeekPct.toFixed(1)}% of imported`,
+      },
+      {
+        id: "ai_processed_week",
+        label: "AI Processed (Week)",
+        value: Number(currentWeekBucket.aiProcessed || 0).toLocaleString("en-US"),
+        trend: `${aiProcessedWeekPct.toFixed(1)}% of imported`,
+      },
+      {
+        id: "ai_categorized_week",
+        label: "Auto-Categorized by AI (Week)",
+        value: Number(currentWeekBucket.aiCategorized || 0).toLocaleString("en-US"),
+        trend: `${aiCategorizedWeekPct.toFixed(1)}% of AI processed`,
+      },
+      {
+        id: "pending_week",
+        label: "Pending Categorization (Week)",
+        value: Number(currentWeekBucket.pending || 0).toLocaleString("en-US"),
+        trend: `${pendingWeekPct.toFixed(1)}% of imported`,
+      },
+    ],
     weeklyTrend: weeklyBuckets.map((bucket) => ({
       week: bucket.label,
       imported: bucket.imported,
       categorized: bucket.categorized,
+      aiProcessed: bucket.aiProcessed,
+      aiCategorized: bucket.aiCategorized,
+      pending: bucket.pending,
+    })),
+    dailyTrend: dailyBuckets.map((bucket) => ({
+      day: bucket.label,
+      imported: bucket.imported,
+      categorized: bucket.categorized,
+      aiProcessed: bucket.aiProcessed,
+      aiCategorized: bucket.aiCategorized,
       pending: bucket.pending,
     })),
     jobsQueue,
@@ -619,7 +881,8 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
     meta: {
       month: `${range.start.getUTCFullYear()}-${pad2(range.start.getUTCMonth() + 1)}`,
       weeksCount: weeklyBuckets.length,
-      pendingInPeriod: pendingInPeriodCount,
+      currentWeekLabel: currentWeekBucket.label,
+      pendingInPeriod: pendingNowCount,
     },
   }
 }
