@@ -459,8 +459,7 @@ function LedgerPage() {
         }
 
         summarizeTransactionsByClientId(clientId, {
-            search: transactionsSearchTerm,
-            ...transactionsFilters,
+            accountIds: transactionsFilters.accountIds,
             silentLoading: true,
         })
             .then((payload) => {
@@ -481,7 +480,7 @@ function LedgerPage() {
         return () => {
             active = false
         }
-    }, [clientId, transactionsSearchTerm, transactionsFilters])
+    }, [clientId, transactionsFilters.accountIds])
 
     const loadMoreTransactions = async () => {
         if (!clientId || !transactionsHasMore || isLoadingTransactions) return
