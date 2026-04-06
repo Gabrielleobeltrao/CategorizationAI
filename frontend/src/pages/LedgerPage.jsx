@@ -43,6 +43,7 @@ const DEFAULT_TRANSACTIONS_FILTERS = {
     splitMode: "all",
     amountSign: "all",
     llmProcessed: "all",
+    iconType: "all",
     years: [],
     months: [],
     fromDate: "",
@@ -65,6 +66,7 @@ function normalizeTransactionsFilters(raw = {}) {
         splitMode: String(raw?.splitMode || "all"),
         amountSign: String(raw?.amountSign || "all"),
         llmProcessed: String(raw?.llmProcessed || "all"),
+        iconType: String(raw?.iconType || "all"),
         years: Array.isArray(raw?.years) ? raw.years : [],
         months: Array.isArray(raw?.months) ? raw.months : [],
         fromDate: String(raw?.fromDate || ""),
@@ -129,6 +131,7 @@ function mapTransaction(item = {}) {
         llmProcessed: Boolean(item?.llmProcessed),
         llmStatus: String(item?.llmStatus || "not_processed").trim().toLowerCase(),
         llmProcessedAt: item?.llmProcessedAt || null,
+        categorizedSource: String(item?.categorizedSource || "").trim().toLowerCase(),
         llmCategorySuggestionId: item?.llmCategorySuggestionId || null,
         llmCategorySuggestionName: item?.llmCategorySuggestionName || null,
         splits: Array.isArray(item?.splits)

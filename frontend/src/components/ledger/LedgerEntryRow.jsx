@@ -14,6 +14,7 @@ function LedgerEntryRow({
     llmProcessed = false,
     llmStatus = "not_processed",
     llmProcessedAt = null,
+    categorizedSource = "",
     isLlmProcessing = false,
     isSplit = false,
     splitCount = 0,
@@ -56,6 +57,12 @@ function LedgerEntryRow({
         Boolean(llmProcessed) ||
         Boolean(llmProcessedAt) ||
         ["suggested", "empty", "error"].includes(String(llmStatus || "").toLowerCase())
+    const normalizedCategorizedSource = String(categorizedSource || "").trim().toLowerCase()
+    const iconMode = normalizedCategorizedSource === "memory"
+        ? "memory"
+        : isLlmProcessed
+            ? "ai"
+            : ""
 
     return (
         <div className={`grid grid-cols-[24px_minmax(110px,0.7fr)_minmax(180px,2fr)_minmax(120px,1fr)_minmax(160px,1.3fr)_16px_78px_92px] items-center gap-4 px-2 py-3 text-sm ${index % 2 === 0 ? 'bg-gray-100' : 'bg-white'}`}>
@@ -138,7 +145,6 @@ function LedgerEntryRow({
                             onCategoryChange?.(id, nextCategory)
                         }}
                     >
-                        <option value="">Uncategorized</option>
                         <option value="Uncategorized income">Uncategorized income</option>
                         <option value="Uncategorized expenses">Uncategorized expenses</option>
                         {categories.map((c) => (
@@ -171,18 +177,31 @@ function LedgerEntryRow({
                             <path d="M21 12a9 9 0 1 1-9-9" />
                         </svg>
                     </span>
-                ) : isLlmProcessed && (
+                ) : iconMode === "memory" ? (
                     <span
-                        className="inline-flex items-center justify-center rounded-full bg-sky-100 p-1 text-sky-700"
-                        title="Processed by LLM"
-                        aria-label="Processed by LLM"
+                        className="inline-flex items-center justify-center rounded-full bg-violet-100 p-1 text-violet-700"
+                        title="Categorized by memory"
+                        aria-label="Categorized by memory"
                     >
                         <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <circle cx="12" cy="12" r="9" />
-                            <path d="m9 12 2 2 4-4" />
+                            <path d="M7 8a3 3 0 0 1 3-3h7v14h-7a3 3 0 0 0-3 3z" />
+                            <path d="M17 5a3 3 0 0 1 3 3v14a3 3 0 0 0-3-3" />
+                            <path d="M10 9h4" />
+                            <path d="M10 13h4" />
                         </svg>
                     </span>
-                )}
+                ) : iconMode === "ai" ? (
+                    <span
+                        className="inline-flex items-center justify-center rounded-full bg-sky-100 p-1 text-sky-700"
+                        title="Categorized by AI"
+                        aria-label="Categorized by AI"
+                    >
+                        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M12 3l1.9 4.3L18 9.2l-4.1 1.9L12 15.5l-1.9-4.4L6 9.2l4.1-1.9z" />
+                            <path d="M19 16l.8 1.7L21.5 18l-1.7.8L19 20.5l-.8-1.7-1.7-.8 1.7-.3z" />
+                        </svg>
+                    </span>
+                ) : null}
             </div>
             {isEditing && !isBatchEditing ? (
                 <input

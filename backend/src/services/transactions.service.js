@@ -746,6 +746,7 @@ async function splitGroupsByMemory(clientId, transactionGroups = [], categoryByI
             exactCategoryName,
             now,
             {
+              categorizedSource: "memory",
               llmConfidence: exactMemory?.confidence ?? null,
               llmAmbiguous: false,
             }
@@ -771,6 +772,7 @@ async function splitGroupsByMemory(clientId, transactionGroups = [], categoryByI
             semanticCategoryName,
             now,
             {
+              categorizedSource: "memory",
               llmConfidence: semanticMemory?.confidence ?? null,
               llmAmbiguous: false,
             }
@@ -1202,6 +1204,7 @@ export async function listTransactionsPaginatedService(query) {
   const minAmountRaw = String(query?.minAmount ?? "").trim()
   const maxAmountRaw = String(query?.maxAmount ?? "").trim()
   const llmProcessed = String(query?.llmProcessed || "all").trim().toLowerCase()
+  const iconType = String(query?.iconType || "all").trim().toLowerCase()
   const minAmount = minAmountRaw === "" ? null : Number(minAmountRaw)
   const maxAmount = maxAmountRaw === "" ? null : Number(maxAmountRaw)
 
@@ -1216,6 +1219,9 @@ export async function listTransactionsPaginatedService(query) {
   if (maxAmountRaw !== "" && Number.isNaN(maxAmount)) throw new Error("maxAmount must be a number")
   if (!["all", "processed", "not_processed"].includes(llmProcessed)) {
     throw new Error("llmProcessed must be one of: all, processed, not_processed")
+  }
+  if (!["all", "ai", "memory", "none"].includes(iconType)) {
+    throw new Error("iconType must be one of: all, ai, memory, none")
   }
 
   const result = await listTransactionsPaginated({
@@ -1236,6 +1242,7 @@ export async function listTransactionsPaginatedService(query) {
     minAmount,
     maxAmount,
     llmProcessed,
+    iconType,
   })
 
   const items = Array.isArray(result?.items) ? result.items : []
@@ -1308,6 +1315,7 @@ export async function summarizeTransactionsService(query) {
   const minAmountRaw = String(query?.minAmount ?? "").trim()
   const maxAmountRaw = String(query?.maxAmount ?? "").trim()
   const llmProcessed = String(query?.llmProcessed || "all").trim().toLowerCase()
+  const iconType = String(query?.iconType || "all").trim().toLowerCase()
   const minAmount = minAmountRaw === "" ? null : Number(minAmountRaw)
   const maxAmount = maxAmountRaw === "" ? null : Number(maxAmountRaw)
 
@@ -1322,6 +1330,9 @@ export async function summarizeTransactionsService(query) {
   if (maxAmountRaw !== "" && Number.isNaN(maxAmount)) throw new Error("maxAmount must be a number")
   if (!["all", "processed", "not_processed"].includes(llmProcessed)) {
     throw new Error("llmProcessed must be one of: all, processed, not_processed")
+  }
+  if (!["all", "ai", "memory", "none"].includes(iconType)) {
+    throw new Error("iconType must be one of: all, ai, memory, none")
   }
 
   return summarizeTransactions({
@@ -1340,6 +1351,7 @@ export async function summarizeTransactionsService(query) {
     minAmount,
     maxAmount,
     llmProcessed,
+    iconType,
   })
 }
 
@@ -1637,7 +1649,6 @@ export async function categorizeZelleTransactionsService(input) {
   const resultByTxId = new Map(
     llmResults.map((item) => [String(item?.id || ""), String(item?.categoryName || "").trim()])
   )
-
   const classificationRows = remainingGroups
     .flatMap((group) => {
       const categoryName = resultByTxId.get(String(group.representativeId)) || ""

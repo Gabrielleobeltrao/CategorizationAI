@@ -19,6 +19,7 @@ export async function listTransactionsByClientId(clientId, options = {}) {
   const years = Array.isArray(options.years) ? options.years : []
   const months = Array.isArray(options.months) ? options.months : []
   const llmProcessed = String(options.llmProcessed || "all").trim().toLowerCase()
+  const iconType = String(options.iconType || "all").trim().toLowerCase()
   const minAmount = options.minAmount !== undefined ? String(options.minAmount).trim() : ""
   const maxAmount = options.maxAmount !== undefined ? String(options.maxAmount).trim() : ""
 
@@ -64,6 +65,9 @@ export async function listTransactionsByClientId(clientId, options = {}) {
   if (llmProcessed !== "all") {
     params.set("llmProcessed", llmProcessed)
   }
+  if (iconType !== "all") {
+    params.set("iconType", iconType)
+  }
   if (minAmount !== "") {
     params.set("minAmount", minAmount)
   }
@@ -103,6 +107,7 @@ export async function summarizeTransactionsByClientId(clientId, options = {}) {
   const years = Array.isArray(options.years) ? options.years : []
   const months = Array.isArray(options.months) ? options.months : []
   const llmProcessed = String(options.llmProcessed || "all").trim().toLowerCase()
+  const iconType = String(options.iconType || "all").trim().toLowerCase()
   const minAmount = options.minAmount !== undefined ? String(options.minAmount).trim() : ""
   const maxAmount = options.maxAmount !== undefined ? String(options.maxAmount).trim() : ""
 
@@ -122,6 +127,7 @@ export async function summarizeTransactionsByClientId(clientId, options = {}) {
   if (years.length > 0) params.set("years", years.join(","))
   if (months.length > 0) params.set("months", months.join(","))
   if (llmProcessed !== "all") params.set("llmProcessed", llmProcessed)
+  if (iconType !== "all") params.set("iconType", iconType)
   if (minAmount !== "") params.set("minAmount", minAmount)
   if (maxAmount !== "") params.set("maxAmount", maxAmount)
 

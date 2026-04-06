@@ -32,6 +32,36 @@ const LLM_PROCESSED_OPTIONS = [
     { id: "processed", label: "LLM processed" },
     { id: "not_processed", label: "Not processed" },
 ]
+const ICON_TYPE_OPTIONS = [
+    { id: "all", label: "All" },
+    { id: "ai", label: "AI icon" },
+    { id: "memory", label: "Memory icon" },
+    { id: "none", label: "No icon" },
+]
+
+function renderIconFilterOption(optionId = "") {
+    if (optionId === "ai") {
+        return (
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M12 3l1.9 4.3L18 9.2l-4.1 1.9L12 15.5l-1.9-4.4L6 9.2l4.1-1.9z" />
+                <path d="M19 16l.8 1.7L21.5 18l-1.7.8L19 20.5l-.8-1.7-1.7-.8 1.7-.3z" />
+            </svg>
+        )
+    }
+
+    if (optionId === "memory") {
+        return (
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M7 8a3 3 0 0 1 3-3h7v14h-7a3 3 0 0 0-3 3z" />
+                <path d="M17 5a3 3 0 0 1 3 3v14a3 3 0 0 0-3-3" />
+                <path d="M10 9h4" />
+                <path d="M10 13h4" />
+            </svg>
+        )
+    }
+
+    return null
+}
 const AMOUNT_SIGN_OPTIONS = [
     { id: "all", label: "All amounts" },
     { id: "positive", label: "Positive only" },
@@ -325,6 +355,7 @@ function LedgerEntriesTable({
         splitMode: "all",
         amountSign: "all",
         llmProcessed: "all",
+        iconType: "all",
         fromDate: "",
         toDate: "",
         years: [],
@@ -526,6 +557,7 @@ function LedgerEntriesTable({
         if (String(appliedFilters.splitMode || "all") !== "all") count += 1
         if (String(appliedFilters.amountSign || "all") !== "all") count += 1
         if (String(appliedFilters.llmProcessed || "all") !== "all") count += 1
+        if (String(appliedFilters.iconType || "all") !== "all") count += 1
         if (Array.isArray(appliedFilters.years) && appliedFilters.years.length > 0) count += 1
         if (Array.isArray(appliedFilters.months) && appliedFilters.months.length > 0) count += 1
         if (appliedFilters.fromDate !== "") count += 1
@@ -1179,6 +1211,7 @@ function LedgerEntriesTable({
                                 llmProcessed={entry.llmProcessed}
                                 llmStatus={entry.llmStatus}
                                 llmProcessedAt={entry.llmProcessedAt}
+                                categorizedSource={entry.categorizedSource}
                                 isLlmProcessing={pendingLlmEntryIdSet.has(entry.id)}
                                 isEditing={editingTargetIds.includes(entry.id)}
                                 editingDraft={editingDraft}
@@ -1631,6 +1664,33 @@ function LedgerEntriesTable({
                                         </section>
 
                                         <section className="space-y-2">
+                                            <p className="text-sm font-medium text-gray-700">Icon</p>
+                                            <div className="flex flex-wrap gap-2">
+                                                {ICON_TYPE_OPTIONS.map((option) => (
+                                                    <button
+                                                        key={option.id}
+                                                        type="button"
+                                                        className={`inline-flex items-center justify-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs ${
+                                                            String(draftFilters.iconType || "all") === option.id
+                                                                ? "border-gray-900 bg-gray-900 text-white"
+                                                                : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                                                        }`}
+                                                        title={option.label}
+                                                        aria-label={option.label}
+                                                        onClick={() =>
+                                                            setDraftFilters((current) => ({
+                                                                ...current,
+                                                                iconType: option.id,
+                                                            }))
+                                                        }
+                                                    >
+                                                        {renderIconFilterOption(option.id) || option.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </section>
+
+                                        <section className="space-y-2">
                                             <p className="text-sm font-medium text-gray-700">
                                                 Year {Array.isArray(draftFilters.years) && draftFilters.years.length > 0 ? `(${draftFilters.years.length})` : ""}
                                             </p>
@@ -1775,6 +1835,7 @@ function LedgerEntriesTable({
                                                 splitMode: "all",
                                                 amountSign: "all",
                                                 llmProcessed: "all",
+                                                iconType: "all",
                                                 fromDate: "",
                                                 toDate: "",
                                                 years: [],

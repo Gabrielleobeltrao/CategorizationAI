@@ -408,6 +408,7 @@ function buildTransactionsFilter({
   minAmount = null,
   maxAmount = null,
   llmProcessed = "all",
+  iconType = "all",
 }) {
   const conditions = [{ clientId }]
   const safeSearch = String(search || "").trim()
@@ -630,6 +631,63 @@ function buildTransactionsFilter({
     })
   }
 
+  if (iconType === "ai") {
+    conditions.push({
+      $and: [
+        {
+          $or: [
+            { categorizedSource: null },
+            { categorizedSource: "" },
+            { categorizedSource: { $exists: false } },
+            { categorizedSource: { $nin: ["memory"] } },
+          ],
+        },
+        {
+          $or: [
+            { llmProcessed: true },
+            { llmProcessedAt: { $ne: null } },
+            { llmStatus: { $in: ["suggested", "empty", "error"] } },
+          ],
+        },
+      ],
+    })
+  } else if (iconType === "memory") {
+    conditions.push({ categorizedSource: "memory" })
+  } else if (iconType === "none") {
+    conditions.push({
+      $and: [
+        {
+          $or: [
+            { categorizedSource: null },
+            { categorizedSource: "" },
+            { categorizedSource: { $exists: false } },
+            { categorizedSource: { $nin: ["memory"] } },
+          ],
+        },
+        {
+          $or: [
+            { llmProcessed: false },
+            { llmProcessed: { $exists: false } },
+          ],
+        },
+        {
+          $or: [
+            { llmProcessedAt: null },
+            { llmProcessedAt: { $exists: false } },
+          ],
+        },
+        {
+          $or: [
+            { llmStatus: "not_processed" },
+            { llmStatus: null },
+            { llmStatus: "" },
+            { llmStatus: { $exists: false } },
+          ],
+        },
+      ],
+    })
+  }
+
   return conditions.length === 1 ? conditions[0] : { $and: conditions }
 }
 
@@ -652,6 +710,7 @@ export async function listTransactionsPaginated({
   minAmount = null,
   maxAmount = null,
   llmProcessed = "all",
+  iconType = "all",
 }) {
   const db = getDB()
   const collection = db.collection("transactions")
@@ -676,6 +735,7 @@ export async function listTransactionsPaginated({
     minAmount,
     maxAmount,
     llmProcessed,
+    iconType,
   })
 
   const [items, total] = await Promise.all([
@@ -713,6 +773,7 @@ export async function summarizeTransactions({
   minAmount = null,
   maxAmount = null,
   llmProcessed = "all",
+  iconType = "all",
 }) {
   const db = getDB()
   const collection = db.collection("transactions")
@@ -733,6 +794,7 @@ export async function summarizeTransactions({
     minAmount,
     maxAmount,
     llmProcessed,
+    iconType,
   })
 
   const [result] = await collection
