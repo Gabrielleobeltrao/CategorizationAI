@@ -43,6 +43,8 @@ export async function insertTransactionsInBatches(transactions) {
       llmAmbiguous: t.llmAmbiguous ?? null,
       llmCategorySuggestionId: t.llmCategorySuggestionId ?? null,
       llmCategorySuggestionName: t.llmCategorySuggestionName ?? null,
+      categorizedAt: t.categorizedAt ?? null,
+      categorizedSource: t.categorizedSource ?? null,
       createdAt: new Date(),
       updatedAt: new Date(),
     }))
@@ -77,6 +79,8 @@ export async function updateTransactionById(id, patch) {
       llmAmbiguous: patch.llmAmbiguous,
       llmCategorySuggestionId: patch.llmCategorySuggestionId,
       llmCategorySuggestionName: patch.llmCategorySuggestionName,
+      categorizedAt: patch.categorizedAt,
+      categorizedSource: patch.categorizedSource,
       updatedAt: new Date(),
     }
 
@@ -110,6 +114,8 @@ export async function updateTransactionsByIds(updates = []) {
         amount: patch.amount,
         categoryId: patch.categoryId,
         category: patch.category,
+        categorizedAt: patch.categorizedAt,
+        categorizedSource: patch.categorizedSource,
         updatedAt: new Date(),
       }
 
@@ -167,6 +173,26 @@ export async function deleteTransactionsByIds(ids = []) {
   const db = getDB()
   const objectIds = ids.map((id) => new ObjectId(id))
   return db.collection("transactions").deleteMany({ _id: { $in: objectIds } })
+}
+
+export async function deleteTransactionsByClientId(clientId) {
+  const db = getDB()
+  return db.collection("transactions").deleteMany({ clientId })
+}
+
+export async function countTransactionsByAccountId(accountId) {
+  const db = getDB()
+  return db.collection("transactions").countDocuments({ accountId })
+}
+
+export async function countTransactionsByCategoryId(categoryId) {
+  const db = getDB()
+  return db.collection("transactions").countDocuments({
+    $or: [
+      { categoryId },
+      { "splits.categoryId": categoryId },
+    ],
+  })
 }
 
 export async function listEligibleTransactionsForLlmByIds(clientId, transactionIds = []) {
@@ -238,6 +264,8 @@ export async function applyLlmCategorizationUpdates(updates = []) {
           llmAmbiguous: item.llmAmbiguous ?? null,
           llmCategorySuggestionId: item.llmCategorySuggestionId ?? null,
           llmCategorySuggestionName: item.llmCategorySuggestionName ?? null,
+          categorizedAt: item.categorizedAt ?? null,
+          categorizedSource: item.categorizedSource ?? null,
           updatedAt: new Date(),
         },
       },
@@ -314,6 +342,8 @@ export async function applyCategoryUpdates(updates = []) {
         $set: {
           categoryId: item.categoryId ?? null,
           category: item.category ?? null,
+          categorizedAt: item.categorizedAt ?? null,
+          categorizedSource: item.categorizedSource ?? null,
           updatedAt: new Date(),
         },
       },

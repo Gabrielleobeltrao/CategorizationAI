@@ -146,6 +146,39 @@ function getDefaultUncategorizedLabelByAmount(amount = 0) {
   return numericAmount >= 0 ? "Uncategorized income" : "Uncategorized expenses"
 }
 
+function isAssignedCategoryValue(categoryId, categoryName) {
+  const safeCategoryId = normalizeObjectIdString(categoryId)
+  if (safeCategoryId) return true
+
+  const safeCategoryName = String(categoryName || "").trim().toLowerCase()
+  if (!safeCategoryName) return false
+
+  return (
+    safeCategoryName !== "uncategorized" &&
+    safeCategoryName !== "uncategorized income" &&
+    safeCategoryName !== "uncategorized expenses"
+  )
+}
+
+function areSplitsCategorized(splits = []) {
+  if (!Array.isArray(splits) || splits.length < 2) return false
+  return splits.every((split) => isAssignedCategoryValue(split?.categoryId, split?.category))
+}
+
+function buildCategorizedFields(isCategorized, source, now = new Date()) {
+  if (!isCategorized) {
+    return {
+      categorizedAt: null,
+      categorizedSource: null,
+    }
+  }
+
+  return {
+    categorizedAt: now,
+    categorizedSource: source,
+  }
+}
+
 function normalizeDateString(value) {
   const safe = String(value || "").trim()
   if (!safe) return null
@@ -509,6 +542,7 @@ function buildCategorizationUpdate(transactionId, categoryId, categoryName, now,
     llmProcessedAt: now,
     llmCategorySuggestionId: isCategorized ? categoryId : null,
     llmCategorySuggestionName: isCategorized ? categoryName : null,
+    ...buildCategorizedFields(isCategorized, extra.categorizedSource || "ai", now),
     ...extra,
   }
 }
@@ -891,15 +925,21 @@ export async function createTransactionsBatchService(transactions) {
     const amount = Number(transaction?.amount || 0)
     const hasCategoryId = transaction?.categoryId !== undefined && transaction?.categoryId !== null && transaction?.categoryId !== ""
     const hasCategoryName = Boolean(String(transaction?.category || "").trim())
+    const isCategorized = isAssignedCategoryValue(transaction?.categoryId, transaction?.category)
 
     if (hasCategoryId || hasCategoryName) {
-      return transaction
+      return {
+        ...transaction,
+        ...buildCategorizedFields(isCategorized, transaction?.categorizedSource || "import"),
+      }
     }
 
     return {
       ...transaction,
       categoryId: null,
       category: getDefaultUncategorizedLabelByAmount(amount),
+      categorizedAt: null,
+      categorizedSource: null,
     }
   })
 
@@ -998,6 +1038,10 @@ export async function updateTransactionByIdService(id, patch) {
     safePatch.isSplit = true
     safePatch.categoryId = null
     safePatch.category = null
+    Object.assign(
+      safePatch,
+      buildCategorizedFields(areSplitsCategorized(normalizedSplits), "manual")
+    )
   }
 
   const isCurrentSplit =
@@ -1008,6 +1052,11 @@ export async function updateTransactionByIdService(id, patch) {
 
   if (isCurrentSplit && patch.splits === undefined && isTryingToChangeParentCategory) {
     throw new Error("cannot update parent category for split transaction")
+  }
+
+  if (patch.splits === undefined && isTryingToChangeParentCategory) {
+    const isCategorized = isAssignedCategoryValue(safePatch.categoryId, safePatch.category)
+    Object.assign(safePatch, buildCategorizedFields(isCategorized, "manual"))
   }
 
   if (Object.keys(safePatch).length === 0) {
@@ -1055,10 +1104,20 @@ export async function updateTransactionsByIdsService(input = {}) {
     }
 
     const existing = mergedById.get(id) || {}
-    mergedById.set(id, {
+    const mergedPatch = {
       ...existing,
       ...safePatch,
-    })
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(safePatch, "categoryId") ||
+      Object.prototype.hasOwnProperty.call(safePatch, "category")
+    ) {
+      const isCategorized = isAssignedCategoryValue(mergedPatch.categoryId, mergedPatch.category)
+      Object.assign(mergedPatch, buildCategorizedFields(isCategorized, "manual"))
+    }
+
+    mergedById.set(id, mergedPatch)
   })
 
   const normalizedUpdates = Array.from(mergedById.entries()).map(([id, patch]) => ({

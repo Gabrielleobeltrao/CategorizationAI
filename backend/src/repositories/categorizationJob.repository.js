@@ -116,3 +116,8 @@ export async function updateCategorizationJobProgress(id, patch = {}) {
     { $set }
   )
 }
+
+export async function deleteCategorizationJobsByClientId(clientId) {
+  const db = getDB()
+  return db.collection(COLLECTION).deleteMany({ clientId })
+}

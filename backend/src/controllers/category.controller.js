@@ -5,14 +5,16 @@ import {
   getCategoryByIdService,
   deleteCategoryByIdService,
 } from "../services/category.service.js"
+import { getErrorStatusCode } from "../utils/appError.js"
 
 export async function createCategoryController(req, res) {
   try {
     const category = await createCategoryService(req.body)
     return res.status(201).json(category)
   } catch (error) {
-    return res.status(400).json({
+    return res.status(getErrorStatusCode(error)).json({
       message: error.message,
+      ...(error?.details ? { details: error.details } : {}),
     })
   }
 }
@@ -23,8 +25,9 @@ export async function updateCategoryByIdController(req, res) {
     const updatedCategory = await updateCategoryByIdService(id, req.body)
     return res.status(200).json(updatedCategory)
   } catch (error) {
-    return res.status(400).json({
+    return res.status(getErrorStatusCode(error)).json({
       message: error.message,
+      ...(error?.details ? { details: error.details } : {}),
     })
   }
 }
@@ -35,8 +38,9 @@ export async function listCategoriesByClientIdController(req, res) {
     const categories = await listCategoriesByClientIdService(clientId)
     return res.status(200).json(categories)
   } catch (error) {
-    return res.status(400).json({
+    return res.status(getErrorStatusCode(error)).json({
       message: error.message,
+      ...(error?.details ? { details: error.details } : {}),
     })
   }
 }
@@ -54,8 +58,9 @@ export async function getCategoryByIdController(req, res) {
 
     return res.status(200).json(category)
   } catch (error) {
-    return res.status(400).json({
+    return res.status(getErrorStatusCode(error)).json({
       message: error.message,
+      ...(error?.details ? { details: error.details } : {}),
     })
   }
 }
@@ -66,8 +71,9 @@ export async function deleteCategoryByIdController(req, res) {
     await deleteCategoryByIdService(id)
     return res.status(204).send()
   } catch (error) {
-    return res.status(400).json({
+    return res.status(getErrorStatusCode(error)).json({
       message: error.message,
+      ...(error?.details ? { details: error.details } : {}),
     })
   }
 }

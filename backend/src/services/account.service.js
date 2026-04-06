@@ -4,7 +4,10 @@ import {
   listAccountsByClientId,
   getAccountById,
   deleteAccountById,
+  deleteAccountsByClientId,
 } from "../repositories/account.repository.js"
+import { countTransactionsByAccountId } from "../repositories/transactions.repository.js"
+import { AppError } from "../utils/appError.js"
 
 export async function createAccountService(input) {
   if (!input?.name) throw new Error("name is required")
@@ -61,5 +64,18 @@ export async function getAccountByIdService(id) {
 
 export async function deleteAccountByIdService(id) {
   if (!id) throw new Error("id is required")
+
+  const linkedTransactionsCount = await countTransactionsByAccountId(id)
+  if (linkedTransactionsCount > 0) {
+    throw new AppError("Cannot delete account with linked transactions", 409, {
+      linkedTransactionsCount,
+    })
+  }
+
   return deleteAccountById(id)
+}
+
+export async function deleteAccountsByClientIdService(clientId) {
+  if (!clientId) throw new Error("clientId is required")
+  return deleteAccountsByClientId(clientId)
 }

@@ -171,3 +171,8 @@ export async function bulkRejectTransactionMemories(entries = []) {
     modifiedCount: Number(result?.modifiedCount || 0),
   }
 }
+
+export async function deleteTransactionMemoriesByClientId(clientId) {
+  const db = getDB()
+  return db.collection("transaction_memory").deleteMany({ clientId })
+}

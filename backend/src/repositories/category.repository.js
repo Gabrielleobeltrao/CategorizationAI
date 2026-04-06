@@ -76,3 +76,8 @@ export async function deleteCategoryById(id) {
     const db = getDB()
     return db.collection("categories").deleteOne({ _id: new ObjectId(id) })
 }
+
+export async function deleteCategoriesByClientId(clientId) {
+    const db = getDB()
+    return db.collection("categories").deleteMany({ clientId })
+}

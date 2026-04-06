@@ -4,8 +4,11 @@ import {
   listCategoriesByClientId,
   getCategoryById,
   deleteCategoryById,
+  deleteCategoriesByClientId,
 } from "../repositories/category.repository.js"
+import { countTransactionsByCategoryId } from "../repositories/transactions.repository.js"
 import { normalizeCategoryType } from "../config/categoryTypes.js"
+import { AppError } from "../utils/appError.js"
 
 export async function createCategoryService(input) {
   if (!input?.name) throw new Error("name is required")
@@ -73,5 +76,18 @@ export async function getCategoryByIdService(id) {
 
 export async function deleteCategoryByIdService(id) {
   if (!id) throw new Error("id is required")
+
+  const linkedTransactionsCount = await countTransactionsByCategoryId(id)
+  if (linkedTransactionsCount > 0) {
+    throw new AppError("Cannot delete category with linked transactions", 409, {
+      linkedTransactionsCount,
+    })
+  }
+
   return deleteCategoryById(id)
+}
+
+export async function deleteCategoriesByClientIdService(clientId) {
+  if (!clientId) throw new Error("clientId is required")
+  return deleteCategoriesByClientId(clientId)
 }

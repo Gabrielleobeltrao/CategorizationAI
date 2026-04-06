@@ -6,6 +6,7 @@ import {
     deleteClientByIdService,
 } from "../services/clients.service.js"
 import { userHasPermissionService } from "../services/roles.service.js"
+import { getErrorStatusCode } from "../utils/appError.js"
 
 function sanitizeClientOwnerInfo(client, canReadOwnerInfo) {
     if (!client || canReadOwnerInfo) return client
@@ -63,8 +64,9 @@ export async function createClientController(req, res) {
         const canReadOwnerInfo = await userHasPermissionService(req.userProfile, "clientsOwnerInfo:read")
         return res.status(201).json(sanitizeClientOwnerInfo(client, canReadOwnerInfo))
     } catch (error) {
-        return res.status(400).json({
+        return res.status(getErrorStatusCode(error)).json({
             message: error.message,
+            ...(error?.details ? { details: error.details } : {}),
         })
     }
 }
@@ -103,8 +105,9 @@ export async function updateClientByIdController(req, res) {
         const canReadOwnerInfo = await userHasPermissionService(req.userProfile, "clientsOwnerInfo:read")
         return res.status(200).json(sanitizeClientOwnerInfo(updatedClient, canReadOwnerInfo))
     } catch (error) {
-        return res.status(400).json({
+        return res.status(getErrorStatusCode(error)).json({
             message: error.message,
+            ...(error?.details ? { details: error.details } : {}),
         })
     }
 }
@@ -124,8 +127,9 @@ export async function listClientsByOfficeIdController(req, res) {
             items,
         })
     } catch (error) {
-        return res.status(400).json({
+        return res.status(getErrorStatusCode(error)).json({
             message: error.message,
+            ...(error?.details ? { details: error.details } : {}),
         })
     }
 }
@@ -144,8 +148,9 @@ export async function getClientByIdController(req, res) {
         const canReadOwnerInfo = await userHasPermissionService(req.userProfile, "clientsOwnerInfo:read")
         return res.status(200).json(sanitizeClientOwnerInfo(client, canReadOwnerInfo))
     } catch (error) {
-        return res.status(400).json({
+        return res.status(getErrorStatusCode(error)).json({
             message: error.message,
+            ...(error?.details ? { details: error.details } : {}),
         })
     }
 }
@@ -156,8 +161,9 @@ export async function deleteClientByIdController(req, res) {
         await deleteClientByIdService(id)
         return res.status(204).send()
     } catch (error) {
-        return res.status(400).json({
+        return res.status(getErrorStatusCode(error)).json({
             message: error.message,
+            ...(error?.details ? { details: error.details } : {}),
         })
     }
 }

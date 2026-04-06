@@ -5,6 +5,11 @@ import {
   getClientById,
   deleteClientById,
 } from "../repositories/clients.repository.js"
+import { deleteAccountsByClientIdService } from "./account.service.js"
+import { deleteCategoriesByClientIdService } from "./category.service.js"
+import { deleteTransactionsByClientId } from "../repositories/transactions.repository.js"
+import { deleteTransactionMemoriesByClientId } from "../repositories/transactionMemory.repository.js"
+import { deleteCategorizationJobsByClientId } from "../repositories/categorizationJob.repository.js"
 
 function normalizeOwners(value) {
   if (!Array.isArray(value)) return []
@@ -151,5 +156,14 @@ export async function getClientByIdService(id) {
 
 export async function deleteClientByIdService(id) {
   if (!id) throw new Error("id is required")
+
+  await Promise.all([
+    deleteTransactionsByClientId(id),
+    deleteAccountsByClientIdService(id),
+    deleteCategoriesByClientIdService(id),
+    deleteTransactionMemoriesByClientId(id),
+    deleteCategorizationJobsByClientId(id),
+  ])
+
   return deleteClientById(id)
 }
