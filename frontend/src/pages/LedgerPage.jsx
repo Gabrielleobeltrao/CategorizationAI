@@ -1073,7 +1073,7 @@ function LedgerPage() {
                                         <path d="m7 9 5-5 5 5" />
                                         <path d="M20 16v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-3" />
                                     </svg>
-                                    <span>Upload CSV</span>
+                                    <span>Upload Files</span>
                                 </button>
                             </div>
                             <div className="min-h-0 flex-1">

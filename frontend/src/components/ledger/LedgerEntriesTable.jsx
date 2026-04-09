@@ -6,6 +6,7 @@ import PopupModal from "../ui/PopupModal"
 import { getTransactionAmountPresentation } from "../../utils/amountPresentation"
 import { CATEGORY_TYPE_OPTIONS } from "../../constants/categoryTypes"
 import { getCategoryDisplayName } from "../../utils/categoryPresentation"
+import { parseStatementPdf } from "../../utils/statementPdf"
 
 const UNCATEGORIZED_INCOME_FILTER_VALUE = "__uncategorized_income__"
 const UNCATEGORIZED_EXPENSES_FILTER_VALUE = "__uncategorized_expenses__"
@@ -264,6 +265,12 @@ function buildDefaultColumnRoles(columns = []) {
     return roles
 }
 
+function isPdfFile(file) {
+    const fileName = String(file?.name || "").toLowerCase()
+    const fileType = String(file?.type || "").toLowerCase()
+    return fileType === "application/pdf" || fileName.endsWith(".pdf")
+}
+
 function formatPreviewCell(value = "", mappedTarget = "ignore") {
     if (mappedTarget === "date") return formatPreviewDate(value)
     if (mappedTarget === "amount") return formatPreviewAmount(value)
@@ -411,6 +418,7 @@ function LedgerEntriesTable({
     const [uploadedCsvFiles, setUploadedCsvFiles] = useState([])
     const [uploadAccountId, setUploadAccountId] = useState("")
     const [isImportingTransactions, setIsImportingTransactions] = useState(false)
+    const [uploadParseError, setUploadParseError] = useState("")
     const [importProgress, setImportProgress] = useState({
         currentChunk: 0,
         totalChunks: 0,
@@ -1308,30 +1316,39 @@ function LedgerEntriesTable({
         const files = Array.from(event.target.files || [])
         if (files.length === 0) return
 
-        const parsedFiles = await Promise.all(
-            files.map(async (file, index) => {
-                const fileContent = await file.text()
-                const parsedCsv = parseCsvText(fileContent)
-                return {
-                    id: `${file.name}-${file.size}-${file.lastModified}-${index}`,
-                    fileName: file.name,
-                    isEditingMapping: false,
-                    columns: parsedCsv.columns,
-                    previewRows: parsedCsv.previewRows,
-                    rows: parsedCsv.rows,
-                    columnRoles: buildDefaultColumnRoles(parsedCsv.columns),
-                }
-            })
-        )
+        try {
+            setUploadParseError("")
+            const parsedFiles = await Promise.all(
+                files.map(async (file, index) => {
+                    const parsedFile = isPdfFile(file)
+                        ? await parseStatementPdf(file)
+                        : parseCsvText(await file.text())
 
-        setUploadedCsvFiles((current) => [...current, ...parsedFiles])
+                    return {
+                        id: `${file.name}-${file.size}-${file.lastModified}-${index}`,
+                        fileName: file.name,
+                        isEditingMapping: false,
+                        sourceType: parsedFile.sourceType || "csv",
+                        isMappingLocked: Boolean(parsedFile.isMappingLocked),
+                        columns: parsedFile.columns,
+                        previewRows: parsedFile.previewRows,
+                        rows: parsedFile.rows,
+                        columnRoles: buildDefaultColumnRoles(parsedFile.columns),
+                    }
+                })
+            )
+
+            setUploadedCsvFiles((current) => [...current, ...parsedFiles])
+        } catch (error) {
+            setUploadParseError(error.message || "Failed to parse uploaded file")
+        }
         event.target.value = ""
     }
 
     const toggleFileMappingEdit = (fileId) => {
         setUploadedCsvFiles((current) =>
             current.map((uploadedFile) =>
-                uploadedFile.id === fileId
+                uploadedFile.id === fileId && !uploadedFile.isMappingLocked
                     ? { ...uploadedFile, isEditingMapping: !uploadedFile.isEditingMapping }
                     : uploadedFile
             )
@@ -1365,6 +1382,7 @@ function LedgerEntriesTable({
             total: 0,
             insertedCount: 0,
         })
+        setUploadParseError("")
         if (csvFileInputRef.current) {
             csvFileInputRef.current.value = ""
         }
@@ -1450,6 +1468,7 @@ function LedgerEntriesTable({
     const handleConfirmUploadMapping = async () => {
         try {
             setIsImportingTransactions(true)
+            setUploadParseError("")
             const { transactions, summary } = buildTransactionsFromUploads()
             await onImportTransactions?.(transactions, summary, (nextProgress = {}) => {
                 setImportProgress({
@@ -1463,6 +1482,7 @@ function LedgerEntriesTable({
             closeUploadModal()
         } catch (error) {
             console.error(error)
+            setUploadParseError(error.message || "Failed to import uploaded transactions")
         } finally {
             setIsImportingTransactions(false)
         }
@@ -2680,7 +2700,7 @@ function LedgerEntriesTable({
                         <input
                             ref={csvFileInputRef}
                             type="file"
-                            accept=".csv,text/csv"
+                            accept=".csv,text/csv,.pdf,application/pdf"
                             multiple
                             className="hidden"
                             onChange={handleCsvFilesSelected}
@@ -2690,9 +2710,9 @@ function LedgerEntriesTable({
                             className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black"
                             onClick={openCsvFilePicker}
                         >
-                            Upload CSV Files
+                            Upload Files
                         </button>
-                        <span className="text-xs text-gray-500">You can upload one or more CSV files</span>
+                        <span className="text-xs text-gray-500">You can upload one or more CSV or PDF statement files</span>
                     </div>
 
                     {uploadedCsvFiles.length === 0 && (
@@ -2700,6 +2720,12 @@ function LedgerEntriesTable({
                             No files selected yet.
                         </p>
                     )}
+
+                    {uploadParseError ? (
+                        <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                            {uploadParseError}
+                        </p>
+                    ) : null}
 
                     {uploadedCsvFiles.length > 0 && (
                         <div className="max-h-[56vh] space-y-4 overflow-y-auto pr-1">
@@ -2724,30 +2750,41 @@ function LedgerEntriesTable({
                                     <div key={uploadedFile.id} className="rounded-xl border border-gray-200 bg-gray-50 p-3">
                                         <div className="mb-3 flex items-center justify-between">
                                             <div>
-                                                <h3 className="text-sm font-semibold text-gray-700">{uploadedFile.fileName}</h3>
+                                                <div className="flex items-center gap-2">
+                                                    <h3 className="text-sm font-semibold text-gray-700">{uploadedFile.fileName}</h3>
+                                                    <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+                                                        {uploadedFile.sourceType === "pdf" ? "PDF" : "CSV"}
+                                                    </span>
+                                                </div>
                                             </div>
-                                            <button
-                                                type="button"
-                                                className={`rounded-md p-1 ${
-                                                    uploadedFile.isEditingMapping
-                                                        ? "bg-gray-900 text-white"
-                                                        : "text-gray-500 hover:bg-gray-200 hover:text-sky-700"
-                                                }`}
-                                                onClick={() => toggleFileMappingEdit(uploadedFile.id)}
-                                                title={uploadedFile.isEditingMapping ? "Finish column edit" : "Edit columns"}
-                                                aria-label={uploadedFile.isEditingMapping ? "Finish column edit" : "Edit columns"}
-                                            >
-                                                {uploadedFile.isEditingMapping ? (
-                                                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                        <path d="M20 6 9 17l-5-5" />
-                                                    </svg>
-                                                ) : (
-                                                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                        <path d="M12 20h9" />
-                                                        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5z" />
-                                                    </svg>
-                                                )}
-                                            </button>
+                                            {uploadedFile.isMappingLocked ? (
+                                                <span className="text-[11px] font-medium uppercase tracking-wide text-gray-400">
+                                                    Auto mapped
+                                                </span>
+                                            ) : (
+                                                <button
+                                                    type="button"
+                                                    className={`rounded-md p-1 ${
+                                                        uploadedFile.isEditingMapping
+                                                            ? "bg-gray-900 text-white"
+                                                            : "text-gray-500 hover:bg-gray-200 hover:text-sky-700"
+                                                    }`}
+                                                    onClick={() => toggleFileMappingEdit(uploadedFile.id)}
+                                                    title={uploadedFile.isEditingMapping ? "Finish column edit" : "Edit columns"}
+                                                    aria-label={uploadedFile.isEditingMapping ? "Finish column edit" : "Edit columns"}
+                                                >
+                                                    {uploadedFile.isEditingMapping ? (
+                                                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                            <path d="M20 6 9 17l-5-5" />
+                                                        </svg>
+                                                    ) : (
+                                                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                            <path d="M12 20h9" />
+                                                            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5z" />
+                                                        </svg>
+                                                    )}
+                                                </button>
+                                            )}
                                         </div>
 
                                         <div className="mt-4 overflow-x-auto rounded-xl border border-gray-200 bg-white">
