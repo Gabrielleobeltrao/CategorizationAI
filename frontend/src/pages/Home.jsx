@@ -57,6 +57,7 @@ function parseMetricValue(value) {
 
 const EMPTY_DASHBOARD = {
   header: {
+    officeName: "Office",
     periodLabel: "-",
     lastSyncAt: "-",
     queueStatus: "idle",
@@ -225,7 +226,10 @@ function Home() {
     try {
       const payload = await getOfficeHomeDashboard(safeOfficeId, { noCache: true })
       setDashboard({
-        header: payload?.header || EMPTY_DASHBOARD.header,
+        header: {
+          ...EMPTY_DASHBOARD.header,
+          ...(payload?.header || {}),
+        },
         kpis: Array.isArray(payload?.kpis) ? payload.kpis : [],
         weekKpis: Array.isArray(payload?.weekKpis) ? payload.weekKpis : [],
         weeklyTrend: Array.isArray(payload?.weeklyTrend) ? payload.weeklyTrend : [],
@@ -345,12 +349,14 @@ function Home() {
   }, [employee.officeId, loadDashboard])
 
   return (
-    <section className="w-full h-full min-h-0 overflow-auto p-8">
+    <section className="w-full p-8">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-5">
         <header className="rounded-xl border border-gray-200 bg-white p-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <h1 className="text-3xl font-bold">Office Service Dashboard</h1>
+              <h1 className="text-3xl font-bold">
+                {dashboard.header.officeName || "Office"}
+              </h1>
               <p className="text-sm text-gray-500">
                 {employee.name} ({employee.role})
               </p>

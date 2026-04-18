@@ -1,3 +1,4 @@
+import { ObjectId } from "mongodb"
 import { getDB } from "../db.js"
 
 function pad2(value) {
@@ -303,6 +304,10 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
   const range = buildMonthRange(options.month)
   const previousRange = buildPreviousRange(range)
   const retentionCutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
+  const office = await db
+    .collection("offices")
+    .findOne({ _id: new ObjectId(officeId) }, { projection: { name: 1 } })
+  const officeName = String(office?.name || "Office").trim() || "Office"
 
   const clients = await db
     .collection("clients")
@@ -315,6 +320,7 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
   if (clientIdList.length === 0) {
     return {
       header: {
+        officeName,
         periodLabel: range.label,
         lastSyncAt: "-",
         queueStatus: "idle",
@@ -783,6 +789,7 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
 
   return {
     header: {
+      officeName,
       periodLabel: range.label,
       lastSyncAt: latestSyncDate
         ? latestSyncDate.toLocaleString("en-US", {
