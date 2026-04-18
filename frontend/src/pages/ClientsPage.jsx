@@ -92,7 +92,7 @@ function getEmptyClientDraft() {
     }
 }
 
-function formatClientDateTime(value = "") {
+function formatClientDate(value = "") {
     const safe = String(value || "").trim()
     if (!safe) return "-"
 
@@ -103,10 +103,24 @@ function formatClientDateTime(value = "") {
         year: "numeric",
         month: "2-digit",
         day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
     })
+}
+
+function hasOwnerContactInfo(owner = {}) {
+    if (!owner || typeof owner !== "object") return false
+
+    return Boolean(
+        String(owner.name || "").trim() ||
+        String(owner.email || "").trim() ||
+        String(owner.phone || "").trim()
+    )
+}
+
+function hasLegacyOwnerContact(client = {}) {
+    return Boolean(
+        String(client?.ownerEmail || "").trim() ||
+        String(client?.ownerPhone || "").trim()
+    )
 }
 
 function ClientsPage() {
@@ -513,31 +527,58 @@ function ClientsPage() {
                                                         <p className="text-gray-700">{client.description || "-"}</p>
 
                                                         <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 md:pt-1">Owners</p>
-                                                        <div className="flex flex-col gap-1">
-                                                            {Array.isArray(client.owners) && client.owners.length > 0 ? (
+                                                        <div className="flex flex-col gap-2">
+                                                            {Array.isArray(client.owners) && client.owners.some(hasOwnerContactInfo) ? (
                                                                 client.owners.map((owner, index) => (
-                                                                    <p key={`owner-display-${client.id}-${index}`} className="text-gray-700">
-                                                                        {String(owner?.name || "").trim() || "-"}
-                                                                        {String(owner?.email || "").trim() ? ` • ${owner.email}` : ""}
-                                                                        {String(owner?.phone || "").trim() ? ` • ${owner.phone}` : ""}
-                                                                    </p>
+                                                                    <div
+                                                                        key={`owner-display-${client.id}-${index}`}
+                                                                        className="grid grid-cols-1 gap-x-3 gap-y-1 rounded-lg bg-gray-50 px-3 py-2 md:grid-cols-[88px_minmax(0,1fr)]"
+                                                                    >
+                                                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                                                                            Owner {index + 1}
+                                                                        </p>
+                                                                        <div className="grid grid-cols-1 gap-y-1 text-gray-700 sm:grid-cols-3 sm:gap-x-4">
+                                                                            <p>
+                                                                                <span className="text-xs font-medium uppercase tracking-wide text-gray-500">Name:</span>{" "}
+                                                                                {String(owner?.name || "").trim() || "-"}
+                                                                            </p>
+                                                                            <p>
+                                                                                <span className="text-xs font-medium uppercase tracking-wide text-gray-500">Email:</span>{" "}
+                                                                                {String(owner?.email || "").trim() || "-"}
+                                                                            </p>
+                                                                            <p>
+                                                                                <span className="text-xs font-medium uppercase tracking-wide text-gray-500">Phone:</span>{" "}
+                                                                                {String(owner?.phone || "").trim() || "-"}
+                                                                            </p>
+                                                                        </div>
+                                                                    </div>
                                                                 ))
+                                                            ) : hasLegacyOwnerContact(client) ? (
+                                                                <div className="grid grid-cols-1 gap-x-3 gap-y-1 rounded-lg bg-gray-50 px-3 py-2 md:grid-cols-[88px_minmax(0,1fr)]">
+                                                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                                                                        Owner
+                                                                    </p>
+                                                                    <div className="grid grid-cols-1 gap-y-1 text-gray-700 sm:grid-cols-3 sm:gap-x-4">
+                                                                        <p>
+                                                                            <span className="text-xs font-medium uppercase tracking-wide text-gray-500">Name:</span> -
+                                                                        </p>
+                                                                        <p>
+                                                                            <span className="text-xs font-medium uppercase tracking-wide text-gray-500">Email:</span>{" "}
+                                                                            {String(client.ownerEmail || "").trim() || "-"}
+                                                                        </p>
+                                                                        <p>
+                                                                            <span className="text-xs font-medium uppercase tracking-wide text-gray-500">Phone:</span>{" "}
+                                                                            {String(client.ownerPhone || "").trim() || "-"}
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
                                                             ) : (
                                                                 <p className="text-gray-700">-</p>
                                                             )}
                                                         </div>
 
-                                                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Owner Email</p>
-                                                        <p className="text-gray-700">{String(client.ownerEmail || "").trim() || "-"}</p>
-
-                                                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Owner Phone</p>
-                                                        <p className="text-gray-700">{String(client.ownerPhone || "").trim() || "-"}</p>
-
                                                         <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Created At</p>
-                                                        <p className="text-gray-700">{formatClientDateTime(client.createdAt)}</p>
-
-                                                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Updated At</p>
-                                                        <p className="text-gray-700">{formatClientDateTime(client.updatedAt)}</p>
+                                                        <p className="text-gray-700">{formatClientDate(client.createdAt)}</p>
                                                     </div>
                                                 </div>
                                             )}
