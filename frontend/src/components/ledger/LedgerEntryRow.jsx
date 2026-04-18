@@ -1,6 +1,8 @@
 import { getTransactionAmountPresentation } from "../../utils/amountPresentation"
 import { getCategoryDisplayName } from "../../utils/categoryPresentation"
 
+const LEDGER_ENTRY_GRID_CLASS = "grid grid-cols-[24px_minmax(92px,0.8fr)_minmax(180px,2fr)_minmax(112px,1fr)_minmax(152px,1.2fr)_20px_minmax(84px,0.7fr)_88px] items-center gap-4"
+
 function LedgerEntryRow({
     index,
     accounts,
@@ -74,7 +76,7 @@ function LedgerEntryRow({
     })
 
     return (
-        <div className={`grid grid-cols-[24px_minmax(110px,0.7fr)_minmax(180px,2fr)_minmax(120px,1fr)_minmax(160px,1.3fr)_16px_78px_92px] items-center gap-4 px-2 py-3 text-sm ${index % 2 === 0 ? 'bg-gray-100' : 'bg-white'}`}>
+        <div className={`${LEDGER_ENTRY_GRID_CLASS} px-2 py-3 text-sm ${index % 2 === 0 ? 'bg-gray-100' : 'bg-white'}`}>
             <input
                 className="h-4 w-4 self-center m-0"
                 type="checkbox"

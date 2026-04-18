@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { useLocation, useParams, useSearchParams } from "react-router-dom"
+import { useLocation, useOutletContext, useParams, useSearchParams } from "react-router-dom"
 import LedgerEntriesTable from "../components/ledger/LedgerEntriesTable"
 import LedgerHeader from "../components/ledger/LedgerHeader"
 import AccountsSection from "../components/ledger/AccountsSection"
@@ -200,6 +200,8 @@ function formatCurrency(value = 0) {
 }
 
 function LedgerPage() {
+    const outletContext = useOutletContext() || {}
+    const sharedScrollRef = outletContext?.contentScrollRef || null
     const { clientId: routeClientId } = useParams()
     const [searchParams] = useSearchParams()
     const location = useLocation()
@@ -247,7 +249,8 @@ function LedgerPage() {
     const [categoryToDelete, setCategoryToDelete] = useState(null)
     const [accountIdsToDelete, setAccountIdsToDelete] = useState([])
     const [categoryIdsToDelete, setCategoryIdsToDelete] = useState([])
-    const pageScrollRef = useRef(null)
+    const localPageScrollRef = useRef(null)
+    const pageScrollRef = sharedScrollRef || localPageScrollRef
     const loadingMoreRef = useRef(false)
     const pageRef = useRef(1)
     const lastScrollTopRef = useRef(0)
@@ -519,7 +522,7 @@ function LedgerPage() {
         }
     }
 
-    const handlePageScroll = () => {
+    const handlePageScroll = useCallback(() => {
         if (activeSection !== "ledger") return
         const container = pageScrollRef.current
         if (!container) return
@@ -535,7 +538,18 @@ function LedgerPage() {
         if (distanceToBottom <= 100) {
             loadMoreTransactions()
         }
-    }
+    }, [activeSection, isLoadingTransactions, loadMoreTransactions, pageScrollRef, transactionsHasMore])
+
+    useEffect(() => {
+        const container = pageScrollRef.current
+        if (!container) return undefined
+
+        container.addEventListener("scroll", handlePageScroll)
+
+        return () => {
+            container.removeEventListener("scroll", handlePageScroll)
+        }
+    }, [handlePageScroll, pageScrollRef])
 
     const handleApplyTransactionsFilters = (nextFilters = DEFAULT_TRANSACTIONS_FILTERS) => {
         setTransactionsFilters(normalizeTransactionsFilters(nextFilters))
@@ -1044,18 +1058,17 @@ function LedgerPage() {
 
     return (
         <section
-            ref={pageScrollRef}
-            onScroll={handlePageScroll}
-            className="relative w-full h-full min-h-0 box-border p-4 overflow-y-auto"
+            ref={sharedScrollRef ? undefined : localPageScrollRef}
+            className="relative w-full min-w-0 box-border p-4"
         >
-            <div className="min-h-full flex flex-col gap-4 pb-4">
+            <div className="min-h-full min-w-0 flex flex-col gap-4 pb-4">
                 <LedgerHeader
                     clientName={client?.name || ""}
                 />
 
-                <section className={`min-h-[460px] rounded-lg border border-gray-200 bg-white p-4 flex flex-col ${activeSection === "ledger" ? "overflow-visible" : "overflow-hidden"}`}>
+                <section className={`min-h-[460px] min-w-0 rounded-lg border border-gray-200 bg-white p-4 flex flex-col ${activeSection === "ledger" ? "overflow-visible" : "overflow-hidden"}`}>
                     {activeSection === "ledger" && (
-                        <section className="min-h-0 h-full p-1 flex flex-col gap-3">
+                        <section className="min-h-0 min-w-0 h-full p-1 flex flex-col gap-3">
                             <div className="relative z-20 flex items-center justify-between bg-white">
                                 <div>
                                     <h3 className="text-base font-bold">Transactions</h3>
@@ -1076,7 +1089,7 @@ function LedgerPage() {
                                     <span>Upload Files</span>
                                 </button>
                             </div>
-                            <div className="min-h-0 flex-1">
+                            <div className="min-h-0 min-w-0 flex-1">
                                 <LedgerEntriesTable
                                     ledgerEntries={ledgerEntries}
                                     accounts={accounts}

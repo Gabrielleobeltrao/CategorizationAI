@@ -551,7 +551,7 @@ function EmployeesPage() {
     }
 
     return (
-        <section className="w-full h-full min-h-0 overflow-y-auto p-8">
+        <section className="w-full p-8">
             <div className="max-w-5xl mx-auto flex flex-col gap-6">
                 <header className="flex items-start justify-between gap-3">
                     <div>
@@ -1129,6 +1129,7 @@ function EmployeesPage() {
                     title="Reset Employee Password"
                     message={`Generate a temporary password for ${employeeToResetPassword?.name || "this employee"}?`}
                     confirmLabel="Generate Temporary Password"
+                    variant="neutral"
                     onConfirm={handleResetEmployeePassword}
                     onClose={() => setEmployeeToResetPassword(null)}
                     isLoading={isSubmitting}
@@ -1141,23 +1142,37 @@ function EmployeesPage() {
                     maxWidthClass="max-w-lg"
                 >
                     <div className="flex flex-col gap-4">
-                        <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm">
-                            <p className="font-medium text-gray-900">{resetPasswordResult?.name}</p>
-                            <p className="text-gray-600">{resetPasswordResult?.email}</p>
+                        <div className="rounded-2xl border border-gray-200 bg-gradient-to-b from-gray-50 to-white p-4 text-sm shadow-sm">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-400">
+                                Employee
+                            </p>
+                            <p className="mt-2 text-base font-semibold text-gray-900">
+                                {resetPasswordResult?.name}
+                            </p>
+                            <p className="mt-1 text-sm text-gray-500">{resetPasswordResult?.email}</p>
                         </div>
-                        <div className="rounded-xl border border-gray-200 bg-white p-3">
-                            <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">Temporary password</p>
-                            <div className="flex items-start justify-between gap-2">
-                                <p className="break-all font-mono text-base text-gray-900">
-                                    {resetPasswordResult?.temporaryPassword}
-                                </p>
+                        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+                            <div className="mb-3 flex items-center justify-between gap-3">
+                                <div>
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-400">
+                                        Temporary password
+                                    </p>
+                                    <p className="mt-1 text-sm text-gray-500">
+                                        Share this once. The employee will change it after login.
+                                    </p>
+                                </div>
                                 <button
                                     type="button"
-                                    className="shrink-0 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
+                                    className="shrink-0 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50"
                                     onClick={handleCopyTemporaryPassword}
                                 >
                                     Copy
                                 </button>
+                            </div>
+                            <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3">
+                                <p className="break-all font-mono text-base text-gray-900">
+                                    {resetPasswordResult?.temporaryPassword}
+                                </p>
                             </div>
                         </div>
                         <div className="flex items-center justify-end gap-2">

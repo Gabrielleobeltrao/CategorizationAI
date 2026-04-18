@@ -42,6 +42,7 @@ const ICON_TYPE_OPTIONS = [
     { id: "memory", label: "Memory icon" },
     { id: "none", label: "No icon" },
 ]
+const LEDGER_TABLE_GRID_CLASS = "grid grid-cols-[24px_minmax(92px,0.8fr)_minmax(180px,2fr)_minmax(112px,1fr)_minmax(152px,1.2fr)_20px_minmax(84px,0.7fr)_88px] items-center gap-4"
 
 function renderIconFilterOption(optionId = "") {
     if (optionId === "ai") {
@@ -1489,12 +1490,12 @@ function LedgerEntriesTable({
     }
 
     return (
-        <div className="relative flex h-full min-h-0 gap-3">
+        <div className="relative flex h-full min-h-0 min-w-0 gap-3">
             <div className="flex min-w-0 flex-1 flex-col overflow-visible">
-                <div className="relative min-w-[1060px] h-full min-h-0 flex flex-col">
+                <div className="relative h-full min-h-0 min-w-0 flex flex-col">
                     <div className={`sticky top-0 relative bg-white ${showFilterModal ? "z-[130]" : "z-10"}`}>
                     <div className="pointer-events-none absolute inset-x-0 -top-4 h-4 bg-white" aria-hidden="true" />
-                    <div className="grid grid-cols-[minmax(140px,max-content)_1fr] items-center gap-4 rounded-t-lg bg-gray-100 px-3 py-2.5 shadow-sm">
+                    <div className="grid min-w-0 grid-cols-[minmax(140px,max-content)_1fr] items-center gap-4 rounded-t-lg bg-gray-100 px-3 py-2.5 shadow-sm">
                             <div className="flex items-center gap-2 text-sm">
                                 <input
                                     ref={selectAllRef}
@@ -1574,7 +1575,7 @@ function LedgerEntriesTable({
                     </div>
                     </div>
 
-                    <div className="grid grid-cols-[24px_minmax(110px,0.7fr)_minmax(180px,2fr)_minmax(120px,1fr)_minmax(160px,1.3fr)_16px_78px_92px] items-center gap-4 bg-white px-2 py-3 text-sm font-semibold">
+                    <div className={`${LEDGER_TABLE_GRID_CLASS} bg-white px-2 py-3 text-sm font-semibold`}>
                         <span className="block h-4 w-4" aria-hidden="true" />
                         <h4>Date</h4>
                         <h4>Description</h4>
@@ -1590,7 +1591,7 @@ function LedgerEntriesTable({
                     </div>
                     <div
                     ref={scrollContainerRef}
-                    className="min-h-0 min-w-[1060px] flex-1 overflow-auto rounded-b-lg border-b-4 border-gray-100"
+                    className="min-h-0 min-w-0 flex-1 overflow-auto rounded-b-lg border-b-4 border-gray-100"
                 >
                     {ledgerEntries.map((entry, index) => (
                         <div key={entry.id}>
@@ -1651,7 +1652,7 @@ function LedgerEntriesTable({
                                     {splitDraftRows.map((row, rowIndex) => (
                                         <div
                                             key={row.localId}
-                                            className={`grid grid-cols-[24px_minmax(110px,0.7fr)_minmax(180px,2fr)_minmax(120px,1fr)_minmax(160px,1.3fr)_16px_78px_92px] items-center gap-4 px-2 py-2 text-sm ${
+                                            className={`${LEDGER_TABLE_GRID_CLASS} px-2 py-2 text-sm ${
                                                 index % 2 === 0
                                                     ? rowIndex % 2 === 0
                                                         ? "bg-zinc-50"
@@ -1719,7 +1720,7 @@ function LedgerEntriesTable({
                                     ))}
 
                                     <div
-                                        className={`grid grid-cols-[24px_minmax(110px,0.7fr)_minmax(180px,2fr)_minmax(120px,1fr)_minmax(160px,1.3fr)_16px_78px_92px] items-center gap-4 px-2 py-3 text-xs ${
+                                        className={`${LEDGER_TABLE_GRID_CLASS} px-2 py-3 text-xs ${
                                             index % 2 === 0 ? "bg-gray-100" : "bg-white"
                                         }`}
                                     >
@@ -1755,7 +1756,7 @@ function LedgerEntriesTable({
 
                                     {splitError && (
                                         <div
-                                            className={`grid grid-cols-[24px_minmax(110px,0.7fr)_minmax(180px,2fr)_minmax(120px,1fr)_minmax(160px,1.3fr)_16px_78px_92px] items-center gap-4 px-2 pb-2 text-xs ${
+                                            className={`${LEDGER_TABLE_GRID_CLASS} px-2 pb-2 text-xs ${
                                                 index % 2 === 0
                                                     ? (splitDraftRows.length + 1) % 2 === 0
                                                         ? "bg-zinc-50"
@@ -1781,7 +1782,7 @@ function LedgerEntriesTable({
                                         return (
                                             <div
                                                 key={split.id || `${entry.id}-split-${splitIndex}`}
-                                                className={`grid grid-cols-[24px_minmax(110px,0.7fr)_minmax(180px,2fr)_minmax(120px,1fr)_minmax(160px,1.3fr)_16px_78px_92px] items-center gap-4 px-2 py-2 text-sm ${
+                                                className={`${LEDGER_TABLE_GRID_CLASS} px-2 py-2 text-sm ${
                                                     index % 2 === 0
                                                         ? splitIndex % 2 === 0
                                                             ? "bg-zinc-50"

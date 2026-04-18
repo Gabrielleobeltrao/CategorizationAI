@@ -298,7 +298,7 @@ function ProfitLossPage() {
   }
 
   return (
-    <section className="w-full h-full min-h-0 p-8 overflow-auto">
+    <section className="w-full p-8">
       <div className="w-full flex flex-col gap-3">
         <header className="rounded-xl border border-gray-200 bg-white p-4">
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
