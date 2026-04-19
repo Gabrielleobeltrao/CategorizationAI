@@ -5,6 +5,16 @@ function escapeRegex(value = "") {
     return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
+export async function ensureClientsIndexes() {
+    const db = getDB()
+    const collection = db.collection("clients")
+
+    await Promise.all([
+        collection.createIndex({ officeId: 1, createdAt: -1 }),
+        collection.createIndex({ officeId: 1, name: 1 }),
+    ])
+}
+
 // criar
 
 export async function createClient(input) {

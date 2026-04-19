@@ -1,6 +1,17 @@
 import { ObjectId } from "mongodb"
 import { getDB } from "../db.js"
 
+export async function ensureCategoryIndexes() {
+    const db = getDB()
+    const collection = db.collection("categories")
+
+    await Promise.all([
+        collection.createIndex({ clientId: 1, createdAt: -1 }),
+        collection.createIndex({ clientId: 1, type: 1 }),
+        collection.createIndex({ clientId: 1, name: 1 }),
+    ])
+}
+
 // criar
 
 export async function createCategory(input) {

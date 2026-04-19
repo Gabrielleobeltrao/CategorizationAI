@@ -1,6 +1,16 @@
 import { ObjectId } from "mongodb"
 import { getDB } from "../db.js"
 
+export async function ensureAccountIndexes() {
+  const db = getDB()
+  const collection = db.collection("account")
+
+  await Promise.all([
+    collection.createIndex({ clientId: 1, createdAt: -1 }),
+    collection.createIndex({ providerId: 1, userId: 1 }),
+  ])
+}
+
 export async function createAccount(input) {
   const db = getDB()
 

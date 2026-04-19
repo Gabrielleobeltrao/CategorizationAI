@@ -1,6 +1,31 @@
 import { ObjectId } from "mongodb"
 import { getDB } from "../db.js"
 
+export async function ensureUserProfileIndexes() {
+    const db = getDB()
+    const collection = db.collection("user_profile")
+    const authUsersCollection = db.collection("user")
+
+    await Promise.all([
+        collection.createIndex(
+            { email: 1 },
+            {
+                unique: true,
+                partialFilterExpression: { email: { $type: "string" } },
+            }
+        ),
+        collection.createIndex({ officeId: 1, createdAt: -1 }),
+        collection.createIndex({ officeId: 1, role: 1 }),
+        authUsersCollection.createIndex(
+            { email: 1 },
+            {
+                unique: true,
+                partialFilterExpression: { email: { $type: "string" } },
+            }
+        ),
+    ])
+}
+
 // criar
 
 export async function createUserProfile(input) {
