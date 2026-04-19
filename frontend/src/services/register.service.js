@@ -1,4 +1,5 @@
 import { api } from "../lib/api"
+import { getOpenTestConfig, validateOpenTestAccessCode } from "./openTest.service"
 
 export async function registerWithOffice(input) {
   const name = input?.name?.trim()
@@ -8,11 +9,23 @@ export async function registerWithOffice(input) {
   const officeAddress = String(input?.officeAddress || "").trim()
   const officePhone = String(input?.officePhone || "").trim()
   const officeEmail = String(input?.officeEmail || "").trim()
+  const openTestAccessCode = String(input?.openTestAccessCode || "").trim()
+  const config = await getOpenTestConfig().catch(() => null)
+  const requiresOpenTestAccessCode = Boolean(
+    config?.registrationRequiresAccessCode ?? input?.requiresOpenTestAccessCode
+  )
 
   if (!name) throw new Error("name is required")
   if (!email) throw new Error("email is required")
   if (!password) throw new Error("password is required")
   if (!officeName) throw new Error("officeName is required")
+  if (requiresOpenTestAccessCode && !openTestAccessCode) {
+    throw new Error("openTestAccessCode is required")
+  }
+
+  if (requiresOpenTestAccessCode) {
+    await validateOpenTestAccessCode(openTestAccessCode)
+  }
 
   await api("/api/auth/sign-up/email", {
     method: "POST",
@@ -26,6 +39,7 @@ export async function registerWithOffice(input) {
       address: officeAddress,
       businessPhone: officePhone,
       businessEmail: officeEmail,
+      openTestAccessCode,
     }),
   })
 

@@ -12,6 +12,10 @@ export async function createOffice(input) {
         address: input.address || "",
         businessPhone: input.businessPhone || "",
         businessEmail: input.businessEmail || "",
+        // OPEN TEST: temporary marker to identify offices created through test access codes.
+        isOpenTestOffice: Boolean(input?.openTest?.isOpenTestOffice),
+        openTestAccessCodeLabel: String(input?.openTest?.accessCodeLabel || ""),
+        openTestCreatedAt: input?.openTest?.createdAt || null,
         createdAt: new Date(),
         updatedAt: new Date(),
     }

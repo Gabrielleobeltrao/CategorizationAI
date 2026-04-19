@@ -1,15 +1,35 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { getMyProfile, signIn } from "../services/auth.service"
+import { getOpenTestConfig } from "../services/openTest.service"
 import { useNotification } from "../contexts/notification.context"
 
 function Login() {
 
     const [ email, setEmail] = useState("")
     const [ password, setPassword] = useState("")
+    const [openTestConfig, setOpenTestConfig] = useState(null)
 
     const navigate = useNavigate()
     const { success, error } = useNotification()
+
+    useEffect(() => {
+        let active = true
+
+        getOpenTestConfig()
+            .then((config) => {
+                if (!active) return
+                setOpenTestConfig(config || null)
+            })
+            .catch(() => {
+                if (!active) return
+                setOpenTestConfig(null)
+            })
+
+        return () => {
+            active = false
+        }
+    }, [])
 
     const handleSubmit = async (e) => {
         e.preventDefault()
@@ -40,6 +60,15 @@ function Login() {
                         </p>
                     </div>
                 </div>
+
+                {openTestConfig?.enabled && (
+                    <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                        <p className="font-semibold">Open test environment</p>
+                        <p className="mt-1">
+                            {openTestConfig?.notices?.auth || "This environment is currently limited to invited offices."}
+                        </p>
+                    </div>
+                )}
 
                 <form className="flex flex-col gap-4 rounded-3xl border border-gray-200 bg-white p-5" onSubmit={handleSubmit}>
                     <input

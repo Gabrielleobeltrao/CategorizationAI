@@ -8,9 +8,11 @@ import transactionsRoutes from "./transactions.routes.js"
 import userProfileRoutes from "./userProfile.routes.js"
 import profitLossRoutes from "./profitLoss.routes.js"
 import rolesRoutes from "./roles.routes.js"
+import openTestRoutes from "./openTest.routes.js"
 
 const router = Router()
 router.use(healthRoutes)
+router.use(openTestRoutes)
 router.use(accountsRoutes)
 router.use(clientsRoutes)
 router.use(officesRoutes)

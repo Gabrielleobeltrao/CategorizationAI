@@ -7,7 +7,9 @@ import {
 
 export async function createOfficeController(req, res) {
     try {
-        const office = await createOfficeService(req.body)
+        const office = await createOfficeService(req.body, {
+            actorHasProfile: Boolean(req.userProfile?._id),
+        })
         return res.status(201).json(office)
     } catch (error) {
         return res.status(400).json({

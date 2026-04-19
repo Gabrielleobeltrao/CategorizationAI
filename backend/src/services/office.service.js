@@ -4,6 +4,8 @@ import {
   getOfficeById,
 } from "../repositories/office.repository.js"
 import { getOfficeDashboardSnapshot } from "../repositories/dashboard.repository.js"
+import { OPEN_TEST_ENABLED } from "../config/openTest.js"
+import { resolveOpenTestMarkerService } from "./openTest.service.js"
 
 function normalizeOptionalText(value) {
   if (value === undefined) return undefined
@@ -11,14 +13,20 @@ function normalizeOptionalText(value) {
   return String(value).trim()
 }
 
-export async function createOfficeService(input) {
+export async function createOfficeService(input, context = {}) {
   if (!input?.name) throw new Error("name is required")
+
+  const shouldValidateOpenTestCode = OPEN_TEST_ENABLED && !context?.actorHasProfile
+  const openTestMarker = shouldValidateOpenTestCode
+    ? resolveOpenTestMarkerService(input?.openTestAccessCode)
+    : null
 
   return createOffice({
     name: input.name.trim(),
     address: normalizeOptionalText(input.address),
     businessPhone: normalizeOptionalText(input.businessPhone),
     businessEmail: normalizeOptionalText(input.businessEmail),
+    openTest: openTestMarker,
   })
 }
 

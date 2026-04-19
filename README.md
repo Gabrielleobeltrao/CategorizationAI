@@ -82,6 +82,10 @@ LLM_BATCH_SIZE=20
 LLM_TIMEOUT_MS=60000
 LLM_MAX_RETRIES=4
 LLM_BACKOFF_MS=1200
+
+# OPEN TEST: acesso temporário por código para escritórios convidados
+OPEN_TEST_ENABLED=true
+OPEN_TEST_ACCESS_CODES=office_alpha:ABC123,office_beta:XYZ789
 ```
 
 ### `frontend/.env`
@@ -129,6 +133,47 @@ App em `http://localhost:5173`
   - `address`
   - `businessPhone`
   - `businessEmail`
+
+### Fluxo de open test
+
+Enquanto o open test estiver ativo:
+- o registro público fica limitado a escritórios convidados
+- o usuário precisa informar um `access code` no `Register`
+- o frontend valida o código antes de finalizar o cadastro
+- o backend valida novamente ao criar o office
+- o office criado recebe marcações temporárias:
+  - `isOpenTestOffice`
+  - `openTestAccessCodeLabel`
+  - `openTestCreatedAt`
+
+Endpoints públicos do open test:
+- `GET /api/open-test/config`
+- `POST /api/open-test/validate-access-code`
+
+Comportamento no frontend:
+- `Register` exibe o campo de access code quando `OPEN_TEST_ENABLED=true`
+- `Login` mostra aviso de ambiente de teste
+- `AppShell` mostra:
+  - banner dismissable no topo
+  - modal informativo ao entrar no app
+
+Exemplo exato de `backend/.env` para open test:
+
+```env
+OPEN_TEST_ENABLED=true
+OPEN_TEST_ACCESS_CODES=office_alpha:ABC123,office_beta:XYZ789
+```
+
+Formato de `OPEN_TEST_ACCESS_CODES`:
+- separado por vírgula
+- cada item pode ser:
+  - `label:code`
+  - ou somente `code`
+
+Exemplos válidos:
+- `office_alpha:ABC123`
+- `office_beta:XYZ789`
+- `ONLYCODE123`
 
 ### Fluxo de senha temporária
 
@@ -180,6 +225,10 @@ Base: `/api`
 - `GET /offices/:id`
 - `PATCH /offices/:id`
 - `GET /offices/:id/dashboard`
+
+### Open Test
+- `GET /open-test/config`
+- `POST /open-test/validate-access-code`
 
 ### User Profiles
 - `POST /user-profiles`
