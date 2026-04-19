@@ -121,6 +121,14 @@ App em `http://localhost:5173`
   1. auth user
   2. office
   3. user profile owner
+- o registro no frontend é dividido em 2 etapas:
+  1. office
+  2. user
+- o office pode ser criado já com:
+  - `name`
+  - `address`
+  - `businessPhone`
+  - `businessEmail`
 
 ### Fluxo de senha temporária
 
@@ -176,6 +184,7 @@ Base: `/api`
 ### User Profiles
 - `POST /user-profiles`
 - `GET /user-profiles/me`
+- `PATCH /user-profiles/me`
 - `POST /user-profiles/me/complete-password-reset`
 - `GET /offices/:officeId/user-profiles`
 - `GET /user-profiles/:id`
@@ -242,8 +251,27 @@ Base: `/api`
 - `Profit & Loss`
 - `Clients`
 - `Employees`
+- `Settings`
 - `Register`
 - `Login`
+
+### Settings
+
+A página `Settings` está separada em 2 áreas:
+
+- `My account`
+  - atualiza o próprio perfil do usuário logado
+  - hoje permite editar o campo `name`
+  - mostra `email`, `role`, `status` e `office` em modo leitura
+- `Office information`
+  - usa os dados do office atual
+  - leitura depende de `offices:read`
+  - edição depende de `offices:update`
+
+Regras atuais:
+- `PATCH /api/user-profiles/me` é usado para self-update
+- esse fluxo não altera `role`, `status`, `officeId` ou outros campos administrativos
+- `GET /api/offices/:id` e `PATCH /api/offices/:id` validam o escopo com o `officeId` do usuário autenticado
 
 ### Ledger
 
