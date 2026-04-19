@@ -5,17 +5,31 @@ import {
 } from "../repositories/office.repository.js"
 import { getOfficeDashboardSnapshot } from "../repositories/dashboard.repository.js"
 
+function normalizeOptionalText(value) {
+  if (value === undefined) return undefined
+  if (value === null) return ""
+  return String(value).trim()
+}
+
 export async function createOfficeService(input) {
   if (!input?.name) throw new Error("name is required")
 
   return createOffice({
     name: input.name.trim(),
+    address: normalizeOptionalText(input.address),
+    businessPhone: normalizeOptionalText(input.businessPhone),
+    businessEmail: normalizeOptionalText(input.businessEmail),
   })
 }
 
 export async function updateOfficeByIdService(id, patch) {
+  const actorOfficeId = String(patch?.actorOfficeId || "").trim()
+
   if (!id) throw new Error("id is required")
   if (!patch || typeof patch !== "object") throw new Error("patch is required")
+  if (actorOfficeId && actorOfficeId !== id) {
+    throw new Error("Forbidden for this office")
+  }
 
   const safePatch = {}
 
@@ -25,6 +39,18 @@ export async function updateOfficeByIdService(id, patch) {
     safePatch.name = name
   }
 
+  if (patch.address !== undefined) {
+    safePatch.address = normalizeOptionalText(patch.address)
+  }
+
+  if (patch.businessPhone !== undefined) {
+    safePatch.businessPhone = normalizeOptionalText(patch.businessPhone)
+  }
+
+  if (patch.businessEmail !== undefined) {
+    safePatch.businessEmail = normalizeOptionalText(patch.businessEmail)
+  }
+
   if (Object.keys(safePatch).length === 0) {
     throw new Error("no valid fields to update")
   }
@@ -32,8 +58,14 @@ export async function updateOfficeByIdService(id, patch) {
   return updateOfficeById(id, safePatch)
 }
 
-export async function getOfficeByIdService(id) {
+export async function getOfficeByIdService(id, options = {}) {
   if (!id) throw new Error("id is required")
+
+  const actorOfficeId = String(options?.actorOfficeId || "").trim()
+  if (actorOfficeId && actorOfficeId !== id) {
+    throw new Error("Forbidden for this office")
+  }
+
   return getOfficeById(id)
 }
 

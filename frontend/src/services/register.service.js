@@ -5,6 +5,9 @@ export async function registerWithOffice(input) {
   const email = input?.email?.trim().toLowerCase()
   const password = input?.password
   const officeName = input?.officeName?.trim()
+  const officeAddress = String(input?.officeAddress || "").trim()
+  const officePhone = String(input?.officePhone || "").trim()
+  const officeEmail = String(input?.officeEmail || "").trim()
 
   if (!name) throw new Error("name is required")
   if (!email) throw new Error("email is required")
@@ -18,7 +21,12 @@ export async function registerWithOffice(input) {
 
   const office = await api("/api/offices", {
     method: "POST",
-    body: JSON.stringify({ name: officeName }),
+    body: JSON.stringify({
+      name: officeName,
+      address: officeAddress,
+      businessPhone: officePhone,
+      businessEmail: officeEmail,
+    }),
   })
 
   const officeId = office?._id
@@ -36,4 +44,3 @@ export async function registerWithOffice(input) {
 
   return { office, profile }
 }
-

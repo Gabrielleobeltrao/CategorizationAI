@@ -9,6 +9,9 @@ export async function createOffice(input) {
     // adicionar informacoes do office
     const doc = {
         name: input.name,
+        address: input.address || "",
+        businessPhone: input.businessPhone || "",
+        businessEmail: input.businessEmail || "",
         createdAt: new Date(),
         updatedAt: new Date(),
     }
@@ -23,11 +26,18 @@ export async function updateOfficeById(id, patch) {
     const db = getDB()
 
     // informacoes que podem ser alteradas
-    const { name } = patch
+    const safePatch = {
+        updatedAt: new Date(),
+    }
+
+    if (patch.name !== undefined) safePatch.name = patch.name
+    if (patch.address !== undefined) safePatch.address = patch.address
+    if (patch.businessPhone !== undefined) safePatch.businessPhone = patch.businessPhone
+    if (patch.businessEmail !== undefined) safePatch.businessEmail = patch.businessEmail
 
     return db.collection("offices").findOneAndUpdate(
         { _id: new ObjectId(id) },
-        { $set: { name, updatedAt: new Date() } },
+        { $set: safePatch },
         { returnDocument: "after" }
     )
 }
