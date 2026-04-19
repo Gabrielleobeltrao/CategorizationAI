@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react"
 import { NavLink, matchPath, useLocation, useNavigate } from "react-router-dom"
 import { getClientById } from "../../services/clients.service"
-import { signOut } from "../../services/auth.service"
+import { getMyProfile, signOut } from "../../services/auth.service"
 import { useNotification } from "../../contexts/notification.context"
+import { hasPermission } from "../../utils/permissions"
 
 const navItems = [
   {
@@ -42,6 +43,17 @@ const navItems = [
   },
 ]
 
+const settingsNavItem = {
+  to: "/settings",
+  label: "Settings",
+  icon: (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3.2" />
+      <path d="M19.4 15a1 1 0 0 0 .2 1.1l.1.1a2 2 0 0 1 0 2.8l-.1.1a2 2 0 0 1-2.8 0l-.1-.1a1 1 0 0 0-1.1-.2 1 1 0 0 0-.6.9V20a2 2 0 0 1-2 2h-.2a2 2 0 0 1-2-2v-.2a1 1 0 0 0-.7-.9 1 1 0 0 0-1.1.2l-.1.1a2 2 0 0 1-2.8 0l-.1-.1a2 2 0 0 1 0-2.8l.1-.1a1 1 0 0 0 .2-1.1 1 1 0 0 0-.9-.6H4a2 2 0 0 1-2-2v-.2a2 2 0 0 1 2-2h.2a1 1 0 0 0 .9-.7 1 1 0 0 0-.2-1.1l-.1-.1a2 2 0 0 1 0-2.8l.1-.1a2 2 0 0 1 2.8 0l.1.1a1 1 0 0 0 1.1.2H9a1 1 0 0 0 .6-.9V4a2 2 0 0 1 2-2h.2a2 2 0 0 1 2 2v.2a1 1 0 0 0 .7.9 1 1 0 0 0 1.1-.2l.1-.1a2 2 0 0 1 2.8 0l.1.1a2 2 0 0 1 0 2.8l-.1.1a1 1 0 0 0-.2 1.1V9c0 .4.2.7.6.9h.2H20a2 2 0 0 1 2 2v.2a2 2 0 0 1-2 2h-.2a1 1 0 0 0-.9.6Z" />
+    </svg>
+  ),
+}
+
 function Sidebar({ isCollapsed, onToggleCollapse }) {
   const location = useLocation()
   const navigate = useNavigate()
@@ -49,6 +61,7 @@ function Sidebar({ isCollapsed, onToggleCollapse }) {
   const clientScopeMatch = matchPath("/clients/:clientId/*", location.pathname)
   const clientId = clientScopeMatch?.params?.clientId
   const [selectedClient, setSelectedClient] = useState(null)
+  const [currentProfile, setCurrentProfile] = useState(null)
 
   const clientMenuItems = clientId
     ? [
@@ -116,6 +129,8 @@ function Sidebar({ isCollapsed, onToggleCollapse }) {
       ]
     : []
 
+  const canReadSettings = hasPermission(currentProfile?.permissions || [], "offices:read")
+
   const handleLogout = async () => {
     try {
       await signOut()
@@ -149,6 +164,24 @@ function Sidebar({ isCollapsed, onToggleCollapse }) {
       active = false
     }
   }, [clientId])
+
+  useEffect(() => {
+    let active = true
+
+    getMyProfile()
+      .then((profile) => {
+        if (!active) return
+        setCurrentProfile(profile || null)
+      })
+      .catch(() => {
+        if (!active) return
+        setCurrentProfile(null)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
 
   return (
     <aside
@@ -251,6 +284,23 @@ function Sidebar({ isCollapsed, onToggleCollapse }) {
           </div>
         )}
       </div>
+
+      {canReadSettings && (
+        <NavLink
+          to={settingsNavItem.to}
+          className={({ isActive }) =>
+            `mt-4 flex items-center rounded-lg py-2 text-sm font-medium transition-colors ${
+              isCollapsed ? "justify-center px-2" : "gap-3 px-3"
+            } ${
+              isActive ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
+            }`
+          }
+          title={isCollapsed ? settingsNavItem.label : undefined}
+        >
+          <span>{settingsNavItem.icon}</span>
+          {!isCollapsed && <span>{settingsNavItem.label}</span>}
+        </NavLink>
+      )}
 
       <div className="mt-4 border-t border-gray-100 pt-3">
         <button

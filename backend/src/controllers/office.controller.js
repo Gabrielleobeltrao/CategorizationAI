@@ -19,7 +19,10 @@ export async function createOfficeController(req, res) {
 export async function updateOfficeByIdController(req, res) {
     try {
         const { id } = req.params
-        const updatedOffice = await updateOfficeByIdService(id, req.body)
+        const updatedOffice = await updateOfficeByIdService(id, {
+            ...req.body,
+            actorOfficeId: req.userProfile?.officeId,
+        })
         return res.status(200).json(updatedOffice)
     } catch (error) {
         return res.status(400).json({
@@ -31,7 +34,9 @@ export async function updateOfficeByIdController(req, res) {
 export async function getOfficeByIdController(req, res) {
     try{
         const { id } = req.params
-        const office = await getOfficeByIdService(id)
+        const office = await getOfficeByIdService(id, {
+            actorOfficeId: req.userProfile?.officeId,
+        })
 
         if (!office) {
             return res.status(404).json({

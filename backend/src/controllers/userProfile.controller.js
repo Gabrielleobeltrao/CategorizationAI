@@ -1,6 +1,7 @@
 import {
   createUserProfileService,
   updateUserProfileByIdService,
+  updateCurrentUserProfileService,
   getUserProfileByIdService,
   listUserProfilesByOfficeIdService,
   getCurrentUserProfileService,
@@ -76,6 +77,17 @@ export async function getMyUserProfileController(req, res) {
       })
     }
 
+    return res.status(200).json(profile)
+  } catch (error) {
+    return res.status(400).json({
+      message: error.message,
+    })
+  }
+}
+
+export async function updateMyUserProfileController(req, res) {
+  try {
+    const profile = await updateCurrentUserProfileService(req.user?.email, req.body)
     return res.status(200).json(profile)
   } catch (error) {
     return res.status(400).json({

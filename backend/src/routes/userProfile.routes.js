@@ -5,6 +5,7 @@ import {
   getUserProfileByIdController,
   listUserProfilesByOfficeIdController,
   getMyUserProfileController,
+  updateMyUserProfileController,
   deleteUserProfileByIdController,
   resetEmployeePasswordByIdController,
   completeMyPasswordResetController,
@@ -33,6 +34,12 @@ router.get(
   requireAuth,
   requirePermission("userProfiles:read"),
   getMyUserProfileController
+)
+
+router.patch(
+  "/user-profiles/me",
+  requireAuth,
+  updateMyUserProfileController
 )
 
 router.post(

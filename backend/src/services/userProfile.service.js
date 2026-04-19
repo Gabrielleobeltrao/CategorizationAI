@@ -8,8 +8,21 @@ import {
   getAuthUserByEmail,
   setCredentialPasswordByAuthUserId,
 } from "../repositories/userProfile.repository.js"
-import { roleExistsForOfficeService } from "./roles.service.js"
+import { getPermissionsForRoleService, roleExistsForOfficeService } from "./roles.service.js"
 import { hashPassword } from "better-auth/crypto"
+
+async function attachPermissions(profile) {
+  if (!profile) return null
+
+  const role = String(profile.role || "").toLowerCase()
+  const officeId = String(profile.officeId || "").trim()
+  const permissions = await getPermissionsForRoleService(role, officeId)
+
+  return {
+    ...profile,
+    permissions,
+  }
+}
 
 function generateTemporaryPassword(length = 12) {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$"
@@ -111,6 +124,31 @@ export async function updateUserProfileByIdService(id, patch) {
   return updateUserProfileById(id, safePatch)
 }
 
+export async function updateCurrentUserProfileService(email, patch) {
+  const safeEmail = String(email || "").trim().toLowerCase()
+
+  if (!safeEmail) throw new Error("email is required")
+  if (!patch || typeof patch !== "object") throw new Error("patch is required")
+
+  const currentProfile = await getUserProfileByEmail(safeEmail)
+  if (!currentProfile?._id) throw new Error("User profile not found")
+
+  const safePatch = {}
+
+  if (typeof patch.name === "string") {
+    const name = patch.name.trim()
+    if (!name) throw new Error("name cannot be empty")
+    safePatch.name = name
+  }
+
+  if (Object.keys(safePatch).length === 0) {
+    throw new Error("no valid fields to update")
+  }
+
+  const updatedProfile = await updateUserProfileById(String(currentProfile._id), safePatch)
+  return attachPermissions(updatedProfile)
+}
+
 export async function getUserProfileByIdService(id) {
   if (!id) throw new Error("id is required")
   return getUserProfileById(id)
@@ -123,7 +161,8 @@ export async function listUserProfilesByOfficeIdService(officeId) {
 
 export async function getCurrentUserProfileService(email) {
   if (!email) throw new Error("email is required")
-  return getUserProfileByEmail(email)
+  const profile = await getUserProfileByEmail(email)
+  return attachPermissions(profile)
 }
 
 export async function deleteUserProfileByIdService(id, actorEmail) {

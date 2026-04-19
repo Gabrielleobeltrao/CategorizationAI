@@ -8,6 +8,7 @@ import LedgerPage from './pages/LedgerPage.jsx'
 import ClientsPage from './pages/ClientsPage.jsx'
 import EmployeesPage from './pages/EmployeesPage.jsx'
 import ProfitLossPage from './pages/ProfitLossPage.jsx'
+import SettingsPage from './pages/SettingsPage.jsx'
 import UpdatePassword from './pages/UpdatePassword.jsx'
 import AppShell from './components/layout/AppShell.jsx'
 import { NotificationProvider } from './contexts/notification.context.jsx'
@@ -56,6 +57,7 @@ function App() {
             <Route path="/home" element={<Home />} />
             <Route path="/clients" element={<ClientsPage />} />
             <Route path="/employees" element={<EmployeesPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
             <Route path="/ledger" element={<LedgerPage />} />
             <Route path="/ledger/accounts" element={<LedgerPage />} />
             <Route path="/ledger/categories" element={<LedgerPage />} />

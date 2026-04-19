@@ -28,6 +28,13 @@ export function getMyProfile() {
   return api("/api/user-profiles/me")
 }
 
+export function updateMyProfile(patch) {
+  return api("/api/user-profiles/me", {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  })
+}
+
 export function completeMyPasswordReset(newPassword) {
   return api("/api/user-profiles/me/complete-password-reset", {
     method: "POST",
