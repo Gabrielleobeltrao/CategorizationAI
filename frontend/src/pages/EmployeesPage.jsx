@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react"
 import PopupModal from "../components/ui/PopupModal"
 import ConfirmModal from "../components/ui/ConfirmModal"
+import { useAuth } from "../contexts/auth.context"
 import {
     createCustomRole,
     createEmployeeAccount,
     deleteCustomRoleById,
     deleteEmployeeById,
-    getMyUserProfile,
     listAvailableRoles,
     listRolePermissions,
     listEmployeesByOfficeId,
@@ -94,8 +94,7 @@ function getEmployeeStatusStyles(status) {
 }
 
 function EmployeesPage() {
-    const [officeId, setOfficeId] = useState("")
-    const [currentUserProfile, setCurrentUserProfile] = useState(null)
+    const { profile: currentUserProfile } = useAuth()
 
     const [showEmployeeForm, setShowEmployeeForm] = useState(false)
     const [newEmployeeName, setNewEmployeeName] = useState("")
@@ -118,7 +117,6 @@ function EmployeesPage() {
     const [employees, setEmployees] = useState([])
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [isLoadingEmployees, setIsLoadingEmployees] = useState(false)
-    const [isLoadingProfile, setIsLoadingProfile] = useState(true)
     const [roles, setRoles] = useState([])
     const [permissionCatalog, setPermissionCatalog] = useState(fallbackPermissionCatalog)
     const [isLoadingRoles, setIsLoadingRoles] = useState(false)
@@ -134,6 +132,7 @@ function EmployeesPage() {
     const [rolesRefreshKey, setRolesRefreshKey] = useState(0)
     const displayedRoles = roles.length > 0 ? roles : fallbackRoles
     const { success, error } = useNotification()
+    const officeId = String(currentUserProfile?.officeId || "").trim()
     const roleLabelByKey = useMemo(
         () =>
             displayedRoles.reduce((acc, item) => {
@@ -179,32 +178,6 @@ function EmployeesPage() {
                 String(a.name || "").toLowerCase().localeCompare(String(b.name || "").toLowerCase())
             )
     }, [employees, searchTerm, roleFilter])
-
-    useEffect(() => {
-        let active = true
-        setIsLoadingProfile(true)
-
-        getMyUserProfile()
-            .then((profile) => {
-                if (!active) return
-                setOfficeId(profile?.officeId || "")
-                setCurrentUserProfile(profile || null)
-            })
-            .catch((err) => {
-                if (!active) return
-                error(err.message || "Failed to load current profile")
-                setOfficeId("")
-                setCurrentUserProfile(null)
-            })
-            .finally(() => {
-                if (!active) return
-                setIsLoadingProfile(false)
-            })
-
-        return () => {
-            active = false
-        }
-    }, [error])
 
     useEffect(() => {
         let active = true
@@ -1004,7 +977,7 @@ function EmployeesPage() {
                             <button
                                 className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-black disabled:opacity-60"
                                 type="submit"
-                                disabled={isSubmitting || isLoadingProfile || !officeId}
+                                disabled={isSubmitting || !officeId}
                             >
                                 {isSubmitting ? "Saving..." : "Save Role"}
                             </button>
@@ -1096,7 +1069,7 @@ function EmployeesPage() {
                             <button
                                 className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-black disabled:opacity-60"
                                 type="submit"
-                                disabled={isSubmitting || isLoadingProfile || !officeId}
+                                disabled={isSubmitting || !officeId}
                             >
                                 {isSubmitting ? "Saving..." : "Save Employee"}
                             </button>

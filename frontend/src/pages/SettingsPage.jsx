@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
-import { getMyProfile, updateMyProfile } from "../services/auth.service"
+import { updateMyProfile } from "../services/auth.service"
+import { useAuth } from "../contexts/auth.context"
 import { getOfficeById, updateOfficeById } from "../services/office.service"
 import { hasPermission } from "../utils/permissions"
 import { useNotification } from "../contexts/notification.context"
@@ -50,7 +51,7 @@ function formatStatus(value) {
 }
 
 function SettingsPage() {
-  const [profile, setProfile] = useState(null)
+  const { profile, updateProfile } = useAuth()
   const [office, setOffice] = useState(null)
   const [accountForm, setAccountForm] = useState({
     name: "",
@@ -84,15 +85,10 @@ function SettingsPage() {
     async function loadPage() {
       try {
         setIsLoading(true)
+        const officeId = String(profile?.officeId || "").trim()
+        const currentPermissions = profile?.permissions || []
 
-        const currentProfile = await getMyProfile()
-        if (!active) return
-
-        setProfile(currentProfile || null)
-        setAccountForm(normalizeAccountForm(currentProfile))
-
-        const officeId = String(currentProfile?.officeId || "").trim()
-        const currentPermissions = currentProfile?.permissions || []
+        setAccountForm(normalizeAccountForm(profile))
 
         if (!officeId || !hasPermission(currentPermissions, "offices:read")) {
           setOffice(null)
@@ -114,12 +110,19 @@ function SettingsPage() {
       }
     }
 
+    if (!profile) {
+      setIsLoading(false)
+      return () => {
+        active = false
+      }
+    }
+
     loadPage()
 
     return () => {
       active = false
     }
-  }, [error])
+  }, [error, profile])
 
   const handleChange = (field, value) => {
     setForm((current) => ({
@@ -150,7 +153,7 @@ function SettingsPage() {
         name: accountForm.name.trim(),
       })
 
-      setProfile(updatedProfile || null)
+      updateProfile(updatedProfile || null)
       setAccountForm(normalizeAccountForm(updatedProfile))
       success("Account updated")
     } catch (err) {

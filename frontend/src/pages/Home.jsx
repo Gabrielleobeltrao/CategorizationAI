@@ -12,8 +12,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts"
+import { useAuth } from "../contexts/auth.context"
 import { useNotification } from "../contexts/notification.context"
-import { getMyUserProfile } from "../services/employees.service"
 import { getOfficeHomeDashboard } from "../services/home.service"
 import {
   getRecentOpenedClients,
@@ -186,6 +186,7 @@ function OverviewChart({ data = [], chartType = "line", isWeek = false }) {
 function Home() {
   const navigate = useNavigate()
   const { error } = useNotification()
+  const { profile } = useAuth()
   const [recentClients, setRecentClients] = useState(() => getRecentOpenedClients())
   const [employee, setEmployee] = useState({
     id: "",
@@ -282,37 +283,19 @@ function Home() {
   }, [overviewPeriod])
 
   useEffect(() => {
-    let active = true
-    setIsLoadingDashboard(true)
+    const safeOfficeId = String(profile?.officeId || "").trim()
+    setEmployee({
+      id: String(profile?._id || ""),
+      name: String(profile?.name || "User"),
+      officeId: safeOfficeId,
+      role: String(profile?.role || ""),
+    })
 
-    getMyUserProfile()
-      .then((profile) => {
-        if (!active) return
-
-        const safeOfficeId = String(profile?.officeId || "").trim()
-        setEmployee({
-          id: String(profile?._id || ""),
-          name: String(profile?.name || "User"),
-          officeId: safeOfficeId,
-          role: String(profile?.role || ""),
-        })
-
-        if (!safeOfficeId) {
-          setDashboard(EMPTY_DASHBOARD)
-          setIsLoadingDashboard(false)
-        }
-      })
-      .catch((err) => {
-        if (!active) return
-        setDashboard(EMPTY_DASHBOARD)
-        error(err.message || "Failed to load home dashboard")
-        setIsLoadingDashboard(false)
-      })
-
-    return () => {
-      active = false
+    if (!profile) {
+      setDashboard(EMPTY_DASHBOARD)
+      setIsLoadingDashboard(false)
     }
-  }, [error])
+  }, [profile])
 
   useEffect(() => {
     const safeOfficeId = String(employee.officeId || "").trim()

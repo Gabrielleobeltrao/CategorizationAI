@@ -2,8 +2,8 @@ import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import PopupModal from "../components/ui/PopupModal"
 import ConfirmModal from "../components/ui/ConfirmModal"
+import { useAuth } from "../contexts/auth.context"
 import { useNotification } from "../contexts/notification.context"
-import { getMyUserProfile } from "../services/employees.service"
 import { trackClientOpened } from "../utils/recentClients"
 import {
     createClient,
@@ -127,7 +127,7 @@ function ClientsPage() {
 
     const navigate = useNavigate()
     const { success, error } = useNotification()
-    const [officeId, setOfficeId] = useState("")
+    const { profile } = useAuth()
     const [clients, setClients] = useState([])
     const [isLoading, setIsLoading] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
@@ -152,24 +152,7 @@ function ClientsPage() {
     const [clientToDelete, setClientToDelete] = useState(null)
     const [expandedClientIds, setExpandedClientIds] = useState([])
 
-    useEffect(() => {
-        let active = true
-
-        getMyUserProfile()
-            .then((profile) => {
-                if (!active) return
-                setOfficeId(profile?.officeId || "")
-            })
-            .catch((err) => {
-                if (!active) return
-                error(err.message || "Failed to load current profile")
-                setOfficeId("")
-            })
-
-        return () => {
-            active = false
-        }
-    }, [error])
+    const officeId = String(profile?.officeId || "").trim()
 
     useEffect(() => {
         const timeoutId = setTimeout(() => {

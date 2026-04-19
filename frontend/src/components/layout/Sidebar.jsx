@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react"
 import { NavLink, matchPath, useLocation, useNavigate } from "react-router-dom"
 import { getClientById } from "../../services/clients.service"
-import { getMyProfile, signOut } from "../../services/auth.service"
+import { signOut } from "../../services/auth.service"
+import { useAuth } from "../../contexts/auth.context"
 import { useNotification } from "../../contexts/notification.context"
 import { hasPermission } from "../../utils/permissions"
 
@@ -58,10 +59,10 @@ function Sidebar({ isCollapsed, onToggleCollapse }) {
   const location = useLocation()
   const navigate = useNavigate()
   const { success, error } = useNotification()
+  const { profile: currentProfile, clearAuth } = useAuth()
   const clientScopeMatch = matchPath("/clients/:clientId/*", location.pathname)
   const clientId = clientScopeMatch?.params?.clientId
   const [selectedClient, setSelectedClient] = useState(null)
-  const [currentProfile, setCurrentProfile] = useState(null)
 
   const clientMenuItems = clientId
     ? [
@@ -134,6 +135,7 @@ function Sidebar({ isCollapsed, onToggleCollapse }) {
   const handleLogout = async () => {
     try {
       await signOut()
+      clearAuth()
       success("Logged out successfully")
       navigate("/login", { replace: true })
     } catch (err) {
@@ -164,24 +166,6 @@ function Sidebar({ isCollapsed, onToggleCollapse }) {
       active = false
     }
   }, [clientId])
-
-  useEffect(() => {
-    let active = true
-
-    getMyProfile()
-      .then((profile) => {
-        if (!active) return
-        setCurrentProfile(profile || null)
-      })
-      .catch(() => {
-        if (!active) return
-        setCurrentProfile(null)
-      })
-
-    return () => {
-      active = false
-    }
-  }, [])
 
   return (
     <aside
