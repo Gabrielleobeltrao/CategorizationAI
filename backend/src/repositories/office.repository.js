@@ -52,3 +52,14 @@ export async function getOfficeById(id) {
     const db = getDB()
     return db.collection("offices").findOne({_id: new ObjectId(id)})
 }
+
+export async function listAllOfficeIds() {
+    const db = getDB()
+    const offices = await db.collection("offices")
+        .find({}, { projection: { _id: 1 } })
+        .toArray()
+
+    return offices
+        .map((office) => String(office?._id || "").trim())
+        .filter(Boolean)
+}

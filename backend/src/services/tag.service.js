@@ -11,7 +11,6 @@ import {
 } from "../repositories/tag.repository.js"
 import { getTagSlug, normalizeTags } from "../utils/tags.js"
 import { syncOfficeClientsByTagsService } from "./categorySync.service.js"
-import { ensureOfficeTagCatalogFromLegacyService } from "./tagCatalog.service.js"
 
 export async function listOfficeTagsService(officeId, context = {}) {
   const safeOfficeId = String(officeId || "").trim()
@@ -21,8 +20,6 @@ export async function listOfficeTagsService(officeId, context = {}) {
   if (actorOfficeId && actorOfficeId !== safeOfficeId) {
     throw new Error("Forbidden for this office")
   }
-
-  await ensureOfficeTagCatalogFromLegacyService(safeOfficeId, context)
 
   const officeTags = await listOfficeTagsByOfficeId(safeOfficeId)
   return (Array.isArray(officeTags) ? officeTags : [])
@@ -41,8 +38,6 @@ export async function deleteOfficeTagService(officeId, tag, context = {}) {
   if (actorOfficeId && actorOfficeId !== safeOfficeId) {
     throw new Error("Forbidden for this office")
   }
-
-  await ensureOfficeTagCatalogFromLegacyService(safeOfficeId, context)
 
   const existingTag = (
     await findOfficeTagsByOfficeIdAndSlugs(safeOfficeId, [targetSlug])

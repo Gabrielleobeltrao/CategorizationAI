@@ -106,6 +106,24 @@ npm run dev
 
 API em `http://localhost:3001`
 
+### Backfill do catálogo de tags
+
+Depois da migração para `office_tags`, o catálogo não é mais reconstruído automaticamente durante `GET /offices/:id/tags`.
+
+Se existir dado legado salvo só em `clients.tags`, `categories.tags` ou `category_templates.tags`, rode:
+
+```bash
+cd backend
+npm run backfill:office-tags
+```
+
+Para um único office:
+
+```bash
+cd backend
+node scripts/backfillOfficeTags.js --officeId=<office_id>
+```
+
 ### Frontend
 
 ```bash
