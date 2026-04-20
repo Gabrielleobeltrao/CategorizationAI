@@ -1,5 +1,5 @@
 import { api } from "../lib/api"
-import { getOpenTestConfig, validateOpenTestAccessCode } from "./openTest.service"
+import { validateOpenTestAccessCode } from "./openTest.service"
 
 export async function registerWithOffice(input) {
   const name = input?.name?.trim()
@@ -10,9 +10,8 @@ export async function registerWithOffice(input) {
   const officePhone = String(input?.officePhone || "").trim()
   const officeEmail = String(input?.officeEmail || "").trim()
   const openTestAccessCode = String(input?.openTestAccessCode || "").trim()
-  const config = await getOpenTestConfig().catch(() => null)
   const requiresOpenTestAccessCode = Boolean(
-    config?.registrationRequiresAccessCode ?? input?.requiresOpenTestAccessCode
+    input?.openTestConfig?.registrationRequiresAccessCode ?? input?.requiresOpenTestAccessCode
   )
 
   if (!name) throw new Error("name is required")

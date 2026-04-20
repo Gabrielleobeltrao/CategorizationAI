@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import PopupModal from "../components/ui/PopupModal"
 import { registerWithOffice } from "../services/register.service"
-import { getOpenTestConfig } from "../services/openTest.service"
+import { useOpenTest } from "../contexts/openTest.context"
 import { useNotification } from "../contexts/notification.context"
 
 function Register() {
@@ -17,28 +17,10 @@ function Register() {
     const [officePhone, setOfficePhone] = useState("")
     const [officeEmail, setOfficeEmail] = useState("")
     const [openTestAccessCode, setOpenTestAccessCode] = useState("")
-    const [openTestConfig, setOpenTestConfig] = useState(null)
     const [isOpenTestModalOpen, setIsOpenTestModalOpen] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
     const { success, error } = useNotification()
-
-    useEffect(() => {
-        let active = true
-
-        getOpenTestConfig()
-            .then((config) => {
-                if (!active) return
-                setOpenTestConfig(config || null)
-            })
-            .catch(() => {
-                if (!active) return
-                setOpenTestConfig(null)
-            })
-
-        return () => {
-            active = false
-        }
-    }, [])
+    const { config: openTestConfig } = useOpenTest()
 
     const isOpenTestEnabled = Boolean(openTestConfig?.enabled)
 
@@ -55,6 +37,7 @@ function Register() {
                 officeEmail,
                 openTestAccessCode,
                 requiresOpenTestAccessCode: isOpenTestEnabled,
+                openTestConfig,
             })
             success("Account created successfully")
             navigate("/home")

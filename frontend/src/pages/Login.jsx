@@ -1,37 +1,16 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { signIn } from "../services/auth.service"
 import { useAuth } from "../contexts/auth.context"
-import { getOpenTestConfig } from "../services/openTest.service"
 import { useNotification } from "../contexts/notification.context"
 
 function Login() {
 
     const [ email, setEmail] = useState("")
     const [ password, setPassword] = useState("")
-    const [openTestConfig, setOpenTestConfig] = useState(null)
-
     const navigate = useNavigate()
     const { success, error } = useNotification()
     const { refreshAuth } = useAuth()
-
-    useEffect(() => {
-        let active = true
-
-        getOpenTestConfig()
-            .then((config) => {
-                if (!active) return
-                setOpenTestConfig(config || null)
-            })
-            .catch(() => {
-                if (!active) return
-                setOpenTestConfig(null)
-            })
-
-        return () => {
-            active = false
-        }
-    }, [])
 
     const handleSubmit = async (e) => {
         e.preventDefault()

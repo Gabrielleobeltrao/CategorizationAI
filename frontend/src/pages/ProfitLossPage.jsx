@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { getClientById } from "../services/clients.service"
-import { getOpenTestConfig } from "../services/openTest.service"
+import { useOpenTest } from "../contexts/openTest.context"
 import {
   getProfitLossByClientId,
   getProfitLossPeriodOptionsByClientId,
@@ -44,9 +44,9 @@ function ProfitLossPage() {
   const [year, setYear] = useState("")
   const [periodOptions, setPeriodOptions] = useState({ months: [], years: [] })
   const [client, setClient] = useState(null)
-  const [openTestConfig, setOpenTestConfig] = useState(null)
   const [profitLoss, setProfitLoss] = useState(null)
   const [isLoadingProfitLoss, setIsLoadingProfitLoss] = useState(false)
+  const { config: openTestConfig } = useOpenTest()
 
   const monthOptions = useMemo(
     () =>
@@ -60,24 +60,6 @@ function ProfitLossPage() {
     () => (Array.isArray(periodOptions.years) ? periodOptions.years : []),
     [periodOptions.years]
   )
-
-  useEffect(() => {
-    let active = true
-
-    getOpenTestConfig()
-      .then((config) => {
-        if (!active) return
-        setOpenTestConfig(config || null)
-      })
-      .catch(() => {
-        if (!active) return
-        setOpenTestConfig(null)
-      })
-
-    return () => {
-      active = false
-    }
-  }, [])
 
   useEffect(() => {
     let active = true

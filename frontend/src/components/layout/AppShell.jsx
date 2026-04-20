@@ -4,37 +4,22 @@ import Header from "./Header"
 import Footer from "./Footer"
 import Sidebar from "./Sidebar"
 import PopupModal from "../ui/PopupModal"
-import { getOpenTestConfig } from "../../services/openTest.service"
+import { useOpenTest } from "../../contexts/openTest.context"
 
 const PRIVATE_BETA_REVIEW_EVENT = "app:private-beta-review-required"
 
 function AppShell() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true)
-  const [openTestConfig, setOpenTestConfig] = useState(null)
   const [isOpenTestModalOpen, setIsOpenTestModalOpen] = useState(false)
   const [isOpenTestBannerVisible, setIsOpenTestBannerVisible] = useState(true)
   const contentScrollRef = useRef(null)
+  const { config: openTestConfig } = useOpenTest()
 
   useEffect(() => {
-    let active = true
-
-    getOpenTestConfig()
-      .then((config) => {
-        if (!active) return
-        setOpenTestConfig(config || null)
-        if (config?.enabled) {
-          setIsOpenTestModalOpen(true)
-        }
-      })
-      .catch(() => {
-        if (!active) return
-        setOpenTestConfig(null)
-      })
-
-    return () => {
-      active = false
+    if (openTestConfig?.enabled) {
+      setIsOpenTestModalOpen(true)
     }
-  }, [])
+  }, [openTestConfig?.enabled])
 
   useEffect(() => {
     const handlePrivateBetaReview = () => {
