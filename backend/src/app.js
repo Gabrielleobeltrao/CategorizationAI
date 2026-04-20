@@ -10,12 +10,26 @@ app.use(cors({
   credentials: true,
 }))
 
-app.use(express.json())
-
-app.all("/api/auth/*splat", (req, res) => {
-  return toNodeHandler(req.app.locals.auth)(req, res)
+app.all("/api/auth/*splat", async (req, res, next) => {
+  try {
+    return await toNodeHandler(req.app.locals.auth)(req, res)
+  } catch (error) {
+    return next(error)
+  }
 })
 
+app.use(express.json())
+
 app.use("/api", routes)
+
+app.use((error, req, res, next) => {
+  console.error(error)
+  if (res.headersSent) {
+    return next(error)
+  }
+  return res.status(500).json({
+    message: error?.message || "Internal Server Error",
+  })
+})
 
 export default app

@@ -1,4 +1,5 @@
 import "dotenv/config"
+import { webcrypto } from "node:crypto"
 import { connectDB, getDB } from "./db.js"
 import app from "./app.js"
 import { createAuth } from "./lib/auth.js"
@@ -9,9 +10,15 @@ import { ensureUserProfileIndexes } from "./repositories/userProfile.repository.
 import { ensureClientsIndexes } from "./repositories/clients.repository.js"
 import { ensureAccountIndexes } from "./repositories/account.repository.js"
 import { ensureCategoryIndexes } from "./repositories/category.repository.js"
+import { ensureCategoryTemplateIndexes } from "./repositories/categoryTemplate.repository.js"
+import { ensureOfficeTagIndexes } from "./repositories/tag.repository.js"
 import { startCategorizationWorker } from "./workers/categorization.worker.js"
 
 const PORT = process.env.PORT || 3001
+
+if (!globalThis.crypto) {
+  globalThis.crypto = webcrypto
+}
 
 await connectDB()
 
@@ -22,6 +29,8 @@ await ensureUserProfileIndexes()
 await ensureClientsIndexes()
 await ensureAccountIndexes()
 await ensureCategoryIndexes()
+await ensureCategoryTemplateIndexes()
+await ensureOfficeTagIndexes()
 
 app.locals.auth = createAuth(getDB())
 await startCategorizationWorker()

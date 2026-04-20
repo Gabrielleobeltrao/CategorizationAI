@@ -11,7 +11,7 @@ export async function ensureUserProfileIndexes() {
             { email: 1 },
             {
                 unique: true,
-                partialFilterExpression: { email: { $type: "string" } },
+                sparse: true,
             }
         ),
         collection.createIndex({ officeId: 1, createdAt: -1 }),
@@ -20,7 +20,7 @@ export async function ensureUserProfileIndexes() {
             { email: 1 },
             {
                 unique: true,
-                partialFilterExpression: { email: { $type: "string" } },
+                sparse: true,
             }
         ),
     ])
