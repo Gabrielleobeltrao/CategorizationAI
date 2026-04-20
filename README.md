@@ -134,9 +134,9 @@ App em `http://localhost:5173`
   - `businessPhone`
   - `businessEmail`
 
-### Fluxo de open test
+### Fluxo de private beta
 
-Enquanto o open test estiver ativo:
+Enquanto a private beta estiver ativa:
 - o registro público fica limitado a escritórios convidados
 - o usuário precisa informar um `access code` no `Register`
 - o frontend valida o código antes de finalizar o cadastro
@@ -146,7 +146,7 @@ Enquanto o open test estiver ativo:
   - `openTestAccessCodeLabel`
   - `openTestCreatedAt`
 
-Endpoints públicos do open test:
+Endpoints públicos da private beta:
 - `GET /api/open-test/config`
 - `POST /api/open-test/validate-access-code`
 
@@ -157,7 +157,7 @@ Comportamento no frontend:
   - banner dismissable no topo
   - modal informativo ao entrar no app
 
-Exemplo exato de `backend/.env` para open test:
+Exemplo exato de `backend/.env` para private beta:
 
 ```env
 OPEN_TEST_ENABLED=true
@@ -226,7 +226,7 @@ Base: `/api`
 - `PATCH /offices/:id`
 - `GET /offices/:id/dashboard`
 
-### Open Test
+### Private Beta
 - `GET /open-test/config`
 - `POST /open-test/validate-access-code`
 

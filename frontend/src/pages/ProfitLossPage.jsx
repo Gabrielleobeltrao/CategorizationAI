@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { getClientById } from "../services/clients.service"
+import { getOpenTestConfig } from "../services/openTest.service"
 import {
   getProfitLossByClientId,
   getProfitLossPeriodOptionsByClientId,
@@ -43,6 +44,7 @@ function ProfitLossPage() {
   const [year, setYear] = useState("")
   const [periodOptions, setPeriodOptions] = useState({ months: [], years: [] })
   const [client, setClient] = useState(null)
+  const [openTestConfig, setOpenTestConfig] = useState(null)
   const [profitLoss, setProfitLoss] = useState(null)
   const [isLoadingProfitLoss, setIsLoadingProfitLoss] = useState(false)
 
@@ -58,6 +60,24 @@ function ProfitLossPage() {
     () => (Array.isArray(periodOptions.years) ? periodOptions.years : []),
     [periodOptions.years]
   )
+
+  useEffect(() => {
+    let active = true
+
+    getOpenTestConfig()
+      .then((config) => {
+        if (!active) return
+        setOpenTestConfig(config || null)
+      })
+      .catch(() => {
+        if (!active) return
+        setOpenTestConfig(null)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -436,6 +456,15 @@ function ProfitLossPage() {
             </div>
           </div>
         </header>
+
+        {openTestConfig?.enabled && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <p className="font-semibold">Private beta notice</p>
+            <p className="mt-1">
+              Profit & loss totals can still change while AI categorization is being validated in private beta. Review uncategorized lines, recent AI results and final totals before using this statement in real work.
+            </p>
+          </div>
+        )}
 
         {!profitLoss && !isLoadingProfitLoss && (
           <div className="rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-600">

@@ -6,6 +6,8 @@ import Sidebar from "./Sidebar"
 import PopupModal from "../ui/PopupModal"
 import { getOpenTestConfig } from "../../services/openTest.service"
 
+const PRIVATE_BETA_REVIEW_EVENT = "app:private-beta-review-required"
+
 function AppShell() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true)
   const [openTestConfig, setOpenTestConfig] = useState(null)
@@ -34,6 +36,18 @@ function AppShell() {
     }
   }, [])
 
+  useEffect(() => {
+    const handlePrivateBetaReview = () => {
+      setIsOpenTestModalOpen(true)
+    }
+
+    window.addEventListener(PRIVATE_BETA_REVIEW_EVENT, handlePrivateBetaReview)
+
+    return () => {
+      window.removeEventListener(PRIVATE_BETA_REVIEW_EVENT, handlePrivateBetaReview)
+    }
+  }, [])
+
   return (
     <div className="h-dvh overflow-hidden bg-white">
       <div className="flex h-full flex-col">
@@ -43,9 +57,9 @@ function AppShell() {
             <div className="border-b border-amber-200 bg-amber-50 px-6 py-3 text-sm text-amber-950">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="font-semibold">Open test environment</p>
+                  <p className="font-semibold">Private beta</p>
                   <p className="mt-1">
-                    {openTestConfig?.notices?.banner || "Review every AI categorization carefully during the test period."}
+                    {openTestConfig?.notices?.banner || "AI categorization and generated financial outputs are still being validated, so every result must be reviewed before real use."}
                   </p>
                 </div>
                 <button
@@ -91,15 +105,15 @@ function AppShell() {
         <PopupModal
           isOpen={isOpenTestModalOpen}
           onClose={() => setIsOpenTestModalOpen(false)}
-          title={openTestConfig?.notices?.modalTitle || "Open test environment"}
+          title={openTestConfig?.notices?.modalTitle || "Private beta"}
           maxWidthClass="max-w-lg"
         >
           <div className="space-y-4">
             <p className="text-sm leading-6 text-gray-700">
-              {openTestConfig?.notices?.modalMessage || "AI categorization is still being tested. Review all generated results carefully."}
+              {openTestConfig?.notices?.modalMessage || "AI categorization, transaction grouping and profit & loss outputs can still contain mistakes, so review every result carefully before relying on it in real work."}
             </p>
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              Confirm categories, splits, uncategorized transactions and profit & loss totals before using them in real work.
+              Review categories, splits, uncategorized transactions and profit & loss totals before using them in real work.
             </div>
             <div className="flex justify-end">
               <button

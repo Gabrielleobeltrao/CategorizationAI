@@ -13,6 +13,7 @@ const CategorizationJobsContext = createContext(null)
 
 const TERMINAL_STATUSES = new Set(["done", "failed"])
 const DISMISSED_JOBS_STORAGE_KEY = "categorization_jobs_dismissed_ids"
+const PRIVATE_BETA_REVIEW_EVENT = "app:private-beta-review-required"
 
 function getJobId(job = {}) {
   return String(job?._id || job?.id || job?.jobId || "")
@@ -229,6 +230,17 @@ export function CategorizationJobsProvider({ children }) {
       if (status === "done") {
         const totalProcessedCount = Number(job?.result?.totalProcessedCount || job?.processed || 0)
         success(`AI categorization completed: ${totalProcessedCount} transactions processed.`)
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent(PRIVATE_BETA_REVIEW_EVENT, {
+              detail: {
+                source: "llm-categorization",
+                jobId: id,
+                clientId: String(job?.clientId || "").trim(),
+              },
+            })
+          )
+        }
         emitDashboardRefresh("categorization-job-done")
         notifiedIdsRef.current.add(id)
       } else if (status === "failed") {
