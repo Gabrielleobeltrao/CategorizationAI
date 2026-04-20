@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react"
 
 const TAG_RULES = [
-  "Tags connect clients and global categories.",
-  "Matching tags can add categories to a client automatically.",
-  "Removing a tag can stop that automatic connection.",
+  "Tags help organize clients and categories inside the office.",
+  "Use the same tags to group similar records more consistently.",
+  "Removing a tag updates future matching behavior.",
   "Categories already used in transactions stay available.",
   "Deleting a tag removes it across the office.",
 ]

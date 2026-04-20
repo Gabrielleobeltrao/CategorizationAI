@@ -764,7 +764,7 @@ function ClientsPage() {
                                 value={newClientTags}
                                 onChange={setNewClientTags}
                                 options={officeTags}
-                                placeholder="Add tags used to match global categories"
+                                placeholder="Add tags for this client"
                                 onDeleteOption={deleteTag}
                                 deletingOption={deletingTag}
                             />
@@ -904,7 +904,7 @@ function ClientsPage() {
                                 value={editingClientDraft.tags}
                                 onChange={(nextTags) => handleChangeEditingDraft({ tags: nextTags })}
                                 options={officeTags}
-                                placeholder="Add tags used to match global categories"
+                                placeholder="Add tags for this client"
                                 onDeleteOption={deleteTag}
                                 deletingOption={deletingTag}
                             />
