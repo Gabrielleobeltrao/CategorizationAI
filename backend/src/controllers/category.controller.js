@@ -51,8 +51,7 @@ export async function listCategoriesByClientIdController(req, res) {
 
 export async function getCategoryByIdController(req, res) {
   try {
-    const { id } = req.params
-    const category = await getCategoryByIdService(id)
+    const category = req.scope?.category || await getCategoryByIdService(req.params.id)
 
     if (!category) {
       return res.status(404).json({

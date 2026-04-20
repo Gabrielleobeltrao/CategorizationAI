@@ -38,8 +38,7 @@ export async function updateUserProfileByIdController(req, res) {
 
 export async function getUserProfileByIdController(req, res) {
   try {
-    const { id } = req.params
-    const profile = await getUserProfileByIdService(id)
+    const profile = req.scope?.userProfile || await getUserProfileByIdService(req.params.id)
 
     if (!profile) {
       return res.status(404).json({

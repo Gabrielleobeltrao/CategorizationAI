@@ -6,6 +6,7 @@ import {
     deleteClientByIdService,
 } from "../services/clients.service.js"
 import { userHasPermissionService } from "../services/roles.service.js"
+import { hydrateOfficeTagsForDocumentService } from "../services/tagCatalog.service.js"
 import { getErrorStatusCode } from "../utils/appError.js"
 
 function sanitizeClientOwnerInfo(client, canReadOwnerInfo) {
@@ -87,7 +88,7 @@ export async function updateClientByIdController(req, res) {
         }
 
         if (!canUpdateOwnerInfo && Array.isArray(req.body?.owners)) {
-            const currentClient = await getClientByIdService(id)
+            const currentClient = req.scope?.client || await getClientByIdService(id)
             const currentOwners = Array.isArray(currentClient?.owners) ? currentClient.owners : []
 
             req.body.owners = req.body.owners.map((owner, index) => {
@@ -140,8 +141,10 @@ export async function listClientsByOfficeIdController(req, res) {
 
 export async function getClientByIdController(req, res) {
     try {
-        const { id } = req.params
-        const client = await getClientByIdService(id)
+        const scopedClient = req.scope?.client
+        const client = scopedClient
+            ? await hydrateOfficeTagsForDocumentService(scopedClient.officeId, scopedClient)
+            : await getClientByIdService(req.params.id)
 
         if (!client) {
             return res.status(404).json({

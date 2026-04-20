@@ -47,8 +47,7 @@ export async function listAccountsByClientIdController(req, res) {
 
 export async function getAccountByIdController(req, res) {
   try {
-    const { id } = req.params
-    const account = await getAccountByIdService(id)
+    const account = req.scope?.account || await getAccountByIdService(req.params.id)
 
     if (!account) {
       return res.status(404).json({
