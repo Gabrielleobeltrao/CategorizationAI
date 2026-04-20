@@ -1,4 +1,4 @@
-import { getDB } from "../db.js"
+import { getUserProfileByEmail } from "../repositories/userProfile.repository.js"
 
 export async function requireAuth(req, res, next) {
   try {
@@ -8,16 +8,15 @@ export async function requireAuth(req, res, next) {
     }
 
     const email = String(session.user.email || "").toLowerCase()
-    if (email) {
-      const db = getDB()
-      const profile = await db.collection("user_profile").findOne({ email })
-      if (profile?.status === "inactive") {
-        return res.status(403).json({ message: "Account is inactive" })
-      }
+    const profile = email ? await getUserProfileByEmail(email) : null
+
+    if (profile?.status === "inactive") {
+      return res.status(403).json({ message: "Account is inactive" })
     }
 
     req.session = session.session
     req.user = session.user
+    req.userProfile = profile || null
     next()
   } catch {
     return res.status(401).json({ message: "Unauthorized" })

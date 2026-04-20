@@ -1,4 +1,4 @@
-import { getDB } from "../db.js"
+import { getUserProfileByEmail } from "../repositories/userProfile.repository.js"
 import { ROLE_PERMISSIONS } from "../config/roles.js"
 import { getPermissionsForRoleService } from "../services/roles.service.js"
 
@@ -24,14 +24,16 @@ export function requirePermission(permission) {
         return res.status(401).json({ message: "Unauthorized" })
       }
 
-      const db = getDB()
-      const profile = await db.collection("user_profile").findOne({ email: String(email).toLowerCase() })
+      const normalizedEmail = String(email).toLowerCase()
+      const profile = req.userProfile !== undefined
+        ? req.userProfile
+        : await getUserProfileByEmail(normalizedEmail)
 
       if (!profile) {
         const isOfficeBootstrap = permission === "offices:create"
         const isSelfProfileBootstrap =
           permission === "userProfiles:create" &&
-          String(req.body?.email || "").toLowerCase() === String(email).toLowerCase()
+          String(req.body?.email || "").toLowerCase() === normalizedEmail
 
         if (isOfficeBootstrap || isSelfProfileBootstrap) {
           return next()
@@ -43,6 +45,9 @@ export function requirePermission(permission) {
       const role = String(profile.role || "").toLowerCase()
       if (hasPermission(role, permission)) {
         req.userProfile = profile
+        req.userProfile.permissions = Array.isArray(profile?.permissions)
+          ? profile.permissions
+          : ROLE_PERMISSIONS[role] || []
         return next()
       }
 
@@ -51,7 +56,10 @@ export function requirePermission(permission) {
         return res.status(403).json({ message: "Forbidden" })
       }
 
-      req.userProfile = profile
+      req.userProfile = {
+        ...profile,
+        permissions: customRolePermissions,
+      }
       return next()
     } catch {
       return res.status(403).json({ message: "Forbidden" })

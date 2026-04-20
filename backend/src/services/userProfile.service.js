@@ -14,6 +14,10 @@ import { hashPassword } from "better-auth/crypto"
 async function attachPermissions(profile) {
   if (!profile) return null
 
+  if (Array.isArray(profile?.permissions) && profile.permissions.length > 0) {
+    return profile
+  }
+
   const role = String(profile.role || "").toLowerCase()
   const officeId = String(profile.officeId || "").trim()
   const permissions = await getPermissionsForRoleService(role, officeId)
@@ -124,13 +128,15 @@ export async function updateUserProfileByIdService(id, patch) {
   return updateUserProfileById(id, safePatch)
 }
 
-export async function updateCurrentUserProfileService(email, patch) {
+export async function updateCurrentUserProfileService(email, patch, options = {}) {
   const safeEmail = String(email || "").trim().toLowerCase()
 
   if (!safeEmail) throw new Error("email is required")
   if (!patch || typeof patch !== "object") throw new Error("patch is required")
 
-  const currentProfile = await getUserProfileByEmail(safeEmail)
+  const currentProfile = options?.currentProfile?._id
+    ? options.currentProfile
+    : await getUserProfileByEmail(safeEmail)
   if (!currentProfile?._id) throw new Error("User profile not found")
 
   const safePatch = {}
@@ -159,9 +165,11 @@ export async function listUserProfilesByOfficeIdService(officeId) {
   return listUserProfilesByOfficeId(officeId)
 }
 
-export async function getCurrentUserProfileService(email) {
+export async function getCurrentUserProfileService(email, options = {}) {
   if (!email) throw new Error("email is required")
-  const profile = await getUserProfileByEmail(email)
+  const profile = options?.currentProfile?._id
+    ? options.currentProfile
+    : await getUserProfileByEmail(email)
   return attachPermissions(profile)
 }
 

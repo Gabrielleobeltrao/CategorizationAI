@@ -69,7 +69,9 @@ export async function listUserProfilesByOfficeIdController(req, res) {
 
 export async function getMyUserProfileController(req, res) {
   try {
-    const profile = await getCurrentUserProfileService(req.user?.email)
+    const profile = await getCurrentUserProfileService(req.user?.email, {
+      currentProfile: req.userProfile,
+    })
 
     if (!profile) {
       return res.status(404).json({
@@ -87,7 +89,9 @@ export async function getMyUserProfileController(req, res) {
 
 export async function updateMyUserProfileController(req, res) {
   try {
-    const profile = await updateCurrentUserProfileService(req.user?.email, req.body)
+    const profile = await updateCurrentUserProfileService(req.user?.email, req.body, {
+      currentProfile: req.userProfile,
+    })
     return res.status(200).json(profile)
   } catch (error) {
     return res.status(400).json({

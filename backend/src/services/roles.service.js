@@ -112,6 +112,10 @@ export async function userHasPermissionService(userProfile, permission) {
   const officeId = String(userProfile?.officeId || "")
   if (!role) return false
 
+  if (Array.isArray(userProfile?.permissions) && userProfile.permissions.length > 0) {
+    return hasPermissionFromListService(userProfile.permissions, permission)
+  }
+
   const permissions = await getPermissionsForRoleService(role, officeId)
   return hasPermissionFromListService(permissions, permission)
 }
