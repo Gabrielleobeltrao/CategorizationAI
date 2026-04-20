@@ -10,12 +10,12 @@ import { deleteCategoriesByClientIdService } from "./category.service.js"
 import { deleteTransactionsByClientId } from "../repositories/transactions.repository.js"
 import { deleteTransactionMemoriesByClientId } from "../repositories/transactionMemory.repository.js"
 import { deleteCategorizationJobsByClientId } from "../repositories/categorizationJob.repository.js"
-import { syncClientCategoriesByTagsService } from "./categorySync.service.js"
 import {
   hydrateOfficeTagsForDocumentService,
   hydrateOfficeTagsForDocumentsService,
   resolveOfficeTagRefsService,
 } from "./tagCatalog.service.js"
+import { enqueueClientCategorySync } from "../workers/categorySync.worker.js"
 
 function normalizeOwners(value) {
   if (!Array.isArray(value)) return []
@@ -85,7 +85,7 @@ export async function createClientService(input, context = {}) {
     ownerPhone: normalizeOptionalText(input.ownerPhone),
   })
 
-  await syncClientCategoriesByTagsService({
+  enqueueClientCategorySync({
     officeId: client.officeId,
     clientId: String(client._id),
   })
@@ -160,7 +160,7 @@ export async function updateClientByIdService(id, patch, context = {}) {
   const updatedClient = await updateClientById(id, safePatch)
 
   if (safePatch.tagIds !== undefined) {
-    await syncClientCategoriesByTagsService({
+    enqueueClientCategorySync({
       officeId: updatedClient?.officeId,
       clientId: String(updatedClient?._id || id),
     })

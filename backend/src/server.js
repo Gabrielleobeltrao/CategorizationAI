@@ -13,6 +13,7 @@ import { ensureCategoryIndexes } from "./repositories/category.repository.js"
 import { ensureCategoryTemplateIndexes } from "./repositories/categoryTemplate.repository.js"
 import { ensureOfficeTagIndexes } from "./repositories/tag.repository.js"
 import { startCategorizationWorker } from "./workers/categorization.worker.js"
+import { startCategorySyncWorker } from "./workers/categorySync.worker.js"
 
 const PORT = process.env.PORT || 3001
 
@@ -34,5 +35,6 @@ await ensureOfficeTagIndexes()
 
 app.locals.auth = createAuth(getDB())
 await startCategorizationWorker()
+await startCategorySyncWorker()
 
 app.listen(PORT, () => console.log(`API running on ${PORT}`))

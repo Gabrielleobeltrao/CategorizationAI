@@ -9,12 +9,12 @@ import {
 import { normalizeCategoryType } from "../config/categoryTypes.js"
 import { getCategoryIdentityKey } from "../utils/categoryIdentity.js"
 import { hasIntersection, normalizeTags } from "../utils/tags.js"
-import { syncOfficeClientsByTagsService } from "./categorySync.service.js"
 import {
   hydrateOfficeTagsForDocumentService,
   hydrateOfficeTagsForDocumentsService,
   resolveOfficeTagRefsService,
 } from "./tagCatalog.service.js"
+import { enqueueOfficeCategorySync } from "../workers/categorySync.worker.js"
 
 function normalizeOptionalText(value) {
   if (value === undefined || value === null) return ""
@@ -71,7 +71,7 @@ export async function createCategoryTemplateService(input, context = {}) {
     tagIds: resolvedTags.tagIds,
   })
 
-  await syncOfficeClientsByTagsService(officeId)
+  enqueueOfficeCategorySync(officeId)
 
   return hydrateOfficeTagsForDocumentService(officeId, template)
 }
@@ -142,7 +142,7 @@ export async function updateCategoryTemplateByIdService(id, patch, context = {})
   })
 
   const updated = await updateCategoryTemplateById(id, safePatch)
-  await syncOfficeClientsByTagsService(String(current.officeId || ""))
+  enqueueOfficeCategorySync(String(current.officeId || ""))
 
   return hydrateOfficeTagsForDocumentService(current.officeId, updated)
 }
@@ -159,7 +159,7 @@ export async function deleteCategoryTemplateByIdService(id, context = {}) {
   }
 
   const result = await deleteCategoryTemplateById(id)
-  await syncOfficeClientsByTagsService(String(current.officeId || ""))
+  enqueueOfficeCategorySync(String(current.officeId || ""))
   return result
 }
 

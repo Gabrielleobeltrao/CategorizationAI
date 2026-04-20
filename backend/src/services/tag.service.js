@@ -10,7 +10,7 @@ import {
   listOfficeTagsByOfficeId,
 } from "../repositories/tag.repository.js"
 import { getTagSlug, normalizeTags } from "../utils/tags.js"
-import { syncOfficeClientsByTagsService } from "./categorySync.service.js"
+import { enqueueOfficeCategorySync } from "../workers/categorySync.worker.js"
 
 export async function listOfficeTagsService(officeId, context = {}) {
   const safeOfficeId = String(officeId || "").trim()
@@ -58,7 +58,7 @@ export async function deleteOfficeTagService(officeId, tag, context = {}) {
     await deleteOfficeTagById(existingTag._id)
   }
 
-  await syncOfficeClientsByTagsService(safeOfficeId)
+  enqueueOfficeCategorySync(safeOfficeId)
 
   return {
     deletedTag: String(existingTag?.label || normalizedTag),
