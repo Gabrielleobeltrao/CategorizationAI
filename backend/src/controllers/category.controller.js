@@ -9,7 +9,9 @@ import { getErrorStatusCode } from "../utils/appError.js"
 
 export async function createCategoryController(req, res) {
   try {
-    const category = await createCategoryService(req.body)
+    const category = await createCategoryService(req.body, {
+      actorProfileId: req.userProfile?._id,
+    })
     return res.status(201).json(category)
   } catch (error) {
     return res.status(getErrorStatusCode(error)).json({
@@ -22,7 +24,9 @@ export async function createCategoryController(req, res) {
 export async function updateCategoryByIdController(req, res) {
   try {
     const { id } = req.params
-    const updatedCategory = await updateCategoryByIdService(id, req.body)
+    const updatedCategory = await updateCategoryByIdService(id, req.body, {
+      actorProfileId: req.userProfile?._id,
+    })
     return res.status(200).json(updatedCategory)
   } catch (error) {
     return res.status(getErrorStatusCode(error)).json({

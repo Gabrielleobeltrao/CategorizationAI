@@ -1,11 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from "react"
+import TagsInput from "../ui/TagsInput"
+import TagRulesHelp from "../ui/TagRulesHelp"
 import { CATEGORY_TYPE_OPTIONS, getCategoryTypeLabel, normalizeCategoryType } from "../../constants/categoryTypes"
 
-function CategoriesSection({ categories, onCreate, onSaveEdit, onDelete, onDeleteMany }) {
+function CategoriesSection({
+    categories,
+    onCreate,
+    onSaveEdit,
+    onDelete,
+    onDeleteMany,
+    tagOptions = [],
+    onDeleteTag,
+    deletingTag = "",
+}) {
     const [editingId, setEditingId] = useState("")
     const [draftName, setDraftName] = useState("")
     const [draftType, setDraftType] = useState("")
     const [draftDescription, setDraftDescription] = useState("")
+    const [draftTags, setDraftTags] = useState([])
     const [isSaving, setIsSaving] = useState(false)
     const [selectedIds, setSelectedIds] = useState([])
     const selectAllRef = useRef(null)
@@ -20,6 +32,7 @@ function CategoriesSection({ categories, onCreate, onSaveEdit, onDelete, onDelet
         setDraftName(category.name || "")
         setDraftType(normalizeCategoryType(category.type) || "")
         setDraftDescription(category.description || "")
+        setDraftTags(Array.isArray(category.tags) ? category.tags : [])
     }
 
     const cancelEdit = () => {
@@ -27,6 +40,7 @@ function CategoriesSection({ categories, onCreate, onSaveEdit, onDelete, onDelet
         setDraftName("")
         setDraftType("")
         setDraftDescription("")
+        setDraftTags([])
     }
 
     const saveEdit = async () => {
@@ -37,6 +51,7 @@ function CategoriesSection({ categories, onCreate, onSaveEdit, onDelete, onDelet
                 name: draftName,
                 type: draftType,
                 description: draftDescription,
+                tags: draftTags,
             })
             cancelEdit()
         } finally {
@@ -48,7 +63,6 @@ function CategoriesSection({ categories, onCreate, onSaveEdit, onDelete, onDelet
         () => (Array.isArray(categories) ? categories.map((category) => category.id) : []),
         [categories]
     )
-
     const allSelected = useMemo(
         () => categoryIds.length > 0 && categoryIds.every((id) => selectedIds.includes(id)),
         [categoryIds, selectedIds]
@@ -154,6 +168,18 @@ function CategoriesSection({ categories, onCreate, onSaveEdit, onDelete, onDelet
                                             onChange={(e) => setDraftDescription(e.target.value)}
                                             placeholder="Description"
                                         />
+                                        <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                            <span>Tags</span>
+                                            <TagRulesHelp />
+                                        </div>
+                                        <TagsInput
+                                            value={draftTags}
+                                            onChange={setDraftTags}
+                                            options={tagOptions}
+                                            placeholder="Add tags for this category"
+                                            onDeleteOption={onDeleteTag}
+                                            deletingOption={deletingTag}
+                                        />
                                     </div>
                                     <div className="flex items-center gap-2 shrink-0">
                                         <button
@@ -198,6 +224,18 @@ function CategoriesSection({ categories, onCreate, onSaveEdit, onDelete, onDelet
                                     <h3 className="text-sm font-semibold truncate">{category.name}</h3>
                                     <p className="text-xs text-gray-500">{getCategoryTypeLabel(category.type)}</p>
                                     <p className="text-xs text-gray-400 truncate">{category.description}</p>
+                                    {Array.isArray(category.tags) && category.tags.length > 0 && (
+                                        <div className="mt-2 flex flex-wrap gap-1.5">
+                                            {category.tags.map((tag) => (
+                                                <span
+                                                    key={`${category.id}-${tag}`}
+                                                    className="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[11px] text-gray-600"
+                                                >
+                                                    {tag}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <button

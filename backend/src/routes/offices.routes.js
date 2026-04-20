@@ -1,9 +1,11 @@
 import { Router } from "express"
 import {
   createOfficeController,
+  deleteOfficeTagController,
   updateOfficeByIdController,
   getOfficeByIdController,
   getOfficeDashboardByIdController,
+  listOfficeTagsController,
 } from "../controllers/office.controller.js"
 import { requireAuth } from "../middlewares/requireAuth.js"
 import { validateObjectIdParam } from "../middlewares/validateObjectId.js"
@@ -39,6 +41,24 @@ router.get(
   validateObjectIdParam("id"),
   ensureResourceExists({ collection: "offices", from: "params", field: "id", assignKey: "office" }),
   getOfficeDashboardByIdController
+)
+
+router.get(
+  "/offices/:id/tags",
+  requireAuth,
+  requirePermission("offices:read"),
+  validateObjectIdParam("id"),
+  ensureResourceExists({ collection: "offices", from: "params", field: "id", assignKey: "office" }),
+  listOfficeTagsController
+)
+
+router.delete(
+  "/offices/:id/tags",
+  requireAuth,
+  requirePermission("offices:update"),
+  validateObjectIdParam("id"),
+  ensureResourceExists({ collection: "offices", from: "params", field: "id", assignKey: "office" }),
+  deleteOfficeTagController
 )
 
 export default router

@@ -4,6 +4,7 @@ import {
     getOfficeByIdService,
     getOfficeDashboardByIdService,
 } from "../services/office.service.js"
+import { deleteOfficeTagService, listOfficeTagsService } from "../services/tag.service.js"
 
 export async function createOfficeController(req, res) {
     try {
@@ -62,6 +63,38 @@ export async function getOfficeDashboardByIdController(req, res) {
             actorOfficeId: req.userProfile?.officeId,
         })
         return res.status(200).json(dashboard)
+    } catch (error) {
+        return res.status(400).json({
+            message: error.message,
+        })
+    }
+}
+
+export async function listOfficeTagsController(req, res) {
+    try {
+        const { id } = req.params
+        const tags = await listOfficeTagsService(id, {
+            actorOfficeId: req.userProfile?.officeId,
+        })
+
+        return res.status(200).json({
+            items: tags,
+        })
+    } catch (error) {
+        return res.status(400).json({
+            message: error.message,
+        })
+    }
+}
+
+export async function deleteOfficeTagController(req, res) {
+    try {
+        const { id } = req.params
+        const result = await deleteOfficeTagService(id, req.body?.tag, {
+            actorOfficeId: req.userProfile?.officeId,
+        })
+
+        return res.status(200).json(result)
     } catch (error) {
         return res.status(400).json({
             message: error.message,

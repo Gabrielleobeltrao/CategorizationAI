@@ -9,6 +9,8 @@ export async function ensureCategoryIndexes() {
         collection.createIndex({ clientId: 1, createdAt: -1 }),
         collection.createIndex({ clientId: 1, type: 1 }),
         collection.createIndex({ clientId: 1, name: 1 }),
+        collection.createIndex({ clientId: 1, tagIds: 1 }),
+        collection.createIndex({ clientId: 1, templateCategoryId: 1 }),
     ])
 }
 
@@ -23,6 +25,9 @@ export async function createCategory(input) {
         type: input.type,
         description: input.description,
         clientId: input.clientId,
+        tagIds: Array.isArray(input.tagIds) ? input.tagIds : [],
+        templateCategoryId: input.templateCategoryId ?? null,
+        isTemplateSynced: Boolean(input.isTemplateSynced),
         createdAt: new Date(),
         updatedAt: new Date(),
     }
@@ -42,6 +47,9 @@ export async function updateCategoryById(id, patch) {
         type: patch.type,
         description: patch.description,
         clientId: patch.clientId,
+        tagIds: patch.tagIds,
+        templateCategoryId: patch.templateCategoryId,
+        isTemplateSynced: patch.isTemplateSynced,
         updatedAt: new Date(),
     }
 
@@ -49,11 +57,37 @@ export async function updateCategoryById(id, patch) {
         Object.entries(allowed).filter(([, value]) => value !== undefined)
     )
 
+    const update = { $set }
+
+    if (patch.clearLegacyTags) {
+        update.$unset = { tags: "" }
+    }
+
     return db.collection("categories").findOneAndUpdate(
         { _id: new ObjectId(id) },
-        { $set },
+        update,
         { returnDocument: "after" }
     )
+}
+
+export async function createCategoriesBulk(input = []) {
+    const db = getDB()
+    if (!Array.isArray(input) || input.length === 0) return []
+
+    const docs = input.map((item) => ({
+        name: item.name,
+        type: item.type,
+        description: item.description,
+        clientId: item.clientId,
+        tagIds: Array.isArray(item.tagIds) ? item.tagIds : [],
+        templateCategoryId: item.templateCategoryId ?? null,
+        isTemplateSynced: Boolean(item.isTemplateSynced),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+    }))
+
+    await db.collection("categories").insertMany(docs)
+    return docs
 }
 
 // buscar lista

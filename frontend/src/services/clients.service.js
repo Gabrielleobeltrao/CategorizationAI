@@ -26,6 +26,9 @@ export async function createClient(input) {
   const description = String(input?.description || "").trim()
   const mainActivity = String(input?.mainActivity || "").trim()
   const state = String(input?.state || "").trim()
+  const tags = Array.isArray(input?.tags)
+    ? input.tags.map((tag) => String(tag || "").trim()).filter(Boolean)
+    : []
   const owners = Array.isArray(input?.owners)
     ? input.owners
       .map((owner) => {
@@ -60,6 +63,7 @@ export async function createClient(input) {
     description,
     mainActivity,
     state,
+    tags,
     owners,
   }
 
@@ -81,9 +85,14 @@ export async function updateClientById(clientId, patch) {
   if (!id) throw new Error("clientId is required")
   if (!patch || typeof patch !== "object") throw new Error("patch is required")
 
+  const nextPatch = { ...patch }
+  if (Array.isArray(patch?.tags)) {
+    nextPatch.tags = patch.tags.map((tag) => String(tag || "").trim()).filter(Boolean)
+  }
+
   return api(`/api/clients/${id}`, {
     method: "PATCH",
-    body: JSON.stringify(patch),
+    body: JSON.stringify(nextPatch),
   })
 }
 

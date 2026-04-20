@@ -12,6 +12,7 @@ export async function ensureClientsIndexes() {
     await Promise.all([
         collection.createIndex({ officeId: 1, createdAt: -1 }),
         collection.createIndex({ officeId: 1, name: 1 }),
+        collection.createIndex({ officeId: 1, tagIds: 1 }),
     ])
 }
 
@@ -28,6 +29,7 @@ export async function createClient(input) {
         description: input.description,
         mainActivity: input.mainActivity,
         state: input.state,
+        tagIds: Array.isArray(input.tagIds) ? input.tagIds : [],
         owners: Array.isArray(input.owners) ? input.owners : [],
         ownerEmail: input.ownerEmail,
         ownerPhone: input.ownerPhone,
@@ -51,6 +53,7 @@ export async function updateClientById(id, patch) {
         description: patch.description,
         mainActivity: patch.mainActivity,
         state: patch.state,
+        tagIds: patch.tagIds,
         owners: patch.owners,
         ownerEmail: patch.ownerEmail,
         ownerPhone: patch.ownerPhone,
@@ -61,9 +64,15 @@ export async function updateClientById(id, patch) {
         Object.entries(allowed).filter(([, value]) => value !== undefined)
     )
 
+    const update = { $set }
+
+    if (patch.clearLegacyTags) {
+        update.$unset = { tags: "" }
+    }
+
     return db.collection("clients").findOneAndUpdate(
         { _id: new ObjectId(id) },
-        { $set },
+        update,
         { returnDocument: "after"}
     )
 }
@@ -123,6 +132,11 @@ export async function listClientsByOfficeId(officeId, options = {}) {
 export async function getClientById(id) {
     const db = getDB()
     return db.collection("clients").findOne({ _id: new ObjectId(id) })
+}
+
+export async function listAllClientsByOfficeId(officeId) {
+    const db = getDB()
+    return db.collection("clients").find({ officeId }).toArray()
 }
 
 // deletar cliente

@@ -2,8 +2,11 @@ import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import PopupModal from "../components/ui/PopupModal"
 import ConfirmModal from "../components/ui/ConfirmModal"
+import TagsInput from "../components/ui/TagsInput"
+import TagRulesHelp from "../components/ui/TagRulesHelp"
 import { useAuth } from "../contexts/auth.context"
 import { useNotification } from "../contexts/notification.context"
+import { useOfficeTags } from "../hooks/useOfficeTags"
 import { trackClientOpened } from "../utils/recentClients"
 import {
     createClient,
@@ -88,6 +91,7 @@ function getEmptyClientDraft() {
         description: "",
         mainActivity: "",
         state: "",
+        tags: [],
         owners: [{ name: "", email: "", phone: "" }],
     }
 }
@@ -145,6 +149,7 @@ function ClientsPage() {
     const [newClientDescription, setNewClientDescription] = useState("")
     const [newClientMainActivity, setNewClientMainActivity] = useState("")
     const [newClientState, setNewClientState] = useState("")
+    const [newClientTags, setNewClientTags] = useState([])
     const [newClientOwners, setNewClientOwners] = useState([{ name: "", email: "", phone: "" }])
 
     const [editingClientId, setEditingClientId] = useState("")
@@ -153,6 +158,10 @@ function ClientsPage() {
     const [expandedClientIds, setExpandedClientIds] = useState([])
 
     const officeId = String(profile?.officeId || "").trim()
+    const { tags: officeTags, reloadTags, deleteTag, deletingTag } = useOfficeTags(officeId, {
+        onError: (err) => error(err.message || "Failed to delete tag"),
+        onDeleteSuccess: (tag) => success(`Tag "${tag}" deleted successfully`),
+    })
 
     useEffect(() => {
         const timeoutId = setTimeout(() => {
@@ -193,6 +202,7 @@ function ClientsPage() {
                         description: item?.description || "",
                         mainActivity: item?.mainActivity || "",
                         state: item?.state || "",
+                        tags: Array.isArray(item?.tags) ? item.tags : [],
                         owners: normalizeOwnersForDraft(item?.owners),
                         ownerEmail: String(item?.ownerEmail || ""),
                         ownerPhone: String(item?.ownerPhone || ""),
@@ -234,6 +244,7 @@ function ClientsPage() {
                 description: newClientDescription,
                 mainActivity: newClientMainActivity,
                 state: newClientState,
+                tags: newClientTags,
                 owners: normalizeOwnersList(newClientOwners),
             })
 
@@ -243,10 +254,12 @@ function ClientsPage() {
             setNewClientDescription("")
             setNewClientMainActivity("")
             setNewClientState("")
+            setNewClientTags([])
             setNewClientOwners([{ name: "", email: "", phone: "" }])
             setShowClientForm(false)
             setPage(1)
             setRefreshKey((current) => current + 1)
+            reloadTags()
         } catch (err) {
             error(err.message || "Failed to create client")
         } finally {
@@ -262,6 +275,7 @@ function ClientsPage() {
             description: client.description || "",
             mainActivity: client.mainActivity || "",
             state: client.state || "",
+            tags: Array.isArray(client.tags) ? client.tags : [],
             owners: normalizeOwnersForDraft(client.owners),
         })
     }
@@ -284,6 +298,7 @@ function ClientsPage() {
                 description: editingClientDraft.description,
                 mainActivity: editingClientDraft.mainActivity,
                 state: editingClientDraft.state,
+                tags: editingClientDraft.tags,
                 owners: normalizeOwnersList(editingClientDraft.owners),
             }
 
@@ -299,6 +314,7 @@ function ClientsPage() {
                             description: updated?.description ?? payload.description,
                             mainActivity: updated?.mainActivity ?? payload.mainActivity,
                             state: updated?.state ?? payload.state,
+                            tags: Array.isArray(updated?.tags) ? updated.tags : payload.tags,
                             owners: normalizeOwnersForDraft(
                                 Array.isArray(updated?.owners) ? updated.owners : payload.owners
                             ),
@@ -313,6 +329,7 @@ function ClientsPage() {
 
             success("Client updated successfully")
             closeEditClientModal()
+            reloadTags()
         } catch (err) {
             error(err.message || "Failed to update client")
         } finally {
@@ -403,6 +420,7 @@ function ClientsPage() {
             } else {
                 setRefreshKey((current) => current + 1)
             }
+            reloadTags()
         } catch (err) {
             error(err.message || "Failed to delete client")
         } finally {
@@ -505,6 +523,22 @@ function ClientsPage() {
 
                                                         <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Main Activity</p>
                                                         <p className="text-gray-700">{client.mainActivity || "-"}</p>
+
+                                                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Tags</p>
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {Array.isArray(client.tags) && client.tags.length > 0 ? (
+                                                                client.tags.map((tag) => (
+                                                                    <span
+                                                                        key={`${client.id}-tag-${tag}`}
+                                                                        className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs text-gray-700"
+                                                                    >
+                                                                        {tag}
+                                                                    </span>
+                                                                ))
+                                                            ) : (
+                                                                <p className="text-gray-700">-</p>
+                                                            )}
+                                                        </div>
 
                                                         <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 md:pt-1">Description</p>
                                                         <p className="text-gray-700">{client.description || "-"}</p>
@@ -721,6 +755,20 @@ function ClientsPage() {
                                 onChange={(e) => setNewClientDescription(e.target.value)}
                             />
                         </label>
+                        <label className="flex flex-col gap-1">
+                            <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                <span>Tags</span>
+                                <TagRulesHelp />
+                            </span>
+                            <TagsInput
+                                value={newClientTags}
+                                onChange={setNewClientTags}
+                                options={officeTags}
+                                placeholder="Add tags used to match global categories"
+                                onDeleteOption={deleteTag}
+                                deletingOption={deletingTag}
+                            />
+                        </label>
                         <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
                             <div className="mb-2 flex items-center justify-between">
                                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Owners</p>
@@ -845,6 +893,20 @@ function ClientsPage() {
                                 placeholder="Construction and painting services"
                                 value={editingClientDraft.description}
                                 onChange={(e) => handleChangeEditingDraft({ description: e.target.value })}
+                            />
+                        </label>
+                        <label className="flex flex-col gap-1">
+                            <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                <span>Tags</span>
+                                <TagRulesHelp />
+                            </span>
+                            <TagsInput
+                                value={editingClientDraft.tags}
+                                onChange={(nextTags) => handleChangeEditingDraft({ tags: nextTags })}
+                                options={officeTags}
+                                placeholder="Add tags used to match global categories"
+                                onDeleteOption={deleteTag}
+                                deletingOption={deletingTag}
                             />
                         </label>
                         <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">

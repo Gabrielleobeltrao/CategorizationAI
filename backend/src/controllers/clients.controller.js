@@ -60,7 +60,9 @@ export async function createClientController(req, res) {
             }
         }
 
-        const client = await createClientService(req.body)
+        const client = await createClientService(req.body, {
+            actorProfileId: req.userProfile?._id,
+        })
         const canReadOwnerInfo = await userHasPermissionService(req.userProfile, "clientsOwnerInfo:read")
         return res.status(201).json(sanitizeClientOwnerInfo(client, canReadOwnerInfo))
     } catch (error) {
@@ -101,7 +103,9 @@ export async function updateClientByIdController(req, res) {
             })
         }
 
-        const updatedClient = await updateClientByIdService(id, req.body)
+        const updatedClient = await updateClientByIdService(id, req.body, {
+            actorProfileId: req.userProfile?._id,
+        })
         const canReadOwnerInfo = await userHasPermissionService(req.userProfile, "clientsOwnerInfo:read")
         return res.status(200).json(sanitizeClientOwnerInfo(updatedClient, canReadOwnerInfo))
     } catch (error) {

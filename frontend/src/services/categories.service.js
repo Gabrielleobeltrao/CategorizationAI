@@ -13,6 +13,9 @@ export async function createCategory(input) {
   const name = String(input?.name || "").trim()
   const type = normalizeCategoryType(input?.type)
   const description = String(input?.description || "").trim()
+  const tags = Array.isArray(input?.tags)
+    ? input.tags.map((tag) => String(tag || "").trim()).filter(Boolean)
+    : []
 
   if (!clientId) throw new Error("clientId is required")
   if (!name) throw new Error("name is required")
@@ -21,7 +24,7 @@ export async function createCategory(input) {
 
   return api("/api/categories", {
     method: "POST",
-    body: JSON.stringify({ clientId, name, type, description }),
+    body: JSON.stringify({ clientId, name, type, description, tags }),
   })
 }
 
@@ -33,6 +36,9 @@ export async function updateCategoryById(categoryId, patch) {
   const nextPatch = { ...patch }
   if (typeof patch.type === "string") {
     nextPatch.type = normalizeCategoryType(patch.type)
+  }
+  if (Array.isArray(patch?.tags)) {
+    nextPatch.tags = patch.tags.map((tag) => String(tag || "").trim()).filter(Boolean)
   }
 
   return api(`/api/categories/${id}`, {

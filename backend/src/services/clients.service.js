@@ -10,6 +10,12 @@ import { deleteCategoriesByClientIdService } from "./category.service.js"
 import { deleteTransactionsByClientId } from "../repositories/transactions.repository.js"
 import { deleteTransactionMemoriesByClientId } from "../repositories/transactionMemory.repository.js"
 import { deleteCategorizationJobsByClientId } from "../repositories/categorizationJob.repository.js"
+import { syncClientCategoriesByTagsService } from "./categorySync.service.js"
+import {
+  hydrateOfficeTagsForDocumentService,
+  hydrateOfficeTagsForDocumentsService,
+  resolveOfficeTagRefsService,
+} from "./tagCatalog.service.js"
 
 function normalizeOwners(value) {
   if (!Array.isArray(value)) return []
@@ -53,7 +59,7 @@ function normalizeOptionalText(value) {
   return String(value).trim()
 }
 
-export async function createClientService(input) {
+export async function createClientService(input, context = {}) {
   if (!input?.officeId) throw new Error("officeId is required")
   if (!input?.name) throw new Error("name is required")
   if (!input?.businessType) throw new Error("businessType is required")
@@ -64,22 +70,35 @@ export async function createClientService(input) {
     throw new Error("owners must be an array")
   }
 
-  return createClient({
+  const resolvedTags = await resolveOfficeTagRefsService(input.officeId, input.tags, context)
+
+  const client = await createClient({
     officeId: input.officeId,
     name: input.name.trim(),
     businessType: input.businessType.trim(),
     description: input.description.trim(),
     mainActivity: input.mainActivity.trim(),
     state: input.state.trim(),
+    tagIds: resolvedTags.tagIds,
     owners: normalizeOwners(input.owners),
     ownerEmail: normalizeOptionalText(input.ownerEmail),
     ownerPhone: normalizeOptionalText(input.ownerPhone),
   })
+
+  await syncClientCategoriesByTagsService({
+    officeId: client.officeId,
+    clientId: String(client._id),
+  })
+
+  return hydrateOfficeTagsForDocumentService(client.officeId, client)
 }
 
-export async function updateClientByIdService(id, patch) {
+export async function updateClientByIdService(id, patch, context = {}) {
   if (!id) throw new Error("id is required")
   if (!patch || typeof patch !== "object") throw new Error("patch is required")
+
+  const current = await getClientById(id)
+  if (!current) throw new Error("Client not found")
 
   const safePatch = {}
 
@@ -113,6 +132,12 @@ export async function updateClientByIdService(id, patch) {
     safePatch.state = state
   }
 
+  if (patch.tags !== undefined) {
+    const resolvedTags = await resolveOfficeTagRefsService(current.officeId, patch.tags, context)
+    safePatch.tagIds = resolvedTags.tagIds
+    safePatch.clearLegacyTags = true
+  }
+
   if (patch.owners !== undefined) {
     if (!Array.isArray(patch.owners)) {
       throw new Error("owners must be an array")
@@ -132,7 +157,16 @@ export async function updateClientByIdService(id, patch) {
     throw new Error("no valid fields to update")
   }
 
-  return updateClientById(id, safePatch)
+  const updatedClient = await updateClientById(id, safePatch)
+
+  if (safePatch.tagIds !== undefined) {
+    await syncClientCategoriesByTagsService({
+      officeId: updatedClient?.officeId,
+      clientId: String(updatedClient?._id || id),
+    })
+  }
+
+  return hydrateOfficeTagsForDocumentService(current.officeId, updatedClient)
 }
 
 export async function listClientsByOfficeIdService(officeId, query = {}) {
@@ -146,12 +180,22 @@ export async function listClientsByOfficeIdService(officeId, query = {}) {
   const safeLimit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.floor(rawLimit) : 10
   const limit = Math.min(safeLimit, 100)
 
-  return listClientsByOfficeId(officeId, { page, limit, search })
+  const result = await listClientsByOfficeId(officeId, { page, limit, search })
+  const items = await hydrateOfficeTagsForDocumentsService(officeId, result?.items)
+
+  return {
+    ...result,
+    items,
+  }
 }
 
 export async function getClientByIdService(id) {
   if (!id) throw new Error("id is required")
-  return getClientById(id)
+
+  const client = await getClientById(id)
+  if (!client) return null
+
+  return hydrateOfficeTagsForDocumentService(client.officeId, client)
 }
 
 export async function deleteClientByIdService(id) {
