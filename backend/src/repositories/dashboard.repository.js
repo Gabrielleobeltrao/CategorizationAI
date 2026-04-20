@@ -312,6 +312,7 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
   const clients = await db
     .collection("clients")
     .find({ officeId }, { projection: { _id: 1, name: 1, createdAt: 1 } })
+    .sort({ createdAt: -1 })
     .toArray()
 
   const clientIdList = clients.map((client) => String(client._id))
@@ -348,6 +349,9 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
 
   const transactionsCollection = db.collection("transactions")
   const jobsCollection = db.collection("categorization_jobs")
+  const recentClientsForActivity = clients
+    .filter((client) => client?.createdAt instanceof Date && client.createdAt >= retentionCutoff)
+    .slice(0, 4)
 
   const [
     importedCurrentCount,
@@ -362,9 +366,7 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
     categorizedTrendTransactions,
     jobsRaw,
     latestTransaction,
-    latestJob,
     recentImportBatches,
-    recentClientsForActivity,
     recentProfilesForActivity,
   ] = await Promise.all([
     transactionsCollection.countDocuments({
@@ -470,22 +472,22 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
       .sort({ updatedAt: -1, createdAt: -1 })
       .limit(200)
       .toArray(),
-    transactionsCollection
-      .find({ clientId: { $in: clientIdList } }, { projection: { updatedAt: 1 } })
-      .sort({ updatedAt: -1 })
-      .limit(1)
-      .toArray(),
-    jobsCollection
-      .find({ clientId: { $in: clientIdList } }, { projection: { updatedAt: 1 } })
-      .sort({ updatedAt: -1 })
-      .limit(1)
-      .toArray(),
+    transactionsCollection.findOne(
+      { clientId: { $in: clientIdList } },
+      {
+        projection: { updatedAt: 1 },
+        sort: { updatedAt: -1 },
+      }
+    ),
     transactionsCollection
       .aggregate([
         {
           $match: {
             clientId: { $in: clientIdList },
-            createdAt: { $type: "date" },
+            createdAt: {
+              $gte: retentionCutoff,
+              $type: "date",
+            },
           },
         },
         {
@@ -516,14 +518,14 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
       ])
       .toArray(),
     db
-      .collection("clients")
-      .find({ officeId }, { projection: { name: 1, createdAt: 1 } })
-      .sort({ createdAt: -1 })
-      .limit(4)
-      .toArray(),
-    db
       .collection("user_profile")
-      .find({ officeId }, { projection: { name: 1, email: 1, createdAt: 1 } })
+      .find(
+        {
+          officeId,
+          createdAt: { $gte: retentionCutoff },
+        },
+        { projection: { name: 1, email: 1, createdAt: 1 } }
+      )
       .sort({ createdAt: -1 })
       .limit(4)
       .toArray(),
@@ -705,6 +707,7 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
       ? (Number(currentWeekBucket.pending || 0) / Number(currentWeekBucket.imported || 0)) * 100
       : 0
 
+  const latestJob = jobsRaw[0] || null
   const jobsQueueRaw = jobsRaw.filter((job) => {
     const status = String(job?.status || "").toLowerCase()
     if (status === "running" || status === "queued") return true
@@ -731,7 +734,7 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
     error: job.errorMessage || null,
   }))
 
-  const latestSyncDate = [latestTransaction?.[0]?.updatedAt, latestJob?.[0]?.updatedAt]
+  const latestSyncDate = [latestTransaction?.updatedAt, latestJob?.updatedAt]
     .filter((value) => value instanceof Date && !Number.isNaN(value.getTime()))
     .sort((a, b) => b.getTime() - a.getTime())[0]
 

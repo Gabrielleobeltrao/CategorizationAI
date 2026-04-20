@@ -11,9 +11,18 @@ function escapeRegex(value = "") {
 // cria índice uma vez (chame no startup ou antes do primeiro uso)
 export async function ensureTransactionsIndexes() {
   const db = getDB()
-  await db
-    .collection("transactions")
-    .createIndex({ clientId: 1, date: -1 })
+  const collection = db.collection("transactions")
+  await Promise.all([
+    collection.createIndex({ clientId: 1, date: -1, _id: -1 }),
+    collection.createIndex({ clientId: 1, createdAt: -1 }),
+    collection.createIndex({ clientId: 1, updatedAt: -1 }),
+    collection.createIndex({ clientId: 1, llmProcessedAt: -1 }),
+    collection.createIndex({ clientId: 1, llmStatus: 1, llmProcessedAt: -1 }),
+    collection.createIndex({ clientId: 1, categorizedAt: -1 }),
+    collection.createIndex({ accountId: 1 }),
+    collection.createIndex({ categoryId: 1 }),
+    collection.createIndex({ "splits.categoryId": 1 }),
+  ])
 }
 
 // salva transações em lote (batch)
