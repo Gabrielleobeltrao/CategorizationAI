@@ -122,6 +122,21 @@ export async function deleteCategoryById(id) {
     return db.collection("categories").deleteOne({ _id: new ObjectId(id) })
 }
 
+export async function deleteCategoriesByIds(ids = []) {
+    const db = getDB()
+    const objectIds = Array.isArray(ids)
+        ? ids
+            .filter((id) => id && ObjectId.isValid(String(id)))
+            .map((id) => new ObjectId(String(id)))
+        : []
+
+    if (objectIds.length === 0) {
+        return { deletedCount: 0 }
+    }
+
+    return db.collection("categories").deleteMany({ _id: { $in: objectIds } })
+}
+
 export async function deleteCategoriesByClientId(clientId) {
     const db = getDB()
     return db.collection("categories").deleteMany({ clientId })

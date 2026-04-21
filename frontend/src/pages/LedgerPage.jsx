@@ -17,6 +17,7 @@ import {
 } from "../services/accounts.service"
 import {
     createCategory,
+    clearUnusedCategoriesByClientId,
     deleteCategoryById,
     listCategoriesByClientId,
     updateCategoryById,
@@ -261,6 +262,7 @@ function LedgerPage() {
     const [categoryToDelete, setCategoryToDelete] = useState(null)
     const [accountIdsToDelete, setAccountIdsToDelete] = useState([])
     const [categoryIdsToDelete, setCategoryIdsToDelete] = useState([])
+    const [isClearUnusedCategoriesModalOpen, setIsClearUnusedCategoriesModalOpen] = useState(false)
     const localPageScrollRef = useRef(null)
     const pageScrollRef = sharedScrollRef || localPageScrollRef
     const loadingMoreRef = useRef(false)
@@ -1076,6 +1078,37 @@ function LedgerPage() {
         }
     }
 
+    const handleClearUnusedCategories = async () => {
+        if (!clientId) return
+
+        try {
+            setIsSubmitting(true)
+            const result = await clearUnusedCategoriesByClientId(clientId)
+            const deletedIds = Array.isArray(result?.deletedIds) ? result.deletedIds : []
+            const deletedIdsSet = new Set(deletedIds)
+
+            if (deletedIdsSet.size > 0) {
+                setCategoryList((current) => current.filter((item) => !deletedIdsSet.has(item.id)))
+            }
+
+            setIsClearUnusedCategoriesModalOpen(false)
+
+            if (Number(result?.deletedCount || 0) > 0) {
+                success(
+                    Number(result.deletedCount) === 1
+                        ? "1 unused category deleted successfully"
+                        : `${Number(result.deletedCount)} unused categories deleted successfully`
+                )
+            } else {
+                success("No unused categories found")
+            }
+        } catch (err) {
+            error(err.message || "Failed to clear unused categories")
+        } finally {
+            setIsSubmitting(false)
+        }
+    }
+
     return (
         <section
             ref={sharedScrollRef ? undefined : localPageScrollRef}
@@ -1154,6 +1187,7 @@ function LedgerPage() {
                         <CategoriesSection
                             categories={categoryList}
                             onCreate={() => setShowCategoryForm(true)}
+                            onClearUnused={() => setIsClearUnusedCategoriesModalOpen(true)}
                             onSaveEdit={handleSaveCategoryEdit}
                             onDelete={setCategoryToDelete}
                             onDeleteMany={setCategoryIdsToDelete}
@@ -1326,6 +1360,16 @@ function LedgerPage() {
                 confirmLabel={categoryIdsToDelete.length > 1 ? "Delete Categories" : "Delete Category"}
                 onConfirm={handleDeleteCategoriesBulk}
                 onClose={() => setCategoryIdsToDelete([])}
+                isLoading={isSubmitting}
+            />
+
+            <ConfirmModal
+                isOpen={isClearUnusedCategoriesModalOpen}
+                title="Clear Unused Categories"
+                message="This will delete all categories in this client that are not linked to any transaction or split."
+                confirmLabel="Clear Unused"
+                onConfirm={handleClearUnusedCategories}
+                onClose={() => setIsClearUnusedCategoriesModalOpen(false)}
                 isLoading={isSubmitting}
             />
         </section>

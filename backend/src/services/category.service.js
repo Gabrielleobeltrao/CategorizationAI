@@ -4,10 +4,14 @@ import {
   listCategoriesByClientId,
   getCategoryById,
   deleteCategoryById,
+  deleteCategoriesByIds,
   deleteCategoriesByClientId,
 } from "../repositories/category.repository.js"
 import { getClientById } from "../repositories/clients.repository.js"
-import { countTransactionsByCategoryId } from "../repositories/transactions.repository.js"
+import {
+  countTransactionsByCategoryId,
+  listUsedCategoryIdsByClientId,
+} from "../repositories/transactions.repository.js"
 import { normalizeCategoryType } from "../config/categoryTypes.js"
 import { AppError } from "../utils/appError.js"
 import { getCategoryIdentityKey } from "../utils/categoryIdentity.js"
@@ -168,6 +172,44 @@ export async function deleteCategoryByIdService(id) {
   }
 
   return deleteCategoryById(id)
+}
+
+export async function clearUnusedCategoriesByClientIdService(clientId) {
+  if (!clientId) throw new Error("clientId is required")
+
+  const client = await getClientById(clientId)
+  if (!client) throw new Error("Client not found")
+
+  const [categories, usedCategoryIds] = await Promise.all([
+    listCategoriesByClientId(clientId),
+    listUsedCategoryIdsByClientId(clientId),
+  ])
+
+  const usedIdsSet = new Set(usedCategoryIds)
+  const unusedCategories = (Array.isArray(categories) ? categories : []).filter(
+    (category) => !usedIdsSet.has(String(category?._id || ""))
+  )
+
+  const unusedIds = unusedCategories.map((category) => String(category?._id || "")).filter(Boolean)
+  const unusedNames = unusedCategories.map((category) => String(category?.name || "").trim()).filter(Boolean)
+
+  if (unusedIds.length === 0) {
+    return {
+      deletedCount: 0,
+      deletedIds: [],
+      deletedNames: [],
+      keptCount: Array.isArray(categories) ? categories.length : 0,
+    }
+  }
+
+  const result = await deleteCategoriesByIds(unusedIds)
+
+  return {
+    deletedCount: Number(result?.deletedCount || 0),
+    deletedIds: unusedIds,
+    deletedNames: unusedNames,
+    keptCount: Math.max(0, (Array.isArray(categories) ? categories.length : 0) - unusedIds.length),
+  }
 }
 
 export async function deleteCategoriesByClientIdService(clientId) {

@@ -5,6 +5,7 @@ import {
   listCategoriesByClientIdController,
   getCategoryByIdController,
   deleteCategoryByIdController,
+  clearUnusedCategoriesByClientIdController,
 } from "../controllers/category.controller.js"
 import { requireAuth } from "../middlewares/requireAuth.js"
 import {
@@ -41,6 +42,15 @@ router.get(
   validateObjectIdParam("clientId"),
   ensureResourceExists({ collection: "clients", from: "params", field: "clientId", assignKey: "client" }),
   listCategoriesByClientIdController
+)
+
+router.delete(
+  "/clients/:clientId/categories/unused",
+  requireAuth,
+  requirePermission("categories:delete"),
+  validateObjectIdParam("clientId"),
+  ensureResourceExists({ collection: "clients", from: "params", field: "clientId", assignKey: "client" }),
+  clearUnusedCategoriesByClientIdController
 )
 
 router.get(

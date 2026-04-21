@@ -55,3 +55,12 @@ export async function deleteCategoryById(categoryId) {
     method: "DELETE",
   })
 }
+
+export async function clearUnusedCategoriesByClientId(clientId) {
+  const cleanClientId = String(clientId || "").trim()
+  if (!cleanClientId) throw new Error("clientId is required")
+
+  return api(`/api/clients/${cleanClientId}/categories/unused`, {
+    method: "DELETE",
+  })
+}

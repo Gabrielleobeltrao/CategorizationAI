@@ -4,6 +4,7 @@ import {
   listCategoriesByClientIdService,
   getCategoryByIdService,
   deleteCategoryByIdService,
+  clearUnusedCategoriesByClientIdService,
 } from "../services/category.service.js"
 import { getErrorStatusCode } from "../utils/appError.js"
 
@@ -73,6 +74,19 @@ export async function deleteCategoryByIdController(req, res) {
     const { id } = req.params
     await deleteCategoryByIdService(id)
     return res.status(204).send()
+  } catch (error) {
+    return res.status(getErrorStatusCode(error)).json({
+      message: error.message,
+      ...(error?.details ? { details: error.details } : {}),
+    })
+  }
+}
+
+export async function clearUnusedCategoriesByClientIdController(req, res) {
+  try {
+    const { clientId } = req.params
+    const result = await clearUnusedCategoriesByClientIdService(clientId)
+    return res.status(200).json(result)
   } catch (error) {
     return res.status(getErrorStatusCode(error)).json({
       message: error.message,

@@ -204,6 +204,36 @@ export async function countTransactionsByCategoryId(categoryId) {
   })
 }
 
+export async function listUsedCategoryIdsByClientId(clientId) {
+  const db = getDB()
+  const collection = db.collection("transactions")
+
+  const [directCategoryIds, splitCategoryIds] = await Promise.all([
+    collection.distinct("categoryId", {
+      clientId,
+      categoryId: {
+        $type: "string",
+        $nin: ["", null],
+      },
+    }),
+    collection.distinct("splits.categoryId", {
+      clientId,
+      "splits.categoryId": {
+        $type: "string",
+        $nin: ["", null],
+      },
+    }),
+  ])
+
+  return Array.from(
+    new Set(
+      [...directCategoryIds, ...splitCategoryIds]
+        .map((id) => String(id || "").trim())
+        .filter(Boolean)
+    )
+  )
+}
+
 export async function listEligibleTransactionsForLlmByIds(clientId, transactionIds = []) {
   const db = getDB()
   const collection = db.collection("transactions")
