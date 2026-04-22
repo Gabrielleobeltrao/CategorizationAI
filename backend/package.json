@@ -6,6 +6,9 @@
   "directories": {
     "test": "tests"
   },
+  "engines": {
+    "node": ">=22 <23"
+  },
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
