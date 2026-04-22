@@ -1,0 +1,274 @@
+import { ObjectId } from "mongodb"
+import { getDB } from "../db.js"
+import { normalizeCategoryType } from "../config/categoryTypes.js"
+
+function monthLabel(dateString) {
+  const date = new Date(`${dateString}T00:00:00Z`)
+  return date.toLocaleString("en-US", { month: "short", timeZone: "UTC" })
+}
+
+function statementId(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+}
+
+const UNCATEGORIZED_INCOME_LABEL = "Uncategorized income"
+const UNCATEGORIZED_EXPENSES_LABEL = "Uncategorized expenses"
+
+function isCogsCategory(type) {
+  return normalizeCategoryType(type) === "cost_of_goods_sold"
+}
+
+function normalizeAmount(value) {
+  return Number(Number(value || 0).toFixed(2))
+}
+
+function normalizeCategoryId(value) {
+  if (!value) return null
+  if (typeof value === "string") {
+    if (!ObjectId.isValid(value)) return null
+    return new ObjectId(value).toString()
+  }
+  if (value instanceof ObjectId) {
+    return value.toString()
+  }
+  if (typeof value === "object" && typeof value?.toString === "function") {
+    const normalized = value.toString()
+    if (ObjectId.isValid(normalized)) return new ObjectId(normalized).toString()
+  }
+  return null
+}
+
+function buildExpenseItems(mapByCategory) {
+  return Array.from(mapByCategory.entries())
+    .map(([label, amount]) => ({
+      id: statementId(label),
+      label,
+      amount: -normalizeAmount(amount),
+      level: 1,
+      type: "item",
+    }))
+    .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
+}
+
+function getCategoryBucket({ categoryType = "", categoryName = "", amount = 0, isUncategorized = false }) {
+  if (isUncategorized) {
+    return Number(amount || 0) >= 0 ? "income" : "operating_expense"
+  }
+
+  const normalizedType = normalizeCategoryType(categoryType)
+  if (normalizedType === "income") return "income"
+  if (normalizedType === "cost_of_goods_sold") return "cost_of_goods_sold"
+  if (normalizedType === "operating_expense") return "operating_expense"
+
+  const normalizedName = String(categoryName || "").trim().toLowerCase()
+  if (normalizedName === UNCATEGORIZED_INCOME_LABEL.toLowerCase()) return "income"
+  if (normalizedName === UNCATEGORIZED_EXPENSES_LABEL.toLowerCase()) return "operating_expense"
+
+  return Number(amount || 0) >= 0 ? "income" : "operating_expense"
+}
+
+export async function listProfitLossPeriodOptionsByClientId(clientId) {
+  const db = getDB()
+
+  const [result] = await db
+    .collection("transactions")
+    .aggregate([
+      {
+        $match: {
+          clientId,
+          date: { $regex: /^\d{4}-\d{2}-\d{2}$/ },
+        },
+      },
+      {
+        $project: {
+          year: { $substrBytes: ["$date", 0, 4] },
+          month: { $substrBytes: ["$date", 0, 7] },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          years: { $addToSet: "$year" },
+          months: { $addToSet: "$month" },
+        },
+      },
+    ])
+    .toArray()
+
+  const years = Array.isArray(result?.years) ? [...result.years].sort((a, b) => b.localeCompare(a)) : []
+  const months = Array.isArray(result?.months) ? [...result.months].sort((a, b) => b.localeCompare(a)) : []
+
+  return { years, months }
+}
+
+export async function getProfitLossByClientAndRange({ clientId, startDate, endDate, periodLabel }) {
+  const db = getDB()
+
+  const baseFilter = { clientId }
+  if (startDate && endDate) {
+    baseFilter.date = { $gte: startDate, $lte: endDate }
+  }
+
+  const transactions = await db
+    .collection("transactions")
+    .find(baseFilter)
+    .sort({ date: 1 })
+    .toArray()
+
+  const categoryIds = Array.from(
+    new Set(
+      transactions.flatMap((tx) => {
+        const ids = []
+        if (typeof tx?.categoryId === "string" && ObjectId.isValid(tx.categoryId)) {
+          ids.push(tx.categoryId)
+        }
+        if (Array.isArray(tx?.splits)) {
+          tx.splits.forEach((split) => {
+            if (typeof split?.categoryId === "string" && ObjectId.isValid(split.categoryId)) {
+              ids.push(split.categoryId)
+            }
+          })
+        }
+        return ids
+      })
+    )
+  ).map((id) => new ObjectId(id))
+
+  const categories = categoryIds.length
+    ? await db
+        .collection("categories")
+        .find({ _id: { $in: categoryIds } })
+        .toArray()
+    : []
+
+  const categoryMap = new Map(
+    categories.map((item) => [
+      String(item._id),
+      {
+        name: item.name || "Uncategorized",
+        type: item.type || "",
+      },
+    ])
+  )
+
+  let revenue = 0
+  let cogs = 0
+  let operatingExpenses = 0
+
+  const revenueByCategory = new Map()
+  const cogsByCategory = new Map()
+  const operatingByCategory = new Map()
+  const netByMonth = new Map()
+
+  for (const tx of transactions) {
+    const keyMonth = monthLabel(tx.date)
+    const splitItems = Array.isArray(tx?.splits) && tx.splits.length > 0
+      ? tx.splits
+      : [
+          {
+            amount: tx.amount,
+            categoryId: tx.categoryId ?? null,
+            category: tx.category ?? null,
+          },
+        ]
+
+    for (const splitItem of splitItems) {
+      const amount = Number(splitItem?.amount) || 0
+      const normalizedCategoryId = normalizeCategoryId(splitItem?.categoryId)
+      const categoryRef = normalizedCategoryId ? categoryMap.get(normalizedCategoryId) : null
+      const categoryName = splitItem?.category || categoryRef?.name || "Uncategorized"
+      const categoryType = categoryRef?.type || ""
+      const isUncategorized =
+        !normalizedCategoryId &&
+        !String(splitItem?.category || "").trim() &&
+        !String(categoryRef?.name || "").trim()
+
+      const bucket = getCategoryBucket({
+        categoryType,
+        categoryName,
+        amount,
+        isUncategorized,
+      })
+
+      if (bucket === "income") {
+        const incomeCategoryLabel = isUncategorized ? UNCATEGORIZED_INCOME_LABEL : categoryName
+        revenue += amount
+        revenueByCategory.set(incomeCategoryLabel, (revenueByCategory.get(incomeCategoryLabel) || 0) + amount)
+        netByMonth.set(keyMonth, (netByMonth.get(keyMonth) || 0) + amount)
+        continue
+      }
+
+      const expenseImpact = -amount
+      if (bucket === "cost_of_goods_sold") {
+        cogs += expenseImpact
+        cogsByCategory.set(categoryName, (cogsByCategory.get(categoryName) || 0) + expenseImpact)
+      } else {
+        const expenseCategoryLabel = isUncategorized ? UNCATEGORIZED_EXPENSES_LABEL : categoryName
+        operatingExpenses += expenseImpact
+        operatingByCategory.set(
+          expenseCategoryLabel,
+          (operatingByCategory.get(expenseCategoryLabel) || 0) + expenseImpact
+        )
+      }
+      netByMonth.set(keyMonth, (netByMonth.get(keyMonth) || 0) + amount)
+    }
+  }
+
+  const grossProfit = revenue - cogs
+  const operatingIncome = grossProfit - operatingExpenses
+  const netIncome = operatingIncome
+
+  const revenueItems = Array.from(revenueByCategory.entries())
+    .map(([label, amount]) => ({
+      id: statementId(label),
+      label,
+      amount: normalizeAmount(amount),
+      level: 1,
+      type: "item",
+      presentationType: "income",
+    }))
+    .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
+
+  const cogsItems = buildExpenseItems(cogsByCategory).map((item) => ({
+    ...item,
+    presentationType: "expense",
+  }))
+  const operatingItems = buildExpenseItems(operatingByCategory).map((item) => ({
+    ...item,
+    presentationType: "expense",
+  }))
+
+  const statement = [
+    { id: "revenue", label: "Revenue", amount: normalizeAmount(revenue), level: 0, type: "group", presentationType: "income" },
+    ...revenueItems,
+    { id: "cogs", label: "Cost of Goods Sold", amount: -normalizeAmount(cogs), level: 0, type: "group", presentationType: "expense" },
+    ...cogsItems,
+    { id: "gross_total", label: "Gross Profit", amount: normalizeAmount(grossProfit), level: 0, type: "total", presentationType: "net" },
+    { id: "opex", label: "Operating Expenses", amount: -normalizeAmount(operatingExpenses), level: 0, type: "group", presentationType: "expense" },
+    ...operatingItems,
+    { id: "op_total", label: "Operating Income", amount: normalizeAmount(operatingIncome), level: 0, type: "total", presentationType: "net" },
+    { id: "net_total", label: "Net Income", amount: normalizeAmount(netIncome), level: 0, type: "total", presentationType: "net" },
+  ]
+
+  const monthlyNet = Array.from(netByMonth.entries()).map(([month, amount]) => ({
+    month,
+    amount: normalizeAmount(amount),
+  }))
+
+  return {
+    period: periodLabel,
+    periodStart: startDate || null,
+    periodEnd: endDate || null,
+    kpis: [
+      { id: "revenue", label: "Revenue", value: normalizeAmount(revenue) },
+      { id: "gross_profit", label: "Gross Profit", value: normalizeAmount(grossProfit) },
+      { id: "operating_income", label: "Operating Income", value: normalizeAmount(operatingIncome) },
+      { id: "net_income", label: "Net Income", value: normalizeAmount(netIncome) },
+    ],
+    statement,
+    monthlyNet,
+  }
+}
