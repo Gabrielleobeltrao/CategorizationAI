@@ -1,6 +1,7 @@
 import OpenAI from "openai"
 import dotenv from "dotenv"
 import { z } from "zod"
+import { isLlmSpendLimitError, normalizeLlmError } from "../../utils/llmError.js"
 
 dotenv.config({ quiet: true })
 
@@ -217,7 +218,8 @@ Rules:
       return parsed.results
     } catch (error) {
       lastError = error
-      const shouldRetry = attempt < maxRetries
+      const spendLimitReached = isLlmSpendLimitError(error)
+      const shouldRetry = !spendLimitReached && attempt < maxRetries
       console.warn(
         `[categorizeTransaction] batch=${batchIndex}/${totalBatches} attempt=${attempt} failed: ${
           error?.message || error
@@ -228,7 +230,7 @@ Rules:
     }
   }
 
-  throw lastError
+  throw normalizeLlmError(lastError)
 }
 
 async function categorizeTransaction(categories, transactions, business, options = {}) {
