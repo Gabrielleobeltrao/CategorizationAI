@@ -1,7 +1,7 @@
 import { AppError } from "./appError.js"
 
 export const LLM_SPEND_LIMIT_MESSAGE =
-  "You reached the AI categorization limit for this workspace. Increase the OpenAI API spending limit to continue AI categorization."
+  "You reached the AI categorization limit for this workspace."
 
 function extractLlmErrorCode(error) {
   return String(
