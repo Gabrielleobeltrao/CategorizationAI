@@ -1,5 +1,8 @@
 import { api } from "../lib/api"
-import { validateOpenTestAccessCode } from "./openTest.service"
+import {
+  releaseOpenTestAccessReservation,
+  validateOpenTestAccessCode,
+} from "./openTest.service"
 
 export async function registerWithOffice(input) {
   const name = input?.name?.trim()
@@ -22,38 +25,56 @@ export async function registerWithOffice(input) {
     throw new Error("openTestAccessCode is required")
   }
 
-  if (requiresOpenTestAccessCode) {
-    await validateOpenTestAccessCode(openTestAccessCode)
+  let reservationToken = ""
+
+  try {
+    if (requiresOpenTestAccessCode) {
+      const reservation = await validateOpenTestAccessCode(openTestAccessCode)
+      reservationToken = String(reservation?.reservationToken || "").trim()
+      if (!reservationToken) {
+        throw new Error("Failed to reserve private beta access code")
+      }
+    }
+
+    await api("/api/auth/sign-up/email", {
+      method: "POST",
+      body: JSON.stringify({ name, email, password }),
+    })
+
+    const office = await api("/api/offices", {
+      method: "POST",
+      body: JSON.stringify({
+        name: officeName,
+        address: officeAddress,
+        businessPhone: officePhone,
+        businessEmail: officeEmail,
+        openTestReservationToken: reservationToken,
+      }),
+    })
+
+    const officeId = office?._id
+    if (!officeId) throw new Error("failed to create office")
+
+    const profile = await api("/api/user-profiles", {
+      method: "POST",
+      body: JSON.stringify({
+        name,
+        email,
+        officeId,
+        role: "owner",
+      }),
+    })
+
+    return { office, profile }
+  } catch (error) {
+    if (reservationToken) {
+      try {
+        await releaseOpenTestAccessReservation(reservationToken)
+      } catch {
+        // ignore reservation release failures
+      }
+    }
+
+    throw error
   }
-
-  await api("/api/auth/sign-up/email", {
-    method: "POST",
-    body: JSON.stringify({ name, email, password }),
-  })
-
-  const office = await api("/api/offices", {
-    method: "POST",
-    body: JSON.stringify({
-      name: officeName,
-      address: officeAddress,
-      businessPhone: officePhone,
-      businessEmail: officeEmail,
-      openTestAccessCode,
-    }),
-  })
-
-  const officeId = office?._id
-  if (!officeId) throw new Error("failed to create office")
-
-  const profile = await api("/api/user-profiles", {
-    method: "POST",
-    body: JSON.stringify({
-      name,
-      email,
-      officeId,
-      role: "owner",
-    }),
-  })
-
-  return { office, profile }
 }

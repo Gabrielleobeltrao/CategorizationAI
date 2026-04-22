@@ -38,6 +38,9 @@ export async function updateOfficeById(id, patch) {
     if (patch.address !== undefined) safePatch.address = patch.address
     if (patch.businessPhone !== undefined) safePatch.businessPhone = patch.businessPhone
     if (patch.businessEmail !== undefined) safePatch.businessEmail = patch.businessEmail
+    if (patch.isOpenTestOffice !== undefined) safePatch.isOpenTestOffice = Boolean(patch.isOpenTestOffice)
+    if (patch.openTestAccessCodeLabel !== undefined) safePatch.openTestAccessCodeLabel = patch.openTestAccessCodeLabel
+    if (patch.openTestCreatedAt !== undefined) safePatch.openTestCreatedAt = patch.openTestCreatedAt
 
     return db.collection("offices").findOneAndUpdate(
         { _id: new ObjectId(id) },
@@ -51,6 +54,11 @@ export async function updateOfficeById(id, patch) {
 export async function getOfficeById(id) {
     const db = getDB()
     return db.collection("offices").findOne({_id: new ObjectId(id)})
+}
+
+export async function deleteOfficeById(id) {
+    const db = getDB()
+    return db.collection("offices").deleteOne({ _id: new ObjectId(id) })
 }
 
 export async function listAllOfficeIds() {

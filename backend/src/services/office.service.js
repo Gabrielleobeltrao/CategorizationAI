@@ -1,5 +1,6 @@
 import {
   createOffice,
+  deleteOfficeById,
   updateOfficeById,
   getOfficeById,
 } from "../repositories/office.repository.js"
@@ -17,17 +18,41 @@ export async function createOfficeService(input, context = {}) {
   if (!input?.name) throw new Error("name is required")
 
   const shouldValidateOpenTestCode = OPEN_TEST_ENABLED && !context?.actorHasProfile
-  const openTestMarker = shouldValidateOpenTestCode
-    ? resolveOpenTestMarkerService(input?.openTestAccessCode)
-    : null
-
-  return createOffice({
+  const office = await createOffice({
     name: input.name.trim(),
     address: normalizeOptionalText(input.address),
     businessPhone: normalizeOptionalText(input.businessPhone),
     businessEmail: normalizeOptionalText(input.businessEmail),
-    openTest: openTestMarker,
+    openTest: null,
   })
+
+  if (!shouldValidateOpenTestCode) {
+    return office
+  }
+
+  try {
+    const openTestMarker = await resolveOpenTestMarkerService(
+      input?.openTestReservationToken,
+      office?._id
+    )
+
+    office.isOpenTestOffice = Boolean(openTestMarker?.isOpenTestOffice)
+    office.openTestAccessCodeLabel = String(openTestMarker?.accessCodeLabel || "")
+    office.openTestCreatedAt = openTestMarker?.createdAt || null
+
+    return updateOfficeById(office._id, {
+      name: office.name,
+      address: office.address,
+      businessPhone: office.businessPhone,
+      businessEmail: office.businessEmail,
+      isOpenTestOffice: office.isOpenTestOffice,
+      openTestAccessCodeLabel: office.openTestAccessCodeLabel,
+      openTestCreatedAt: office.openTestCreatedAt,
+    })
+  } catch (error) {
+    await deleteOfficeById(office._id)
+    throw error
+  }
 }
 
 export async function updateOfficeByIdService(id, patch) {
