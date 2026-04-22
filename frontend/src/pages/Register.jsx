@@ -5,6 +5,25 @@ import { registerWithOffice } from "../services/register.service"
 import { useOpenTest } from "../contexts/openTest.context"
 import { useNotification } from "../contexts/notification.context"
 
+const TERMS_SECTIONS = [
+    {
+        title: "Professional review required",
+        body: "Every AI categorization, automatic grouping, mapping suggestion, import result, split suggestion, profit and loss output, and any other automated result in the system must be reviewed by a qualified professional before use."
+    },
+    {
+        title: "User responsibility",
+        body: "You are responsible for reviewing, validating, correcting, approving, and deciding whether any information generated or processed by the system is accurate and appropriate for your office, your clients, and your reporting obligations."
+    },
+    {
+        title: "No automatic reliance",
+        body: "Automated outputs are support tools only. They must not be treated as final accounting, tax, financial, legal, or compliance advice without human verification."
+    },
+    {
+        title: "Data quality and final decisions",
+        body: "The quality of results depends on the quality of uploaded files, transaction descriptions, categories, account structure, and user review. Final decisions and filings remain under the user's responsibility."
+    },
+]
+
 function Register() {
     const navigate = useNavigate()
     const [step, setStep] = useState(1)
@@ -18,6 +37,8 @@ function Register() {
     const [officeEmail, setOfficeEmail] = useState("")
     const [openTestAccessCode, setOpenTestAccessCode] = useState("")
     const [isOpenTestModalOpen, setIsOpenTestModalOpen] = useState(false)
+    const [hasAcceptedTerms, setHasAcceptedTerms] = useState(false)
+    const [isTermsModalOpen, setIsTermsModalOpen] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
     const { success, error } = useNotification()
     const { config: openTestConfig } = useOpenTest()
@@ -71,6 +92,11 @@ function Register() {
             return
         }
 
+        if (!hasAcceptedTerms) {
+            error("You must agree to the terms to create the account")
+            return
+        }
+
         if (isOpenTestEnabled) {
             setIsOpenTestModalOpen(true)
             return
@@ -89,7 +115,7 @@ function Register() {
     }
 
     return (
-        <section className="flex h-dvh w-full items-center justify-center bg-white px-4">
+        <section className="flex min-h-dvh w-full items-start justify-center overflow-y-auto bg-white px-4 py-6 md:items-center md:py-10">
             <div className="w-full max-w-3xl">
                 <div className="mb-6 flex flex-col items-center gap-1 text-center">
                     <h1 className="text-lg font-bold text-gray-900">
@@ -101,10 +127,10 @@ function Register() {
                 </div>
 
                 <form
-                    className="flex min-h-[640px] flex-col justify-between rounded-3xl border border-gray-200 bg-white p-6 shadow-sm md:min-h-[560px]"
+                    className="flex flex-col gap-5 rounded-3xl border border-gray-200 bg-white p-6 shadow-sm md:p-7"
                     onSubmit={handleSubmit}
                 >
-                    <div className="flex flex-1 flex-col gap-5">
+                    <div className="flex flex-col gap-5">
                         <div className="grid grid-cols-2 gap-2 rounded-2xl border border-gray-200 bg-gray-50 p-1">
                             <div className={`rounded-xl px-3 py-2 text-center text-xs font-semibold uppercase tracking-wide transition ${
                                 step === 1 ? "bg-white text-gray-900 shadow-sm" : "text-gray-400"
@@ -259,6 +285,25 @@ function Register() {
                                         Your account will be created as <span className="font-semibold">owner</span> of this office
                                     </p>
                                 </div>
+                                <label className="flex items-start gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3">
+                                    <input
+                                        className="mt-1 h-4 w-4 rounded border-gray-300"
+                                        type="checkbox"
+                                        checked={hasAcceptedTerms}
+                                        onChange={(e) => setHasAcceptedTerms(e.target.checked)}
+                                    />
+                                    <span className="text-sm text-gray-600">
+                                        I agree to the{" "}
+                                        <button
+                                            type="button"
+                                            className="font-semibold text-gray-900 underline underline-offset-2"
+                                            onClick={() => setIsTermsModalOpen(true)}
+                                        >
+                                            terms and review responsibilities
+                                        </button>
+                                        . I understand that all AI and automated actions must be reviewed by a qualified professional, and the responsibility for the information remains with the user.
+                                    </span>
+                                </label>
                             </>
                         )}
                     </div>
@@ -277,7 +322,7 @@ function Register() {
                         <button
                             className="flex-1 rounded-2xl bg-gray-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-black disabled:opacity-60"
                             type="submit"
-                            disabled={isSubmitting}
+                            disabled={isSubmitting || (step === 2 && !hasAcceptedTerms)}
                         >
                             {step === 1 ? "Continue to user" : isSubmitting ? "Creating..." : "Create Account"}
                         </button>
@@ -351,6 +396,47 @@ function Register() {
                             disabled={isSubmitting}
                         >
                             {isSubmitting ? "Creating..." : "Create Account"}
+                        </button>
+                    </div>
+                </div>
+            </PopupModal>
+
+            <PopupModal
+                isOpen={isTermsModalOpen}
+                onClose={() => setIsTermsModalOpen(false)}
+                title="Terms and Review Responsibilities"
+                maxWidthClass="max-w-2xl"
+            >
+                <div className="space-y-5">
+                    <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
+                        <p className="text-sm font-semibold text-gray-900">
+                            CategorizationAI provides automated support tools, not final professional judgment.
+                        </p>
+                        <p className="mt-1 text-sm text-gray-600">
+                            Before creating the account, you must understand that every automated output requires human review.
+                        </p>
+                    </div>
+
+                    <div className="space-y-4">
+                        {TERMS_SECTIONS.map((section) => (
+                            <div key={section.title} className="border-t border-gray-100 pt-4 first:border-t-0 first:pt-0">
+                                <h3 className="text-sm font-semibold text-gray-900">
+                                    {section.title}
+                                </h3>
+                                <p className="mt-1 text-sm leading-6 text-gray-600">
+                                    {section.body}
+                                </p>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="flex justify-end pt-2">
+                        <button
+                            type="button"
+                            className="rounded-2xl bg-gray-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-black"
+                            onClick={() => setIsTermsModalOpen(false)}
+                        >
+                            Close
                         </button>
                     </div>
                 </div>
