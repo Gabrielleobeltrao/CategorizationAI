@@ -7,7 +7,7 @@ import {
 } from "../services/clients.service.js"
 import { userHasPermissionService } from "../services/roles.service.js"
 import { hydrateOfficeTagsForDocumentService } from "../services/tagCatalog.service.js"
-import { getErrorStatusCode } from "../utils/appError.js"
+import { sendErrorResponse } from "../utils/httpError.js"
 
 function sanitizeClientOwnerInfo(client, canReadOwnerInfo) {
     if (!client || canReadOwnerInfo) return client
@@ -67,10 +67,7 @@ export async function createClientController(req, res) {
         const canReadOwnerInfo = await userHasPermissionService(req.userProfile, "clientsOwnerInfo:read")
         return res.status(201).json(sanitizeClientOwnerInfo(client, canReadOwnerInfo))
     } catch (error) {
-        return res.status(getErrorStatusCode(error)).json({
-            message: error.message,
-            ...(error?.details ? { details: error.details } : {}),
-        })
+        return sendErrorResponse(res, error)
     }
 }
 
@@ -110,10 +107,7 @@ export async function updateClientByIdController(req, res) {
         const canReadOwnerInfo = await userHasPermissionService(req.userProfile, "clientsOwnerInfo:read")
         return res.status(200).json(sanitizeClientOwnerInfo(updatedClient, canReadOwnerInfo))
     } catch (error) {
-        return res.status(getErrorStatusCode(error)).json({
-            message: error.message,
-            ...(error?.details ? { details: error.details } : {}),
-        })
+        return sendErrorResponse(res, error)
     }
 }
 
@@ -132,10 +126,7 @@ export async function listClientsByOfficeIdController(req, res) {
             items,
         })
     } catch (error) {
-        return res.status(getErrorStatusCode(error)).json({
-            message: error.message,
-            ...(error?.details ? { details: error.details } : {}),
-        })
+        return sendErrorResponse(res, error)
     }
 }
 
@@ -155,10 +146,7 @@ export async function getClientByIdController(req, res) {
         const canReadOwnerInfo = await userHasPermissionService(req.userProfile, "clientsOwnerInfo:read")
         return res.status(200).json(sanitizeClientOwnerInfo(client, canReadOwnerInfo))
     } catch (error) {
-        return res.status(getErrorStatusCode(error)).json({
-            message: error.message,
-            ...(error?.details ? { details: error.details } : {}),
-        })
+        return sendErrorResponse(res, error)
     }
 }
 
@@ -168,9 +156,6 @@ export async function deleteClientByIdController(req, res) {
         await deleteClientByIdService(id)
         return res.status(204).send()
     } catch (error) {
-        return res.status(getErrorStatusCode(error)).json({
-            message: error.message,
-            ...(error?.details ? { details: error.details } : {}),
-        })
+        return sendErrorResponse(res, error)
     }
 }

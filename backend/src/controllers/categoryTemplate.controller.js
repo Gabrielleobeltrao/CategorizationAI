@@ -4,7 +4,7 @@ import {
   listCategoryTemplatesByOfficeIdService,
   updateCategoryTemplateByIdService,
 } from "../services/categoryTemplate.service.js"
-import { getErrorStatusCode } from "../utils/appError.js"
+import { sendErrorResponse } from "../utils/httpError.js"
 
 export async function createCategoryTemplateController(req, res) {
   try {
@@ -14,10 +14,7 @@ export async function createCategoryTemplateController(req, res) {
     })
     return res.status(201).json(template)
   } catch (error) {
-    return res.status(getErrorStatusCode(error)).json({
-      message: error.message,
-      ...(error?.details ? { details: error.details } : {}),
-    })
+    return sendErrorResponse(res, error)
   }
 }
 
@@ -28,10 +25,7 @@ export async function listCategoryTemplatesByOfficeIdController(req, res) {
     })
     return res.status(200).json(templates)
   } catch (error) {
-    return res.status(getErrorStatusCode(error)).json({
-      message: error.message,
-      ...(error?.details ? { details: error.details } : {}),
-    })
+    return sendErrorResponse(res, error)
   }
 }
 
@@ -43,10 +37,7 @@ export async function updateCategoryTemplateByIdController(req, res) {
     })
     return res.status(200).json(template)
   } catch (error) {
-    return res.status(getErrorStatusCode(error)).json({
-      message: error.message,
-      ...(error?.details ? { details: error.details } : {}),
-    })
+    return sendErrorResponse(res, error)
   }
 }
 
@@ -57,9 +48,6 @@ export async function deleteCategoryTemplateByIdController(req, res) {
     })
     return res.status(204).send()
   } catch (error) {
-    return res.status(getErrorStatusCode(error)).json({
-      message: error.message,
-      ...(error?.details ? { details: error.details } : {}),
-    })
+    return sendErrorResponse(res, error)
   }
 }

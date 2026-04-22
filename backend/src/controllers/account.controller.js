@@ -5,17 +5,14 @@ import {
   getAccountByIdService,
   deleteAccountByIdService,
 } from "../services/account.service.js"
-import { getErrorStatusCode } from "../utils/appError.js"
+import { sendErrorResponse } from "../utils/httpError.js"
 
 export async function createAccountController(req, res) {
   try {
     const account = await createAccountService(req.body)
     return res.status(201).json(account)
   } catch (error) {
-    return res.status(getErrorStatusCode(error)).json({
-      message: error.message,
-      ...(error?.details ? { details: error.details } : {}),
-    })
+    return sendErrorResponse(res, error)
   }
 }
 
@@ -25,10 +22,7 @@ export async function updateAccountByIdController(req, res) {
     const updatedAccount = await updateAccountByIdService(id, req.body)
     return res.status(200).json(updatedAccount)
   } catch (error) {
-    return res.status(getErrorStatusCode(error)).json({
-      message: error.message,
-      ...(error?.details ? { details: error.details } : {}),
-    })
+    return sendErrorResponse(res, error)
   }
 }
 
@@ -38,10 +32,7 @@ export async function listAccountsByClientIdController(req, res) {
     const accounts = await listAccountsByClientIdService(clientId)
     return res.status(200).json(accounts)
   } catch (error) {
-    return res.status(getErrorStatusCode(error)).json({
-      message: error.message,
-      ...(error?.details ? { details: error.details } : {}),
-    })
+    return sendErrorResponse(res, error)
   }
 }
 
@@ -57,10 +48,7 @@ export async function getAccountByIdController(req, res) {
 
     return res.status(200).json(account)
   } catch (error) {
-    return res.status(getErrorStatusCode(error)).json({
-      message: error.message,
-      ...(error?.details ? { details: error.details } : {}),
-    })
+    return sendErrorResponse(res, error)
   }
 }
 
@@ -70,9 +58,6 @@ export async function deleteAccountByIdController(req, res) {
     await deleteAccountByIdService(id)
     return res.status(204).send()
   } catch (error) {
-    return res.status(getErrorStatusCode(error)).json({
-      message: error.message,
-      ...(error?.details ? { details: error.details } : {}),
-    })
+    return sendErrorResponse(res, error)
   }
 }

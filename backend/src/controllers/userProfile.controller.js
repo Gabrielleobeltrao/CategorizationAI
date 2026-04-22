@@ -9,15 +9,14 @@ import {
   resetEmployeePasswordByIdService,
   completeMyPasswordResetService,
 } from "../services/userProfile.service.js"
+import { sendErrorResponse } from "../utils/httpError.js"
 
 export async function createUserProfileController(req, res) {
   try {
     const profile = await createUserProfileService(req.body)
     return res.status(201).json(profile)
   } catch (error) {
-    return res.status(400).json({
-      message: error.message,
-    })
+    return sendErrorResponse(res, error)
   }
 }
 
@@ -30,9 +29,7 @@ export async function updateUserProfileByIdController(req, res) {
     })
     return res.status(200).json(updatedProfile)
   } catch (error) {
-    return res.status(400).json({
-      message: error.message,
-    })
+    return sendErrorResponse(res, error)
   }
 }
 
@@ -48,9 +45,7 @@ export async function getUserProfileByIdController(req, res) {
 
     return res.status(200).json(profile)
   } catch (error) {
-    return res.status(400).json({
-      message: error.message,
-    })
+    return sendErrorResponse(res, error)
   }
 }
 
@@ -60,9 +55,7 @@ export async function listUserProfilesByOfficeIdController(req, res) {
     const profiles = await listUserProfilesByOfficeIdService(officeId)
     return res.status(200).json(profiles)
   } catch (error) {
-    return res.status(400).json({
-      message: error.message,
-    })
+    return sendErrorResponse(res, error)
   }
 }
 
@@ -80,9 +73,7 @@ export async function getMyUserProfileController(req, res) {
 
     return res.status(200).json(profile)
   } catch (error) {
-    return res.status(400).json({
-      message: error.message,
-    })
+    return sendErrorResponse(res, error)
   }
 }
 
@@ -93,9 +84,7 @@ export async function updateMyUserProfileController(req, res) {
     })
     return res.status(200).json(profile)
   } catch (error) {
-    return res.status(400).json({
-      message: error.message,
-    })
+    return sendErrorResponse(res, error)
   }
 }
 
@@ -105,9 +94,7 @@ export async function deleteUserProfileByIdController(req, res) {
     const deletedProfile = await deleteUserProfileByIdService(id, req.user?.email)
     return res.status(200).json(deletedProfile)
   } catch (error) {
-    return res.status(400).json({
-      message: error.message,
-    })
+    return sendErrorResponse(res, error)
   }
 }
 
@@ -117,9 +104,7 @@ export async function resetEmployeePasswordByIdController(req, res) {
     const result = await resetEmployeePasswordByIdService(id, req.user?.email)
     return res.status(200).json(result)
   } catch (error) {
-    return res.status(400).json({
-      message: error.message,
-    })
+    return sendErrorResponse(res, error)
   }
 }
 
@@ -128,8 +113,6 @@ export async function completeMyPasswordResetController(req, res) {
     const result = await completeMyPasswordResetService(req.user?.email, req.body?.newPassword)
     return res.status(200).json(result)
   } catch (error) {
-    return res.status(400).json({
-      message: error.message,
-    })
+    return sendErrorResponse(res, error)
   }
 }

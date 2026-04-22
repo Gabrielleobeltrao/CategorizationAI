@@ -5,6 +5,7 @@ import {
   listRolesForOfficeService,
   updateCustomRoleService,
 } from "../services/roles.service.js"
+import { sendErrorResponse } from "../utils/httpError.js"
 
 export async function listRolesController(req, res) {
   try {
@@ -12,9 +13,7 @@ export async function listRolesController(req, res) {
     const roles = await listRolesForOfficeService(officeId)
     return res.status(200).json(roles)
   } catch (error) {
-    return res.status(400).json({
-      message: error.message,
-    })
+    return sendErrorResponse(res, error)
   }
 }
 
@@ -31,9 +30,7 @@ export async function createCustomRoleController(req, res) {
     })
     return res.status(201).json(created)
   } catch (error) {
-    return res.status(400).json({
-      message: error.message,
-    })
+    return sendErrorResponse(res, error)
   }
 }
 
@@ -46,9 +43,7 @@ export async function updateCustomRoleController(req, res) {
     })
     return res.status(200).json(updated)
   } catch (error) {
-    return res.status(400).json({
-      message: error.message,
-    })
+    return sendErrorResponse(res, error)
   }
 }
 
@@ -61,8 +56,6 @@ export async function deleteCustomRoleController(req, res) {
     })
     return res.status(200).json(deleted)
   } catch (error) {
-    return res.status(400).json({
-      message: error.message,
-    })
+    return sendErrorResponse(res, error)
   }
 }

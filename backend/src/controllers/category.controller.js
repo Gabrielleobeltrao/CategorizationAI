@@ -6,7 +6,7 @@ import {
   deleteCategoryByIdService,
   clearUnusedCategoriesByClientIdService,
 } from "../services/category.service.js"
-import { getErrorStatusCode } from "../utils/appError.js"
+import { sendErrorResponse } from "../utils/httpError.js"
 
 export async function createCategoryController(req, res) {
   try {
@@ -15,10 +15,7 @@ export async function createCategoryController(req, res) {
     })
     return res.status(201).json(category)
   } catch (error) {
-    return res.status(getErrorStatusCode(error)).json({
-      message: error.message,
-      ...(error?.details ? { details: error.details } : {}),
-    })
+    return sendErrorResponse(res, error)
   }
 }
 
@@ -30,10 +27,7 @@ export async function updateCategoryByIdController(req, res) {
     })
     return res.status(200).json(updatedCategory)
   } catch (error) {
-    return res.status(getErrorStatusCode(error)).json({
-      message: error.message,
-      ...(error?.details ? { details: error.details } : {}),
-    })
+    return sendErrorResponse(res, error)
   }
 }
 
@@ -43,10 +37,7 @@ export async function listCategoriesByClientIdController(req, res) {
     const categories = await listCategoriesByClientIdService(clientId)
     return res.status(200).json(categories)
   } catch (error) {
-    return res.status(getErrorStatusCode(error)).json({
-      message: error.message,
-      ...(error?.details ? { details: error.details } : {}),
-    })
+    return sendErrorResponse(res, error)
   }
 }
 
@@ -62,10 +53,7 @@ export async function getCategoryByIdController(req, res) {
 
     return res.status(200).json(category)
   } catch (error) {
-    return res.status(getErrorStatusCode(error)).json({
-      message: error.message,
-      ...(error?.details ? { details: error.details } : {}),
-    })
+    return sendErrorResponse(res, error)
   }
 }
 
@@ -75,10 +63,7 @@ export async function deleteCategoryByIdController(req, res) {
     await deleteCategoryByIdService(id)
     return res.status(204).send()
   } catch (error) {
-    return res.status(getErrorStatusCode(error)).json({
-      message: error.message,
-      ...(error?.details ? { details: error.details } : {}),
-    })
+    return sendErrorResponse(res, error)
   }
 }
 
@@ -88,9 +73,6 @@ export async function clearUnusedCategoriesByClientIdController(req, res) {
     const result = await clearUnusedCategoriesByClientIdService(clientId)
     return res.status(200).json(result)
   } catch (error) {
-    return res.status(getErrorStatusCode(error)).json({
-      message: error.message,
-      ...(error?.details ? { details: error.details } : {}),
-    })
+    return sendErrorResponse(res, error)
   }
 }

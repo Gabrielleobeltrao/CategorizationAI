@@ -5,6 +5,7 @@ import {
     getOfficeDashboardByIdService,
 } from "../services/office.service.js"
 import { deleteOfficeTagService, listOfficeTagsService } from "../services/tag.service.js"
+import { sendErrorResponse } from "../utils/httpError.js"
 
 export async function createOfficeController(req, res) {
     try {
@@ -13,9 +14,7 @@ export async function createOfficeController(req, res) {
         })
         return res.status(201).json(office)
     } catch (error) {
-        return res.status(400).json({
-            message: error.message,
-        })
+        return sendErrorResponse(res, error)
     }
 }
 
@@ -28,9 +27,7 @@ export async function updateOfficeByIdController(req, res) {
         })
         return res.status(200).json(updatedOffice)
     } catch (error) {
-        return res.status(400).json({
-            message: error.message,
-        })
+        return sendErrorResponse(res, error)
     }
 }
 
@@ -49,9 +46,7 @@ export async function getOfficeByIdController(req, res) {
 
         return res.status(200).json(office)
     } catch (error) {
-        return res.status(400).json({
-            message: error.message,
-        })
+        return sendErrorResponse(res, error)
     }
 }
 
@@ -64,9 +59,7 @@ export async function getOfficeDashboardByIdController(req, res) {
         })
         return res.status(200).json(dashboard)
     } catch (error) {
-        return res.status(400).json({
-            message: error.message,
-        })
+        return sendErrorResponse(res, error)
     }
 }
 
@@ -81,9 +74,7 @@ export async function listOfficeTagsController(req, res) {
             items: tags,
         })
     } catch (error) {
-        return res.status(400).json({
-            message: error.message,
-        })
+        return sendErrorResponse(res, error)
     }
 }
 
@@ -96,8 +87,6 @@ export async function deleteOfficeTagController(req, res) {
 
         return res.status(200).json(result)
     } catch (error) {
-        return res.status(400).json({
-            message: error.message,
-        })
+        return sendErrorResponse(res, error)
     }
 }

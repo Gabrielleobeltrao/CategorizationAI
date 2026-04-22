@@ -3,15 +3,14 @@ import {
   getCategorizationJobByIdService,
   listCategorizationJobsService,
 } from "../services/categorizationJob.service.js"
+import { sendErrorResponse } from "../utils/httpError.js"
 
 export async function createCategorizationJobController(req, res) {
   try {
     const result = await createCategorizationJobService(req.body, req.user?.id)
     return res.status(202).json(result)
   } catch (error) {
-    return res.status(400).json({
-      message: error.message,
-    })
+    return sendErrorResponse(res, error)
   }
 }
 
@@ -27,8 +26,9 @@ export async function getCategorizationJobByIdController(req, res) {
         ? 403
         : 400
 
-    return res.status(statusCode).json({
-      message,
+    return sendErrorResponse(res, error, {
+      deriveStatusCode: () => statusCode,
+      fallbackMessage: message,
     })
   }
 }
@@ -38,9 +38,6 @@ export async function listCategorizationJobsController(req, res) {
     const result = await listCategorizationJobsService(req.user?.id, req.query)
     return res.status(200).json(result)
   } catch (error) {
-    return res.status(400).json({
-      message: error.message,
-    })
+    return sendErrorResponse(res, error)
   }
 }
-

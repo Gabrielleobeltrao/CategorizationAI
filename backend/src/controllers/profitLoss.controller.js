@@ -2,6 +2,7 @@ import {
   getProfitLossByClientIdService,
   listProfitLossPeriodOptionsByClientIdService,
 } from "../services/profitLoss.service.js"
+import { sendErrorResponse } from "../utils/httpError.js"
 
 export async function getProfitLossByClientIdController(req, res) {
   try {
@@ -19,9 +20,7 @@ export async function getProfitLossByClientIdController(req, res) {
 
     return res.status(200).json(result)
   } catch (error) {
-    return res.status(400).json({
-      message: error.message,
-    })
+    return sendErrorResponse(res, error)
   }
 }
 
@@ -31,8 +30,6 @@ export async function listProfitLossPeriodOptionsByClientIdController(req, res) 
     const result = await listProfitLossPeriodOptionsByClientIdService(clientId)
     return res.status(200).json(result)
   } catch (error) {
-    return res.status(400).json({
-      message: error.message,
-    })
+    return sendErrorResponse(res, error)
   }
 }
