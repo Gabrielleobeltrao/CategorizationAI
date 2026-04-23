@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import PopupModal from "../components/ui/PopupModal"
 import ConfirmModal from "../components/ui/ConfirmModal"
@@ -158,9 +158,15 @@ function ClientsPage() {
     const [expandedClientIds, setExpandedClientIds] = useState([])
 
     const officeId = String(profile?.officeId || "").trim()
+    const handleOfficeTagError = useCallback((err) => {
+        error(err.message || "Failed to delete tag")
+    }, [error])
+    const handleOfficeTagDeleteSuccess = useCallback((tag) => {
+        success(`Tag "${tag}" deleted successfully`)
+    }, [success])
     const { tags: officeTags, reloadTags, deleteTag, deletingTag } = useOfficeTags(officeId, {
-        onError: (err) => error(err.message || "Failed to delete tag"),
-        onDeleteSuccess: (tag) => success(`Tag "${tag}" deleted successfully`),
+        onError: handleOfficeTagError,
+        onDeleteSuccess: handleOfficeTagDeleteSuccess,
     })
 
     useEffect(() => {
