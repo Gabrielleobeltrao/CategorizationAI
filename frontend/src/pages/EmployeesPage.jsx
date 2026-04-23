@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import PopupModal from "../components/ui/PopupModal"
 import ConfirmModal from "../components/ui/ConfirmModal"
 import { useAuth } from "../contexts/auth.context"
+import { useResolvedOfficeContext } from "../hooks/useResolvedOfficeContext"
 import {
     createCustomRole,
     createEmployeeAccount,
@@ -132,7 +133,7 @@ function EmployeesPage() {
     const [rolesRefreshKey, setRolesRefreshKey] = useState(0)
     const displayedRoles = roles.length > 0 ? roles : fallbackRoles
     const { success, error } = useNotification()
-    const officeId = String(currentUserProfile?.officeId || "").trim()
+    const { officeId, isResolvingOfficeContext } = useResolvedOfficeContext()
     const roleLabelByKey = useMemo(
         () =>
             displayedRoles.reduce((acc, item) => {
@@ -162,6 +163,30 @@ function EmployeesPage() {
             permissionListHasPermission(currentRolePermissions, "roles:delete")
         )
     }, [currentRolePermissions])
+    const canSubmitRole = useMemo(() => {
+        return (
+            !isSubmitting &&
+            !isResolvingOfficeContext &&
+            Boolean(String(roleDraft.label || "").trim())
+        )
+    }, [isResolvingOfficeContext, isSubmitting, roleDraft.label])
+    const canSubmitNewEmployee = useMemo(() => {
+        return (
+            !isSubmitting &&
+            !isResolvingOfficeContext &&
+            Boolean(String(newEmployeeName || "").trim()) &&
+            Boolean(String(newEmployeeEmail || "").trim()) &&
+            Boolean(String(newEmployeePassword || "")) &&
+            Boolean(String(newEmployeeRole || "").trim())
+        )
+    }, [
+        isResolvingOfficeContext,
+        isSubmitting,
+        newEmployeeEmail,
+        newEmployeeName,
+        newEmployeePassword,
+        newEmployeeRole,
+    ])
 
     const filteredEmployees = useMemo(() => {
         const safeSearch = String(searchTerm || "").trim().toLowerCase()
@@ -278,6 +303,11 @@ function EmployeesPage() {
 
     const handleCreateEmployee = async (e) => {
         e.preventDefault()
+
+        if (!officeId) {
+            error("Office context is not available yet. Refresh the page and try again.")
+            return
+        }
 
         try {
             setIsSubmitting(true)
@@ -974,10 +1004,15 @@ function EmployeesPage() {
                             >
                                 Cancel
                             </button>
+                            {!officeId && (
+                                <span className="mr-auto text-xs text-gray-500">
+                                    {isResolvingOfficeContext ? "Loading office..." : "Office context unavailable"}
+                                </span>
+                            )}
                             <button
                                 className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-black disabled:opacity-60"
                                 type="submit"
-                                disabled={isSubmitting || !officeId}
+                                disabled={!canSubmitRole}
                             >
                                 {isSubmitting ? "Saving..." : "Save Role"}
                             </button>
@@ -1058,6 +1093,13 @@ function EmployeesPage() {
                                 {displayedRoles.find((role) => role.key === newEmployeeRole)?.description || "Select a role"}
                             </div>
                         )}
+                        {!officeId && (
+                            <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                                {isResolvingOfficeContext
+                                    ? "Loading your office context..."
+                                    : "Your session does not have an office linked yet. Reload the page and try again."}
+                            </div>
+                        )}
                         <div className="mt-1 flex items-center justify-end gap-2">
                             <button
                                 type="button"
@@ -1069,7 +1111,7 @@ function EmployeesPage() {
                             <button
                                 className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-black disabled:opacity-60"
                                 type="submit"
-                                disabled={isSubmitting || !officeId}
+                                disabled={!canSubmitNewEmployee}
                             >
                                 {isSubmitting ? "Saving..." : "Save Employee"}
                             </button>
