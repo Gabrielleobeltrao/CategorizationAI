@@ -1,5 +1,6 @@
 import {
   createUserProfile,
+  deleteAuthUserCascadeById,
   updateUserProfileById,
   getUserProfileById,
   listUserProfilesByOfficeId,
@@ -10,6 +11,7 @@ import {
 } from "../repositories/userProfile.repository.js"
 import { getPermissionsForRoleService, roleExistsForOfficeService } from "./roles.service.js"
 import { hashPassword } from "better-auth/crypto"
+import { AppError } from "../utils/appError.js"
 
 async function attachPermissions(profile) {
   if (!profile) return null
@@ -257,4 +259,61 @@ export async function completeMyPasswordResetService(email, newPassword) {
   })
 
   return { status: true, mustChangePassword: false }
+}
+
+export async function createEmployeeAccountService(input, context = {}) {
+  const name = String(input?.name || "").trim()
+  const email = String(input?.email || "").trim().toLowerCase()
+  const password = String(input?.password || "")
+  const officeId = String(input?.officeId || "").trim()
+  const role = String(input?.role || "").trim().toLowerCase()
+  const auth = context?.auth
+
+  if (!name) throw new AppError("name is required", 400)
+  if (!email) throw new AppError("email is required", 400)
+  if (!password) throw new AppError("password is required", 400)
+  if (!officeId) throw new AppError("officeId is required", 400)
+  if (!role) throw new AppError("role is required", 400)
+  if (!auth?.api?.signUpEmail) throw new AppError("Auth service unavailable", 500)
+
+  const roleExists = await roleExistsForOfficeService(role, officeId)
+  if (!roleExists) throw new AppError("role is invalid for this office", 400)
+
+  let signUpResult = null
+  let authUser = null
+
+  try {
+    signUpResult = await auth.api.signUpEmail({
+      body: {
+        name,
+        email,
+        password,
+      },
+    })
+
+    authUser = await getAuthUserByEmail(email)
+    if (!authUser?._id) {
+      throw new AppError("Failed to create auth user", 500)
+    }
+
+    const userProfile = await createUserProfileService({
+      name,
+      email,
+      officeId,
+      role,
+      status: "active",
+      authUserId: String(authUser._id),
+    })
+
+    return {
+      authUser: signUpResult,
+      userProfile,
+    }
+  } catch (error) {
+    if (authUser?._id) {
+      await deleteAuthUserCascadeById(String(authUser._id)).catch(() => null)
+    }
+
+    throw error
+  }
 }

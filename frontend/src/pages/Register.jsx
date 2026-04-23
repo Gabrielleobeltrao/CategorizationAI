@@ -68,9 +68,17 @@ function Register() {
                 navigate("/update-password")
                 return
             }
+            if (!snapshot?.profile) {
+                navigate("/complete-registration")
+                return
+            }
             navigate("/home")
         } catch (err) {
+            const snapshot = await refreshAuth({ force: true }).catch(() => null)
             error(err.message || "Failed to create account")
+            if (snapshot?.isAuthenticated && !snapshot?.profile) {
+                navigate("/complete-registration")
+            }
         } finally {
             setIsSubmitting(false)
         }

@@ -13,31 +13,16 @@ export async function createEmployeeAccount(input) {
   if (!officeId) throw new Error("officeId is required")
   if (!role) throw new Error("role is required")
 
-  const authUser = await api("/api/auth/sign-up/email", {
+  return api("/api/user-profiles/employee-account", {
     method: "POST",
-    credentials: "omit",
     body: JSON.stringify({
       name,
       email,
       password,
-    }),
-  })
-
-  const userProfile = await api("/api/user-profiles", {
-    method: "POST",
-    body: JSON.stringify({
-      name,
       officeId,
       role,
-      email,
-      status: "active",
     }),
   })
-
-  return {
-    authUser,
-    userProfile,
-  }
 }
 
 export async function listEmployeesByOfficeId(officeId) {
