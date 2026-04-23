@@ -3,6 +3,7 @@ import ProtectedRoute from './components/auth/ProtectedRoute.jsx'
 import LandingPage from './pages/LandingPage.jsx'
 import Login from './pages/Login.jsx'
 import Register from './pages/Register.jsx'
+import CompleteRegistration from './pages/CompleteRegistration.jsx'
 import Home from './pages/Home.jsx'
 import LedgerPage from './pages/LedgerPage.jsx'
 import ClientsPage from './pages/ClientsPage.jsx'
@@ -38,6 +39,15 @@ function App() {
             <Route
               path="/register"
               element={<Register />}
+            />
+
+            <Route
+              path="/complete-registration"
+              element={
+                <ProtectedRoute>
+                  <CompleteRegistration />
+                </ProtectedRoute>
+              }
             />
 
             <Route

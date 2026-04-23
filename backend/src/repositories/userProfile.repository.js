@@ -95,6 +95,18 @@ export async function getAuthUserByEmail(email) {
     return db.collection("user").findOne({ email: String(email).toLowerCase() })
 }
 
+export async function deleteAuthUserCascadeById(authUserId) {
+    const db = getDB()
+    const userId = new ObjectId(authUserId)
+
+    await Promise.all([
+        db.collection("session").deleteMany({ userId }),
+        db.collection("account").deleteMany({ userId }),
+    ])
+
+    return db.collection("user").deleteOne({ _id: userId })
+}
+
 export async function setCredentialPasswordByAuthUserId(authUserId, passwordHash) {
     const db = getDB()
     return db.collection("account").findOneAndUpdate(

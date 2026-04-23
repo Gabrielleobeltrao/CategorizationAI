@@ -10,10 +10,12 @@ import profitLossRoutes from "./profitLoss.routes.js"
 import rolesRoutes from "./roles.routes.js"
 import openTestRoutes from "./openTest.routes.js"
 import categoryTemplatesRoutes from "./categoryTemplates.routes.js"
+import registrationRoutes from "./registration.routes.js"
 
 const router = Router()
 router.use(healthRoutes)
 router.use(openTestRoutes)
+router.use(registrationRoutes)
 router.use(categoryTemplatesRoutes)
 router.use(accountsRoutes)
 router.use(clientsRoutes)

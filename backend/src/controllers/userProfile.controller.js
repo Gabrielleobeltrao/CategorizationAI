@@ -1,4 +1,5 @@
 import {
+  createEmployeeAccountService,
   createUserProfileService,
   updateUserProfileByIdService,
   updateCurrentUserProfileService,
@@ -10,6 +11,17 @@ import {
   completeMyPasswordResetService,
 } from "../services/userProfile.service.js"
 import { sendErrorResponse } from "../utils/httpError.js"
+
+export async function createEmployeeAccountController(req, res) {
+  try {
+    const result = await createEmployeeAccountService(req.body, {
+      auth: req.app.locals.auth,
+    })
+    return res.status(201).json(result)
+  } catch (error) {
+    return sendErrorResponse(res, error)
+  }
+}
 
 export async function createUserProfileController(req, res) {
   try {

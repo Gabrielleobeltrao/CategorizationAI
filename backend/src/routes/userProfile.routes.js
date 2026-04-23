@@ -1,5 +1,6 @@
 import { Router } from "express"
 import {
+  createEmployeeAccountController,
   createUserProfileController,
   updateUserProfileByIdController,
   getUserProfileByIdController,
@@ -19,6 +20,15 @@ import { ensureResourceExists } from "../middlewares/authorizeScope.js"
 import { requirePermission } from "../middlewares/requirePermission.js"
 
 const router = Router()
+
+router.post(
+  "/user-profiles/employee-account",
+  requireAuth,
+  requirePermission("userProfiles:create"),
+  validateObjectIdBody("officeId"),
+  ensureResourceExists({ collection: "offices", from: "body", field: "officeId", assignKey: "office" }),
+  createEmployeeAccountController
+)
 
 router.post(
   "/user-profiles",

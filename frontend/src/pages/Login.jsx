@@ -23,6 +23,10 @@ function Login() {
                     navigate("/update-password")
                     return
                 }
+                if (!profile) {
+                    navigate("/complete-registration")
+                    return
+                }
                 navigate("/home")
             } catch (err) {
                 error(err.message || "Failed to login")

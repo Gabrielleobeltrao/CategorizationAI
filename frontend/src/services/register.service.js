@@ -1,8 +1,4 @@
 import { api } from "../lib/api"
-import {
-  releaseOpenTestAccessReservation,
-  validateOpenTestAccessCode,
-} from "./openTest.service"
 
 export async function registerWithOffice(input) {
   const name = input?.name?.trim()
@@ -25,56 +21,49 @@ export async function registerWithOffice(input) {
     throw new Error("openTestAccessCode is required")
   }
 
-  let reservationToken = ""
+  await api("/api/auth/sign-up/email", {
+    method: "POST",
+    body: JSON.stringify({ name, email, password }),
+  })
 
-  try {
-    if (requiresOpenTestAccessCode) {
-      const reservation = await validateOpenTestAccessCode(openTestAccessCode)
-      reservationToken = String(reservation?.reservationToken || "").trim()
-      if (!reservationToken) {
-        throw new Error("Failed to reserve private beta access code")
-      }
-    }
+  return api("/api/registration/bootstrap", {
+    method: "POST",
+    body: JSON.stringify({
+      name,
+      officeName,
+      officeAddress,
+      officePhone,
+      officeEmail,
+      openTestAccessCode,
+    }),
+  })
+}
 
-    await api("/api/auth/sign-up/email", {
-      method: "POST",
-      body: JSON.stringify({ name, email, password }),
-    })
+export async function completeRegistrationWithOffice(input) {
+  const name = input?.name?.trim()
+  const officeName = input?.officeName?.trim()
+  const officeAddress = String(input?.officeAddress || "").trim()
+  const officePhone = String(input?.officePhone || "").trim()
+  const officeEmail = String(input?.officeEmail || "").trim()
+  const openTestAccessCode = String(input?.openTestAccessCode || "").trim()
+  const requiresOpenTestAccessCode = Boolean(
+    input?.openTestConfig?.registrationRequiresAccessCode ?? input?.requiresOpenTestAccessCode
+  )
 
-    const office = await api("/api/offices", {
-      method: "POST",
-      body: JSON.stringify({
-        name: officeName,
-        address: officeAddress,
-        businessPhone: officePhone,
-        businessEmail: officeEmail,
-        openTestReservationToken: reservationToken,
-      }),
-    })
-
-    const officeId = office?._id
-    if (!officeId) throw new Error("failed to create office")
-
-    const profile = await api("/api/user-profiles", {
-      method: "POST",
-      body: JSON.stringify({
-        name,
-        email,
-        officeId,
-        role: "owner",
-      }),
-    })
-
-    return { office, profile }
-  } catch (error) {
-    if (reservationToken) {
-      try {
-        await releaseOpenTestAccessReservation(reservationToken)
-      } catch {
-        // ignore reservation release failures
-      }
-    }
-
-    throw error
+  if (!officeName) throw new Error("officeName is required")
+  if (requiresOpenTestAccessCode && !openTestAccessCode) {
+    throw new Error("openTestAccessCode is required")
   }
+
+  return api("/api/registration/bootstrap", {
+    method: "POST",
+    body: JSON.stringify({
+      name,
+      officeName,
+      officeAddress,
+      officePhone,
+      officeEmail,
+      openTestAccessCode,
+    }),
+  })
 }
