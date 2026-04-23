@@ -499,6 +499,33 @@ function LedgerPage() {
         }
     }, [clientId, transactionsFilters.accountIds])
 
+    const refreshTransactionsSummary = useCallback(async () => {
+        if (!clientId) {
+            setTransactionsSummary({
+                totalAmount: 0,
+                totalCount: 0,
+            })
+            return
+        }
+
+        try {
+            const payload = await summarizeTransactionsByClientId(clientId, {
+                accountIds: transactionsFilters.accountIds,
+                silentLoading: true,
+            })
+
+            setTransactionsSummary({
+                totalAmount: Number(payload?.totalAmount || 0),
+                totalCount: Number(payload?.totalCount || 0),
+            })
+        } catch {
+            setTransactionsSummary({
+                totalAmount: 0,
+                totalCount: 0,
+            })
+        }
+    }, [clientId, transactionsFilters.accountIds])
+
     const loadMoreTransactions = async () => {
         if (!clientId || !transactionsHasMore || isLoadingTransactions) return
         if (loadingMoreRef.current) return
@@ -577,6 +604,7 @@ function LedgerPage() {
             setLedgerEntries((current) =>
                 current.map((item) => (item.id === id ? normalized : item))
             )
+            await refreshTransactionsSummary()
             if (patch?.date !== undefined) {
                 const periodOptions = await listTransactionPeriodOptions(clientId, { silentLoading: true })
                 setTransactionsPeriodOptions({
@@ -633,6 +661,7 @@ function LedgerPage() {
                     }
                 })
             )
+            await refreshTransactionsSummary()
 
             const touchedDate = safeUpdates.some((item) => Object.prototype.hasOwnProperty.call(item.patch, "date"))
             if (touchedDate) {
@@ -659,6 +688,7 @@ function LedgerPage() {
         try {
             await deleteTransactionById(id)
             setLedgerEntries((current) => current.filter((item) => item.id !== id))
+            await refreshTransactionsSummary()
             const periodOptions = await listTransactionPeriodOptions(clientId, { silentLoading: true })
             setTransactionsPeriodOptions({
                 years: Array.isArray(periodOptions?.years) ? periodOptions.years : [],
@@ -684,6 +714,7 @@ function LedgerPage() {
             }
             const targetSet = new Set(targetIds)
             setLedgerEntries((current) => current.filter((item) => !targetSet.has(item.id)))
+            await refreshTransactionsSummary()
             const periodOptions = await listTransactionPeriodOptions(clientId, { silentLoading: true })
             setTransactionsPeriodOptions({
                 years: Array.isArray(periodOptions?.years) ? periodOptions.years : [],
@@ -760,6 +791,7 @@ function LedgerPage() {
             years: Array.isArray(periodOptions?.years) ? periodOptions.years : [],
             months: Array.isArray(periodOptions?.months) ? periodOptions.months : [],
         })
+        await refreshTransactionsSummary()
         setTransactionsFilters((current) => ({ ...current }))
     }
 
@@ -1160,6 +1192,7 @@ function LedgerPage() {
                                     onDeleteEntries={handleDeleteTransactionsBulk}
                                     onImportTransactions={handleImportTransactions}
                                     onCreateCategory={handleCreateCategoryFromTransaction}
+                                    onOpenCreateAccount={() => setShowAccountForm(true)}
                                     overlayBoundaryRef={pageScrollRef}
                                     onCategorizeWithLlm={handleCategorizeWithLlmPreview}
                                     isCategorizingWithLlm={isCategorizingWithLlm}
