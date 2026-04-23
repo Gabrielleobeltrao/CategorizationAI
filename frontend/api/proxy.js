@@ -55,6 +55,7 @@ function applyResponseHeaders(res, upstream) {
     const lowerKey = key.toLowerCase()
 
     if (lowerKey === "content-length") return
+    if (lowerKey === "content-encoding") return
     if (lowerKey === "transfer-encoding") return
     if (lowerKey === "set-cookie") return
 
