@@ -148,7 +148,6 @@ function parseStatementLine(line = {}, fallbackYear = "", statementColumns = {})
   const description = normalizeWhitespace(
     firstAmountIndex >= 0 ? rawRest.slice(0, firstAmountIndex) : rawRest
   )
-  if (!description) return null
 
   const amountTokens = amountParts.map((part) => part.text)
   let amount = null

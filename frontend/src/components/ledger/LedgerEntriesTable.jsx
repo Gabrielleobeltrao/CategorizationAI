@@ -306,6 +306,24 @@ function getDefaultUncategorizedLabelByAmount(amount = 0) {
     return numericAmount >= 0 ? "Uncategorized income" : "Uncategorized expenses"
 }
 
+function extractUploadRowValues(uploadedFile, row = {}) {
+    const extracted = { date: "", description: "", amount: "" }
+
+    uploadedFile.columns.forEach((column) => {
+        const target = uploadedFile.columnRoles[column]
+        if (!target || target === "ignore") return
+        if (target in extracted && extracted[target] === "") {
+            extracted[target] = String(row[column] ?? "").trim()
+        }
+    })
+
+    return extracted
+}
+
+function getUploadRowOverride(uploadedFile, rowIndex) {
+    return uploadedFile?.rowOverrides?.[rowIndex] || { description: "", ignored: false }
+}
+
 function getCategoryPickerPosition(anchorElement, isCreating = false, popupElement = null, boundaryElement = null) {
     if (!anchorElement || typeof window === "undefined") {
         return {
@@ -393,6 +411,7 @@ function LedgerEntriesTable({
     onDeleteEntries,
     onImportTransactions,
     onCreateCategory,
+    onOpenCreateAccount,
     overlayBoundaryRef,
     isLoading = false,
     isLoadingMore,
@@ -641,6 +660,45 @@ function LedgerEntriesTable({
                 return REQUIRED_UPLOAD_FIELDS.some((requiredTarget) => !assignedTargets.has(requiredTarget))
             }),
         [uploadedCsvFiles]
+    )
+    const uploadFilesWithMissingDescriptionRows = useMemo(
+        () =>
+            uploadedCsvFiles.map((uploadedFile) => {
+                const missingDescriptionRows = (uploadedFile.rows || []).flatMap((row, rowIndex) => {
+                    const extracted = extractUploadRowValues(uploadedFile, row)
+                    const normalizedDate = normalizeDateToISO(extracted.date)
+                    const normalizedAmount = parseAmountToNumber(extracted.amount)
+                    const rowOverride = getUploadRowOverride(uploadedFile, rowIndex)
+                    const overrideDescription = String(rowOverride.description || "").trim()
+                    const mappedDescription = extracted.description.trim()
+
+                    if (!normalizedDate || normalizedAmount === null || mappedDescription) return []
+
+                    return [
+                        {
+                            rowIndex,
+                            date: normalizedDate,
+                            amount: normalizedAmount,
+                            description: overrideDescription,
+                            ignored: Boolean(rowOverride.ignored),
+                        },
+                    ]
+                })
+
+                return {
+                    fileId: uploadedFile.id,
+                    fileName: uploadedFile.fileName,
+                    rows: missingDescriptionRows,
+                }
+            }),
+        [uploadedCsvFiles]
+    )
+    const hasUnresolvedUploadDescriptions = useMemo(
+        () =>
+            uploadFilesWithMissingDescriptionRows.some((uploadedFile) =>
+                uploadedFile.rows.some((row) => !row.ignored && !String(row.description || "").trim())
+            ),
+        [uploadFilesWithMissingDescriptionRows]
     )
     const closeCategoryPicker = useCallback(() => {
         categoryPickerAnchorRef.current = null
@@ -1335,6 +1393,7 @@ function LedgerEntriesTable({
                         previewRows: parsedFile.previewRows,
                         rows: parsedFile.rows,
                         columnRoles: buildDefaultColumnRoles(parsedFile.columns),
+                        rowOverrides: {},
                     }
                 })
             )
@@ -1372,6 +1431,27 @@ function LedgerEntriesTable({
         )
     }
 
+    const updateUploadRowOverride = (fileId, rowIndex, patch) => {
+        setUploadedCsvFiles((current) =>
+            current.map((uploadedFile) => {
+                if (uploadedFile.id !== fileId) return uploadedFile
+
+                const currentOverride = getUploadRowOverride(uploadedFile, rowIndex)
+
+                return {
+                    ...uploadedFile,
+                    rowOverrides: {
+                        ...(uploadedFile.rowOverrides || {}),
+                        [rowIndex]: {
+                            ...currentOverride,
+                            ...patch,
+                        },
+                    },
+                }
+            })
+        )
+    }
+
     const closeUploadModal = () => {
         onCloseUploadModal?.()
         setUploadedCsvFiles([])
@@ -1404,22 +1484,17 @@ function LedgerEntriesTable({
             let skippedRows = 0
             const rows = uploadedFile.rows || []
 
-            const fileTransactions = rows.flatMap((row) => {
-                const extracted = { date: "", description: "", amount: "" }
-
-                uploadedFile.columns.forEach((column) => {
-                    const target = uploadedFile.columnRoles[column]
-                    if (!target || target === "ignore") return
-                    if (target in extracted && extracted[target] === "") {
-                        extracted[target] = String(row[column] ?? "").trim()
-                    }
-                })
+            const fileTransactions = rows.flatMap((row, rowIndex) => {
+                const extracted = extractUploadRowValues(uploadedFile, row)
+                const rowOverride = getUploadRowOverride(uploadedFile, rowIndex)
 
                 const normalizedDate = normalizeDateToISO(extracted.date)
                 const normalizedAmount = parseAmountToNumber(extracted.amount)
-                const normalizedDescription = extracted.description.trim()
+                const normalizedDescription = String(
+                    rowOverride.ignored ? "" : rowOverride.description || extracted.description
+                ).trim()
 
-                if (!normalizedDate || !normalizedDescription || normalizedAmount === null) {
+                if (rowOverride.ignored || !normalizedDate || !normalizedDescription || normalizedAmount === null) {
                     skippedRows += 1
                     return []
                 }
@@ -2670,31 +2745,45 @@ function LedgerEntriesTable({
                         <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
                             Account for all files
                         </label>
-                        <div className="relative">
-                            <select
-                                className="w-full appearance-none rounded-xl border border-gray-200 bg-gray-50 p-2.5 pl-3 pr-8 text-sm text-gray-700 outline-none transition focus:border-gray-400 focus:bg-white"
-                                value={uploadAccountId}
-                                onChange={(e) => setUploadAccountId(e.target.value)}
+                        <div className="flex items-start gap-2">
+                            <div className="relative min-w-0 flex-1">
+                                <select
+                                    className="w-full appearance-none rounded-xl border border-gray-200 bg-gray-50 p-2.5 pl-3 pr-8 text-sm text-gray-700 outline-none transition focus:border-gray-400 focus:bg-white"
+                                    value={uploadAccountId}
+                                    onChange={(e) => setUploadAccountId(e.target.value)}
+                                >
+                                    <option value="">Select account</option>
+                                    {accountOptions.map((account) => (
+                                        <option key={account.id} value={account.id}>
+                                            {account.name}
+                                        </option>
+                                    ))}
+                                </select>
+                                <svg
+                                    className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2.5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                >
+                                    <path d="M6 9l6 6 6-6" />
+                                </svg>
+                            </div>
+                            <button
+                                type="button"
+                                className="shrink-0 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                                onClick={() => onOpenCreateAccount?.()}
                             >
-                                <option value="">Select account</option>
-                                {accountOptions.map((account) => (
-                                    <option key={account.id} value={account.id}>
-                                        {account.name}
-                                    </option>
-                                ))}
-                            </select>
-                            <svg
-                                className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2.5"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                            >
-                                <path d="M6 9l6 6 6-6" />
-                            </svg>
+                                Create account
+                            </button>
                         </div>
+                        {accountOptions.length === 0 ? (
+                            <p className="mt-2 text-xs text-gray-500">
+                                You need at least one account before importing transactions.
+                            </p>
+                        ) : null}
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -2729,7 +2818,7 @@ function LedgerEntriesTable({
                     ) : null}
 
                     {uploadedCsvFiles.length > 0 && (
-                        <div className="max-h-[56vh] space-y-4 overflow-y-auto pr-1">
+                        <div className="space-y-4">
                             {uploadedCsvFiles.map((uploadedFile) => {
                                 const counts = {}
                                 Object.values(uploadedFile.columnRoles || {}).forEach((target) => {
@@ -2746,6 +2835,13 @@ function LedgerEntriesTable({
                                 const missingRequiredTargets = REQUIRED_UPLOAD_FIELDS.filter(
                                     (requiredTarget) => !assignedTargets.has(requiredTarget)
                                 )
+                                const missingDescriptionFile = uploadFilesWithMissingDescriptionRows.find(
+                                    (item) => item.fileId === uploadedFile.id
+                                )
+                                const missingDescriptionRows = missingDescriptionFile?.rows || []
+                                const unresolvedMissingDescriptionCount = missingDescriptionRows.filter(
+                                    (row) => !row.ignored && !String(row.description || "").trim()
+                                ).length
 
                                 return (
                                     <div key={uploadedFile.id} className="rounded-xl border border-gray-200 bg-gray-50 p-3">
@@ -2787,6 +2883,83 @@ function LedgerEntriesTable({
                                                 </button>
                                             )}
                                         </div>
+
+                                        {missingDescriptionRows.length > 0 ? (
+                                            <div className="mb-4 border-b border-gray-200 pb-4">
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <div>
+                                                        <h4 className="text-sm font-semibold text-gray-800">Rows without description</h4>
+                                                        <p className="text-xs text-gray-500">
+                                                            Add a description for each row or ignore it before importing.
+                                                        </p>
+                                                    </div>
+                                                    <span className={`text-xs font-medium ${
+                                                        unresolvedMissingDescriptionCount > 0 ? "text-amber-700" : "text-gray-500"
+                                                    }`}>
+                                                        {unresolvedMissingDescriptionCount > 0
+                                                            ? `${unresolvedMissingDescriptionCount} pending`
+                                                            : "Ready"}
+                                                    </span>
+                                                </div>
+
+                                                <div className="mt-3 space-y-2">
+                                                    {missingDescriptionRows.map((row) => (
+                                                        <div
+                                                            key={`${uploadedFile.id}-missing-description-${row.rowIndex}`}
+                                                            className="grid gap-2 border-t border-gray-200 pt-2 md:grid-cols-[130px_120px_minmax(0,1fr)_92px]"
+                                                        >
+                                                            <div>
+                                                                <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Date</p>
+                                                                <p className="text-sm text-gray-700">{row.date}</p>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Amount</p>
+                                                                <p className="text-sm text-gray-700">{formatPreviewAmount(row.amount)}</p>
+                                                            </div>
+                                                            <label className="block">
+                                                                <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                                                                    Description
+                                                                </span>
+                                                                <input
+                                                                    type="text"
+                                                                    className={`mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm text-gray-700 outline-none ${
+                                                                        row.ignored
+                                                                            ? "border-gray-200 text-gray-400"
+                                                                            : "border-gray-300 focus:border-gray-900"
+                                                                    }`}
+                                                                    placeholder="Example: CHECK 1025"
+                                                                    value={row.description}
+                                                                    disabled={row.ignored}
+                                                                    onChange={(event) =>
+                                                                        updateUploadRowOverride(uploadedFile.id, row.rowIndex, {
+                                                                            description: event.target.value,
+                                                                            ignored: false,
+                                                                        })
+                                                                    }
+                                                                />
+                                                            </label>
+                                                            <div className="flex items-end">
+                                                                <button
+                                                                    type="button"
+                                                                    className={`w-full rounded-lg border px-3 py-2 text-sm font-medium ${
+                                                                        row.ignored
+                                                                            ? "border-gray-900 bg-gray-900 text-white"
+                                                                            : "border-gray-300 bg-white text-gray-700 hover:bg-gray-100"
+                                                                    }`}
+                                                                    onClick={() =>
+                                                                        updateUploadRowOverride(uploadedFile.id, row.rowIndex, {
+                                                                            ignored: !row.ignored,
+                                                                        })
+                                                                    }
+                                                                >
+                                                                    {row.ignored ? "Ignored" : "Ignore"}
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ) : null}
 
                                         <div className="mt-4 overflow-x-auto rounded-xl border border-gray-200 bg-white">
                                             <table className="min-w-[760px] w-max border-collapse">
@@ -2889,6 +3062,7 @@ function LedgerEntriesTable({
                                 uploadedCsvFiles.length === 0 ||
                                 hasDuplicateMappingInAnyFile ||
                                 hasMissingRequiredMappingInAnyFile ||
+                                hasUnresolvedUploadDescriptions ||
                                 !uploadAccountId ||
                                 isImportingTransactions
                             }
