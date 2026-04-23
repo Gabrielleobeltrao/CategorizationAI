@@ -72,10 +72,28 @@ function applyResponseHeaders(res, upstream) {
   }
 }
 
+function normalizeApiPath(rawPath) {
+  const safePath = Array.isArray(rawPath) ? rawPath.join("/") : String(rawPath || "")
+  return safePath.replace(/^\/+/, "")
+}
+
 export default async function handler(req, res) {
   try {
     const backendBaseUrl = getBackendBaseUrl()
-    const targetUrl = `${backendBaseUrl}${req.url}`
+    const upstreamPath = normalizeApiPath(req.query?.path)
+    const targetUrl = new URL(`${backendBaseUrl}/api/${upstreamPath}`)
+
+    for (const [key, value] of Object.entries(req.query || {})) {
+      if (key === "path") continue
+      if (Array.isArray(value)) {
+        value.forEach((item) => targetUrl.searchParams.append(key, item))
+        continue
+      }
+      if (value !== undefined) {
+        targetUrl.searchParams.set(key, value)
+      }
+    }
+
     const body = await readRequestBody(req)
 
     const upstream = await fetch(targetUrl, {
