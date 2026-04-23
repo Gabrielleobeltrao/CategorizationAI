@@ -4,9 +4,9 @@ import PopupModal from "../components/ui/PopupModal"
 import ConfirmModal from "../components/ui/ConfirmModal"
 import TagsInput from "../components/ui/TagsInput"
 import TagRulesHelp from "../components/ui/TagRulesHelp"
-import { useAuth } from "../contexts/auth.context"
 import { useNotification } from "../contexts/notification.context"
 import { useOfficeTags } from "../hooks/useOfficeTags"
+import { useResolvedOfficeContext } from "../hooks/useResolvedOfficeContext"
 import { trackClientOpened } from "../utils/recentClients"
 import {
     createClient,
@@ -131,7 +131,6 @@ function ClientsPage() {
 
     const navigate = useNavigate()
     const { success, error } = useNotification()
-    const { profile } = useAuth()
     const [clients, setClients] = useState([])
     const [isLoading, setIsLoading] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
@@ -157,7 +156,7 @@ function ClientsPage() {
     const [clientToDelete, setClientToDelete] = useState(null)
     const [expandedClientIds, setExpandedClientIds] = useState([])
 
-    const officeId = String(profile?.officeId || "").trim()
+    const { officeId, isResolvingOfficeContext } = useResolvedOfficeContext()
     const handleOfficeTagError = useCallback((err) => {
         error(err.message || "Failed to delete tag")
     }, [error])
@@ -168,6 +167,11 @@ function ClientsPage() {
         onError: handleOfficeTagError,
         onDeleteSuccess: handleOfficeTagDeleteSuccess,
     })
+    const canSubmitNewClient = Boolean(
+        !isSubmitting &&
+        !isResolvingOfficeContext &&
+        String(newClientName || "").trim()
+    )
 
     useEffect(() => {
         const timeoutId = setTimeout(() => {
@@ -239,6 +243,11 @@ function ClientsPage() {
 
     const handleCreateClient = async (e) => {
         e.preventDefault()
+
+        if (!officeId) {
+            error("Office context is not available yet. Refresh the page and try again.")
+            return
+        }
 
         try {
             setIsSubmitting(true)
@@ -461,7 +470,7 @@ function ClientsPage() {
                     </div>
                     <button
                         className="border border-gray-200 rounded-lg px-4 py-2 text-sm font-medium text-left"
-                        disabled={!officeId}
+                        disabled={isResolvingOfficeContext}
                         onClick={() => setShowClientForm(true)}
                     >
                         + New Client
@@ -822,6 +831,13 @@ function ClientsPage() {
                                 ))}
                             </div>
                         </div>
+                        {!officeId && (
+                            <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                                {isResolvingOfficeContext
+                                    ? "Loading your office context..."
+                                    : "Your session does not have an office linked yet. Reload the page and try again."}
+                            </div>
+                        )}
                         <div className="mt-1 flex items-center justify-end gap-2">
                             <button
                                 type="button"
@@ -833,7 +849,7 @@ function ClientsPage() {
                             <button
                                 className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-black disabled:opacity-60"
                                 type="submit"
-                                disabled={isSubmitting || !officeId}
+                                disabled={!canSubmitNewClient}
                             >
                                 {isSubmitting ? "Saving..." : "Save Client"}
                             </button>
