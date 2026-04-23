@@ -4,6 +4,7 @@ import PopupModal from "../components/ui/PopupModal"
 import { registerWithOffice } from "../services/register.service"
 import { useOpenTest } from "../contexts/openTest.context"
 import { useNotification } from "../contexts/notification.context"
+import { useAuth } from "../contexts/auth.context"
 
 const TERMS_SECTIONS = [
     {
@@ -42,6 +43,7 @@ function Register() {
     const [isSubmitting, setIsSubmitting] = useState(false)
     const { success, error } = useNotification()
     const { config: openTestConfig } = useOpenTest()
+    const { refreshAuth } = useAuth()
 
     const isOpenTestEnabled = Boolean(openTestConfig?.enabled)
 
@@ -60,7 +62,12 @@ function Register() {
                 requiresOpenTestAccessCode: isOpenTestEnabled,
                 openTestConfig,
             })
+            const snapshot = await refreshAuth({ force: true })
             success("Account created successfully")
+            if (snapshot?.profile?.mustChangePassword) {
+                navigate("/update-password")
+                return
+            }
             navigate("/home")
         } catch (err) {
             error(err.message || "Failed to create account")
