@@ -29,11 +29,12 @@ import categorizeZelle from "../lib/ai/categorizeZelle.js"
 
 const LLM_CONFIDENCE_THRESHOLD = 0.8
 const LLM_MEMORY_CONFIDENCE_THRESHOLD = 0.9
-const LLM_MEMORY_MIN_OCCURRENCES = 3
+const EXACT_LLM_MEMORY_MIN_OCCURRENCES = 1
 const SEMANTIC_MEMORY_AUTO_CONFIDENCE_THRESHOLD = 0.95
 const SEMANTIC_MEMORY_AUTO_SUPPORT_THRESHOLD = 5
 const SEMANTIC_MEMORY_PROMOTION_CONFIDENCE_THRESHOLD = 0.95
 const SEMANTIC_MEMORY_MIN_OCCURRENCES = 5
+const LLM_INTRA_JOB_BATCH_SIZE = Number(process.env.LLM_BATCH_SIZE || 20)
 
 const DESCRIPTION_NOISE_TOKENS = new Set([
   "pos",
@@ -830,7 +831,7 @@ function buildLlmMemoryEntries(
 
       if (!categoryId || !categoryName) return null
       if (confidence < LLM_MEMORY_CONFIDENCE_THRESHOLD || ambiguous) return null
-      if (group.members.length < LLM_MEMORY_MIN_OCCURRENCES) return null
+      if (group.members.length < EXACT_LLM_MEMORY_MIN_OCCURRENCES) return null
       if (existingExact?.source === "human") return null
       if (
         existingExact?.source === "llm" &&
@@ -941,7 +942,7 @@ function buildZelleMemoryEntries(
 
       if (!categoryId || !categoryName) return null
       if (confidence < LLM_MEMORY_CONFIDENCE_THRESHOLD || ambiguous) return null
-      if (group.members.length < LLM_MEMORY_MIN_OCCURRENCES) return null
+      if (group.members.length < EXACT_LLM_MEMORY_MIN_OCCURRENCES) return null
       if (existingExact?.source === "human") return null
       if (
         existingExact?.source === "llm" &&
@@ -1025,6 +1026,70 @@ function buildZelleMemoryEntries(
     })
     .filter(Boolean)
     .flat()
+}
+
+function buildRegularCategorizationUpdatesFromResults(
+  llmResults = [],
+  groupByRepresentativeId = new Map(),
+  categoryById = new Map(),
+  now = new Date()
+) {
+  return llmResults.flatMap((result) => {
+    const group = groupByRepresentativeId.get(String(result?.id || ""))
+    if (!group) return []
+
+    const confidence = Number(result?.confidence || 0)
+    const ambiguous = Boolean(result?.ambiguous)
+    const meetsConfidenceThreshold = confidence >= LLM_CONFIDENCE_THRESHOLD
+    const categoryId = meetsConfidenceThreshold && !ambiguous
+      ? normalizeObjectIdString(result?.categoryId)
+      : null
+    const categoryName = categoryId ? categoryById.get(categoryId) || null : null
+
+    return group.members.map((transaction) =>
+      buildCategorizationUpdate(
+        transaction._id,
+        categoryId,
+        categoryName,
+        now,
+        {
+          llmConfidence: confidence,
+          llmAmbiguous: ambiguous,
+        }
+      )
+    )
+  })
+}
+
+function buildZelleCategorizationUpdatesFromResults(
+  llmResults = [],
+  groupByRepresentativeId = new Map(),
+  categoryByNameKey = new Map(),
+  now = new Date()
+) {
+  return llmResults
+    .flatMap((result) => {
+      const group = groupByRepresentativeId.get(String(result?.id || ""))
+      if (!group) return []
+
+      const categoryNameKey = normalizeNameKey(result?.categoryName)
+      const categoryDoc = categoryByNameKey.get(categoryNameKey)
+      if (!categoryDoc?._id) return []
+
+      return group.members.map((transaction) =>
+        buildCategorizationUpdate(
+          transaction._id,
+          String(categoryDoc._id),
+          categoryDoc.name,
+          now,
+          {
+            llmConfidence: Number(result?.confidence || 0),
+            llmAmbiguous: Boolean(result?.ambiguous),
+          }
+        )
+      )
+    })
+    .filter(Boolean)
 }
 
 export async function createTransactionsBatchService(transactions) {
@@ -1559,77 +1624,81 @@ export async function categorizeTransactionsWithLlmService(input) {
     memoryUpdates,
     remainingGroups,
   } = await splitGroupsByMemory(clientId, transactionGroups, categoryById)
+  let currentExactMemoryByFingerprint = exactMemoryByFingerprint
+  let currentSemanticMemoryByFingerprint = semanticMemoryByFingerprint
+  let pendingGroups = [...remainingGroups]
+  const remainingResults = []
+  const updates = [...memoryUpdates]
 
-  const remainingResults = remainingGroups.length === 0
-    ? []
-    : await categorizeTransaction(
-        categoriesForLlm.map((category) => ({
-          id: String(category._id),
-          name: category.name,
-          type: category.type,
-          description: category.description,
-        })),
-        remainingGroups.map((group) => ({
-          id: group.representativeId,
-          description: group.representativeDescription,
-          amount: group.representativeAmount,
-          memoryHint: group.memoryHint || null,
-        })),
-        {
-          name: client.name || "",
-          businessType: client.businessType || "",
-          mainActivity: client.mainActivity || "",
-          description: client.description || "",
-        }
-      )
+  while (pendingGroups.length > 0) {
+    const currentBatchGroups = pendingGroups.slice(0, LLM_INTRA_JOB_BATCH_SIZE)
+    const batchResults = await categorizeTransaction(
+      categoriesForLlm.map((category) => ({
+        id: String(category._id),
+        name: category.name,
+        type: category.type,
+        description: category.description,
+      })),
+      currentBatchGroups.map((group) => ({
+        id: group.representativeId,
+        description: group.representativeDescription,
+        amount: group.representativeAmount,
+        memoryHint: group.memoryHint || null,
+      })),
+      {
+        name: client.name || "",
+        businessType: client.businessType || "",
+        mainActivity: client.mainActivity || "",
+        description: client.description || "",
+      },
+      {
+        batchSize: LLM_INTRA_JOB_BATCH_SIZE,
+      }
+    )
 
-  const groupByRepresentativeId = new Map(
-    remainingGroups.map((group) => [group.representativeId, group])
-  )
-  const now = new Date()
+    remainingResults.push(...batchResults)
 
-  const llmUpdates = remainingResults.flatMap((result) => {
-    const group = groupByRepresentativeId.get(String(result?.id || ""))
-    if (!group) return []
+    const batchGroupByRepresentativeId = new Map(
+      currentBatchGroups.map((group) => [group.representativeId, group])
+    )
 
-    const confidence = Number(result?.confidence || 0)
-    const ambiguous = Boolean(result?.ambiguous)
-    const meetsConfidenceThreshold = confidence >= LLM_CONFIDENCE_THRESHOLD
-    const categoryId = meetsConfidenceThreshold && !ambiguous
-      ? normalizeObjectIdString(result?.categoryId)
-      : null
-    const categoryName = categoryId ? categoryById.get(categoryId) || null : null
-
-    return group.members.map((transaction) =>
-      buildCategorizationUpdate(
-        transaction._id,
-        categoryId,
-        categoryName,
-        now,
-        {
-          llmConfidence: confidence,
-          llmAmbiguous: ambiguous,
-        }
+    updates.push(
+      ...buildRegularCategorizationUpdatesFromResults(
+        batchResults,
+        batchGroupByRepresentativeId,
+        categoryById,
+        new Date()
       )
     )
-  })
 
-  const updates = [...memoryUpdates, ...llmUpdates]
+    const batchMemoryEntries = buildLlmMemoryEntries(
+      clientId,
+      batchResults,
+      batchGroupByRepresentativeId,
+      categoryById,
+      currentExactMemoryByFingerprint,
+      currentSemanticMemoryByFingerprint
+    )
 
-  const llmMemoryEntries = buildLlmMemoryEntries(
-    clientId,
-    remainingResults,
-    groupByRepresentativeId,
-    categoryById,
-    exactMemoryByFingerprint,
-    semanticMemoryByFingerprint
-  )
+    if (batchMemoryEntries.length > 0) {
+      await bulkUpsertTransactionMemories(batchMemoryEntries)
+    }
+
+    const remainingAfterBatch = pendingGroups.slice(currentBatchGroups.length)
+    if (remainingAfterBatch.length === 0) break
+
+    if (batchMemoryEntries.length > 0) {
+      const nextWave = await splitGroupsByMemory(clientId, remainingAfterBatch, categoryById)
+      currentExactMemoryByFingerprint = nextWave.exactMemoryByFingerprint
+      currentSemanticMemoryByFingerprint = nextWave.semanticMemoryByFingerprint
+      updates.push(...nextWave.memoryUpdates)
+      pendingGroups = nextWave.remainingGroups
+    } else {
+      pendingGroups = remainingAfterBatch
+    }
+  }
 
   const writeResult = await applyLlmCategorizationUpdates(updates)
-
-  if (llmMemoryEntries.length > 0) {
-    await bulkUpsertTransactionMemories(llmMemoryEntries)
-  }
 
   const categorizedCount = updates.filter((item) => item.llmStatus === "suggested").length
   const emptyCount = updates.filter((item) => item.llmStatus === "empty").length
@@ -1707,118 +1776,115 @@ export async function categorizeZelleTransactionsService(input) {
     transactionGroups,
     categoryById
   )
+  let currentExactMemoryByFingerprint = exactMemoryByFingerprint
+  let currentSemanticMemoryByFingerprint = semanticMemoryByFingerprint
+  let pendingGroups = [...remainingGroups]
+  const llmResults = []
+  const updates = [...memoryUpdates]
+  let createdCategoriesCount = 0
 
-  const llmOutput = remainingGroups.length === 0
-    ? { categories: [], results: [] }
-    : await categorizeZelle(
-        remainingGroups.map((group) => ({
-          id: group.representativeId,
-          description: group.representativeDescription || "",
-          amount: Number(group.representativeAmount || 0),
-        })),
-        {
-          name: client.name || "",
-          businessType: client.businessType || "",
-          mainActivity: client.mainActivity || "",
-          description: client.description || "",
-          owners: Array.isArray(client?.owners) ? client.owners : [],
-        }
+  while (pendingGroups.length > 0) {
+    const currentBatchGroups = pendingGroups.slice(0, LLM_INTRA_JOB_BATCH_SIZE)
+    const llmOutput = await categorizeZelle(
+      currentBatchGroups.map((group) => ({
+        id: group.representativeId,
+        description: group.representativeDescription || "",
+        amount: Number(group.representativeAmount || 0),
+      })),
+      {
+        name: client.name || "",
+        businessType: client.businessType || "",
+        mainActivity: client.mainActivity || "",
+        description: client.description || "",
+        owners: Array.isArray(client?.owners) ? client.owners : [],
+      },
+      {
+        batchSize: LLM_INTRA_JOB_BATCH_SIZE,
+      }
+    )
+
+    const batchCategories = Array.isArray(llmOutput?.categories) ? llmOutput.categories : []
+    const batchResults = Array.isArray(llmOutput?.results) ? llmOutput.results : []
+    llmResults.push(...batchResults)
+
+    const categoriesToEnsure = new Map()
+    batchCategories.forEach((item) => {
+      const name = String(item?.name || "").trim()
+      if (!name) return
+      const key = normalizeNameKey(name)
+      if (categoryByNameKey.has(key)) return
+      categoriesToEnsure.set(key, {
+        name,
+        type: String(item?.type || "").trim().toLowerCase() === "expense" ? "expense" : "income",
+      })
+    })
+
+    batchResults.forEach((item) => {
+      const name = String(item?.categoryName || "").trim()
+      if (!name) return
+      const key = normalizeNameKey(name)
+      if (!key || categoryByNameKey.has(key) || categoriesToEnsure.has(key)) return
+      const normalizedName = name.toLowerCase()
+      const inferredType = normalizedName.startsWith("sub -") ? "expense" : "income"
+      categoriesToEnsure.set(key, {
+        name,
+        type: inferredType,
+      })
+    })
+
+    for (const categoryPayload of categoriesToEnsure.values()) {
+      const created = await createCategory({
+        clientId,
+        name: categoryPayload.name,
+        type: categoryPayload.type,
+        description: "",
+      })
+      createdCategoriesCount += 1
+      categoryByNameKey.set(normalizeNameKey(created.name), created)
+      categoryById.set(String(created._id), created.name)
+    }
+
+    const batchGroupByRepresentativeId = new Map(
+      currentBatchGroups.map((group) => [group.representativeId, group])
+    )
+
+    updates.push(
+      ...buildZelleCategorizationUpdatesFromResults(
+        batchResults,
+        batchGroupByRepresentativeId,
+        categoryByNameKey,
+        new Date()
       )
+    )
 
-  const llmCategories = Array.isArray(llmOutput?.categories) ? llmOutput.categories : []
-  const llmResults = Array.isArray(llmOutput?.results) ? llmOutput.results : []
-
-  const categoriesToEnsure = new Map()
-  llmCategories.forEach((item) => {
-    const name = String(item?.name || "").trim()
-    if (!name) return
-    const key = normalizeNameKey(name)
-    if (categoryByNameKey.has(key)) return
-    categoriesToEnsure.set(key, {
-      name,
-      type: String(item?.type || "").trim().toLowerCase() === "expense" ? "expense" : "income",
-    })
-  })
-
-  llmResults.forEach((item) => {
-    const name = String(item?.categoryName || "").trim()
-    if (!name) return
-    const key = normalizeNameKey(name)
-    if (!key || categoryByNameKey.has(key) || categoriesToEnsure.has(key)) return
-    const normalizedName = name.toLowerCase()
-    const inferredType = normalizedName.startsWith("sub -") ? "expense" : "income"
-    categoriesToEnsure.set(key, {
-      name,
-      type: inferredType,
-    })
-  })
-
-  for (const categoryPayload of categoriesToEnsure.values()) {
-    const created = await createCategory({
+    const batchMemoryEntries = buildZelleMemoryEntries(
       clientId,
-      name: categoryPayload.name,
-      type: categoryPayload.type,
-      description: "",
-    })
-    categoryByNameKey.set(normalizeNameKey(created.name), created)
-    categoryById.set(String(created._id), created.name)
+      batchResults,
+      batchGroupByRepresentativeId,
+      categoryByNameKey,
+      currentExactMemoryByFingerprint,
+      currentSemanticMemoryByFingerprint
+    )
+
+    if (batchMemoryEntries.length > 0) {
+      await bulkUpsertTransactionMemories(batchMemoryEntries)
+    }
+
+    const remainingAfterBatch = pendingGroups.slice(currentBatchGroups.length)
+    if (remainingAfterBatch.length === 0) break
+
+    if (batchMemoryEntries.length > 0) {
+      const nextWave = await splitGroupsByMemory(clientId, remainingAfterBatch, categoryById)
+      currentExactMemoryByFingerprint = nextWave.exactMemoryByFingerprint
+      currentSemanticMemoryByFingerprint = nextWave.semanticMemoryByFingerprint
+      updates.push(...nextWave.memoryUpdates)
+      pendingGroups = nextWave.remainingGroups
+    } else {
+      pendingGroups = remainingAfterBatch
+    }
   }
-
-  const resultByTxId = new Map(
-    llmResults.map((item) => [String(item?.id || ""), String(item?.categoryName || "").trim()])
-  )
-  const zelleResultByTxId = new Map(
-    llmResults.map((item) => [String(item?.id || ""), item])
-  )
-  const classificationRows = remainingGroups
-    .flatMap((group) => {
-      const categoryName = resultByTxId.get(String(group.representativeId)) || ""
-      const categoryNameKey = normalizeNameKey(categoryName)
-      if (!categoryNameKey) return []
-
-      return group.members.map((transaction) => ({
-        id: String(transaction._id),
-        categoryName,
-        categoryNameKey,
-      }))
-    })
-
-  const now = new Date()
-
-  const updates = [
-    ...memoryUpdates,
-    ...classificationRows
-    .map((row) => {
-      const categoryDoc = categoryByNameKey.get(row.categoryNameKey)
-      if (!categoryDoc?._id) return null
-      const resultMeta = zelleResultByTxId.get(String(row.id))
-      return buildCategorizationUpdate(
-        row.id,
-        String(categoryDoc._id),
-        categoryDoc.name,
-        now,
-        {
-          llmConfidence: Number(resultMeta?.confidence || 0),
-          llmAmbiguous: Boolean(resultMeta?.ambiguous),
-        }
-      )
-    })
-    .filter(Boolean),
-  ]
-
-  const zelleMemoryEntries = buildZelleMemoryEntries(
-    clientId,
-    llmResults,
-    new Map(remainingGroups.map((group) => [group.representativeId, group])),
-    categoryByNameKey,
-    exactMemoryByFingerprint,
-    semanticMemoryByFingerprint
-  )
 
   const result = await applyLlmCategorizationUpdates(updates)
-  if (zelleMemoryEntries.length > 0) {
-    await bulkUpsertTransactionMemories(zelleMemoryEntries)
-  }
   const categorizedNames = updates.map((item) => String(item.category || "").trim()).filter(Boolean)
   const ownerIncomeCount = categorizedNames.filter((name) =>
     String(name || "").toLowerCase().startsWith("no service income -")
@@ -1835,7 +1901,7 @@ export async function categorizeZelleTransactionsService(input) {
     requestedCount: mode === "selected" ? transactionIds.length : 0,
     eligibleCount: eligibleTransactions.length,
     processedCount: result.modifiedCount,
-    createdCategoriesCount: categoriesToEnsure.size,
+    createdCategoriesCount,
     ownerIncomeCount,
     incomeZelleCount,
     subCount,
