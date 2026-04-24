@@ -5,6 +5,13 @@ import {
   getClientById,
   deleteClientById,
 } from "../repositories/clients.repository.js"
+import { listAccountsByClientIdService } from "./account.service.js"
+import { listCategoriesByClientIdService } from "./category.service.js"
+import {
+  listTransactionsPaginatedService,
+  listTransactionPeriodOptionsService,
+  summarizeTransactionsService,
+} from "./transactions.service.js"
 import { deleteAccountsByClientIdService } from "./account.service.js"
 import { deleteCategoriesByClientIdService } from "./category.service.js"
 import { deleteTransactionsByClientId } from "../repositories/transactions.repository.js"
@@ -196,6 +203,36 @@ export async function getClientByIdService(id) {
   if (!client) return null
 
   return hydrateOfficeTagsForDocumentService(client.officeId, client)
+}
+
+export async function getClientLedgerBootstrapService(clientId, query = {}) {
+  if (!clientId) throw new Error("clientId is required")
+
+  const [client, accounts, categories, transactions, periodOptions, summary] = await Promise.all([
+    getClientByIdService(clientId),
+    listAccountsByClientIdService(clientId),
+    listCategoriesByClientIdService(clientId),
+    listTransactionsPaginatedService({
+      ...query,
+      clientId,
+    }),
+    listTransactionPeriodOptionsService({ clientId }),
+    summarizeTransactionsService({
+      clientId,
+      accountIds: query?.accountIds,
+    }),
+  ])
+
+  if (!client) throw new Error("Client not found")
+
+  return {
+    client,
+    accounts,
+    categories,
+    transactions,
+    periodOptions,
+    summary,
+  }
 }
 
 export async function deleteClientByIdService(id) {
