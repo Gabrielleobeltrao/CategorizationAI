@@ -4,7 +4,7 @@ import PopupModal from "../components/ui/PopupModal"
 import ConfirmModal from "../components/ui/ConfirmModal"
 import TagsInput from "../components/ui/TagsInput"
 import TagRulesHelp from "../components/ui/TagRulesHelp"
-import { getClientById } from "../services/clients.service"
+import { getClientLedgerBootstrap } from "../services/clients.service"
 import {
     createAccount,
     deleteAccountsByIds,
@@ -294,6 +294,9 @@ function LedgerPage() {
     })
     const [showUploadModal, setShowUploadModal] = useState(false)
     const [isBaseDataLoaded, setIsBaseDataLoaded] = useState(false)
+    const skipNextTransactionsFetchRef = useRef(false)
+    const skipNextPeriodOptionsFetchRef = useRef(false)
+    const skipNextSummaryFetchRef = useRef(false)
     const [hasAppliedPreselectedCategory, setHasAppliedPreselectedCategory] = useState(false)
 
     const [showAccountForm, setShowAccountForm] = useState(false)
@@ -324,84 +327,6 @@ function LedgerPage() {
         : location.pathname.endsWith("/ledger/categories")
             ? "categories"
             : "ledger"
-
-    useEffect(() => {
-        let active = true
-        setIsBaseDataLoaded(false)
-
-        if (!clientId) {
-            setClient(null)
-            setAccounts([])
-            setCategoryList([])
-            setLedgerEntries([])
-            setIsBaseDataLoaded(true)
-            return () => {
-                active = false
-            }
-        }
-
-        Promise.all([
-            getClientById(clientId),
-            listAccountsByClientId(clientId),
-            listCategoriesByClientId(clientId),
-        ])
-            .then(([clientData, accountsData, categoriesData]) => {
-                if (!active) return
-
-                setClient(clientData || null)
-                setAccounts(Array.isArray(accountsData) ? accountsData.map(mapAccount) : [])
-                setCategoryList(Array.isArray(categoriesData) ? categoriesData.map(mapCategory) : [])
-                setIsBaseDataLoaded(true)
-            })
-            .catch((err) => {
-                if (!active) return
-                error(err.message || "Failed to load ledger data")
-                setClient(null)
-                setAccounts([])
-                setCategoryList([])
-                setIsBaseDataLoaded(true)
-            })
-
-        return () => {
-            active = false
-        }
-    }, [clientId, error])
-
-    useEffect(() => {
-        if (!clientId || !client?.name) return
-        trackClientOpened({
-            id: clientId,
-            name: client.name,
-            to: `${location.pathname}${location.search || ""}`,
-        })
-    }, [clientId, client?.name, location.pathname, location.search])
-
-    useEffect(() => {
-        const persisted = readPersistedLedgerState(clientId)
-        setTransactionsSearchTerm(persisted.searchTerm)
-        setTransactionsFilters(persisted.filters)
-        setTransactionsNextCursor(null)
-        prefetchedTransactionsPageRef.current = null
-    }, [clientId])
-
-    useEffect(() => {
-        if (typeof window === "undefined") return
-        try {
-            window.sessionStorage.setItem(
-                getLedgerFiltersStorageKey(clientId),
-                JSON.stringify({
-                    searchTerm: transactionsSearchTerm,
-                    filters: normalizeTransactionsFilters(transactionsFilters),
-                })
-            )
-        } catch {
-            // ignore storage write errors
-        }
-    }, [clientId, transactionsSearchTerm, transactionsFilters])
-
-    useEffect(() => {
-        setHasAppliedPreselectedCategory(false)
-    }, [clientId, preselectedCategoryName])
 
     const getTransactionsQueryOptions = useCallback((cursor = "") => ({
         paginationMode: "cursor",
@@ -443,6 +368,123 @@ function LedgerPage() {
     }, [clientId, getTransactionsQueryOptions])
 
     useEffect(() => {
+        let active = true
+        setIsBaseDataLoaded(false)
+
+        if (!clientId) {
+            setClient(null)
+            setAccounts([])
+            setCategoryList([])
+            setLedgerEntries([])
+            setIsBaseDataLoaded(true)
+            return () => {
+                active = false
+            }
+        }
+
+        const persisted = readPersistedLedgerState(clientId)
+
+        getClientLedgerBootstrap(clientId, {
+            ...persisted.filters,
+            search: persisted.searchTerm,
+            paginationMode: "cursor",
+            limit: TRANSACTIONS_PAGE_SIZE,
+            silentLoading: true,
+        })
+            .then((payload) => {
+                if (!active) return
+
+                const transactionsPayload = payload?.transactions || {}
+                const items = Array.isArray(transactionsPayload?.items) ? transactionsPayload.items : []
+                const nextCursor = String(transactionsPayload?.nextCursor || "").trim()
+
+                setClient(payload?.client || null)
+                setAccounts(Array.isArray(payload?.accounts) ? payload.accounts.map(mapAccount) : [])
+                setCategoryList(Array.isArray(payload?.categories) ? payload.categories.map(mapCategory) : [])
+                setLedgerEntries(items.map(mapTransaction))
+                setTransactionsHasMore(Boolean(transactionsPayload?.hasMore && nextCursor))
+                setTransactionsNextCursor(nextCursor || null)
+                setTransactionsPeriodOptions({
+                    years: Array.isArray(payload?.periodOptions?.years) ? payload.periodOptions.years : [],
+                    months: Array.isArray(payload?.periodOptions?.months) ? payload.periodOptions.months : [],
+                })
+                setTransactionsSummary({
+                    totalAmount: Number(payload?.summary?.totalAmount || 0),
+                    totalCount: Number(payload?.summary?.totalCount || 0),
+                })
+                prefetchedTransactionsPageRef.current = null
+                transactionsQueryKeyRef.current = JSON.stringify({
+                    clientId,
+                    search: persisted.searchTerm,
+                    filters: normalizeTransactionsFilters(persisted.filters),
+                })
+                if (transactionsPayload?.hasMore && nextCursor) {
+                    prefetchTransactionsPage(nextCursor)
+                }
+                skipNextTransactionsFetchRef.current = true
+                skipNextPeriodOptionsFetchRef.current = true
+                skipNextSummaryFetchRef.current = true
+                setIsBaseDataLoaded(true)
+            })
+            .catch((err) => {
+                if (!active) return
+                error(err.message || "Failed to load ledger data")
+                setClient(null)
+                setAccounts([])
+                setCategoryList([])
+                setLedgerEntries([])
+                setTransactionsHasMore(false)
+                setTransactionsNextCursor(null)
+                setTransactionsPeriodOptions({ years: [], months: [] })
+                setTransactionsSummary({
+                    totalAmount: 0,
+                    totalCount: 0,
+                })
+                setIsBaseDataLoaded(true)
+            })
+
+        return () => {
+            active = false
+        }
+    }, [clientId, error, prefetchTransactionsPage])
+
+    useEffect(() => {
+        if (!clientId || !client?.name) return
+        trackClientOpened({
+            id: clientId,
+            name: client.name,
+            to: `${location.pathname}${location.search || ""}`,
+        })
+    }, [clientId, client?.name, location.pathname, location.search])
+
+    useEffect(() => {
+        const persisted = readPersistedLedgerState(clientId)
+        setTransactionsSearchTerm(persisted.searchTerm)
+        setTransactionsFilters(persisted.filters)
+        setTransactionsNextCursor(null)
+        prefetchedTransactionsPageRef.current = null
+    }, [clientId])
+
+    useEffect(() => {
+        if (typeof window === "undefined") return
+        try {
+            window.sessionStorage.setItem(
+                getLedgerFiltersStorageKey(clientId),
+                JSON.stringify({
+                    searchTerm: transactionsSearchTerm,
+                    filters: normalizeTransactionsFilters(transactionsFilters),
+                })
+            )
+        } catch {
+            // ignore storage write errors
+        }
+    }, [clientId, transactionsSearchTerm, transactionsFilters])
+
+    useEffect(() => {
+        setHasAppliedPreselectedCategory(false)
+    }, [clientId, preselectedCategoryName])
+
+    useEffect(() => {
         if (!clientId || !isBaseDataLoaded || hasAppliedPreselectedCategory) return
 
         const normalizedCategory = String(preselectedCategoryName || "").trim()
@@ -474,6 +516,12 @@ function LedgerPage() {
     useEffect(() => {
         let active = true
 
+        if (!isBaseDataLoaded) {
+            return () => {
+                active = false
+            }
+        }
+
         if (!clientId) {
             setLedgerEntries([])
             setTransactionsHasMore(false)
@@ -491,6 +539,14 @@ function LedgerPage() {
         setIsLoadingTransactions(true)
         prefetchedTransactionsPageRef.current = null
         transactionsQueryKeyRef.current = transactionsQueryKey
+
+        if (skipNextTransactionsFetchRef.current) {
+            skipNextTransactionsFetchRef.current = false
+            setIsLoadingTransactions(false)
+            return () => {
+                active = false
+            }
+        }
 
         listTransactionsByClientId(clientId, {
             ...getTransactionsQueryOptions(),
@@ -524,13 +580,20 @@ function LedgerPage() {
         return () => {
             active = false
         }
-    }, [clientId, error, getTransactionsQueryOptions, prefetchTransactionsPage, transactionsQueryKey])
+    }, [clientId, error, getTransactionsQueryOptions, isBaseDataLoaded, prefetchTransactionsPage, transactionsQueryKey])
 
     useEffect(() => {
         let active = true
 
         if (!clientId) {
             setTransactionsPeriodOptions({ years: [], months: [] })
+            return () => {
+                active = false
+            }
+        }
+
+        if (skipNextPeriodOptionsFetchRef.current) {
+            skipNextPeriodOptionsFetchRef.current = false
             return () => {
                 active = false
             }
@@ -562,6 +625,13 @@ function LedgerPage() {
                 totalAmount: 0,
                 totalCount: 0,
             })
+            return () => {
+                active = false
+            }
+        }
+
+        if (skipNextSummaryFetchRef.current) {
+            skipNextSummaryFetchRef.current = false
             return () => {
                 active = false
             }

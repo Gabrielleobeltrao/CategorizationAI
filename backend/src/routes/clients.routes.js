@@ -4,6 +4,7 @@ import {
   updateClientByIdController,
   listClientsByOfficeIdController,
   getClientByIdController,
+  getClientLedgerBootstrapController,
   deleteClientByIdController,
 } from "../controllers/clients.controller.js"
 import { requireAuth } from "../middlewares/requireAuth.js"
@@ -41,6 +42,18 @@ router.get(
   validateObjectIdParam("officeId"),
   ensureResourceExists({ collection: "offices", from: "params", field: "officeId", assignKey: "office" }),
   listClientsByOfficeIdController
+)
+
+router.get(
+  "/clients/:id/ledger-bootstrap",
+  requireAuth,
+  requirePermission("clients:read"),
+  requirePermission("accounts:read"),
+  requirePermission("categories:read"),
+  requirePermission("transactions:read"),
+  validateObjectIdParam("id"),
+  ensureResourceExists({ collection: "clients", from: "params", field: "id", assignKey: "client" }),
+  getClientLedgerBootstrapController
 )
 
 router.get(

@@ -414,7 +414,7 @@ function LedgerEntriesTable({
     const [editingDraft, setEditingDraft] = useState(null)
     const [editingTouched, setEditingTouched] = useState({})
     const [selectedEntryIds, setSelectedEntryIds] = useState([])
-    const [isApplyingCategoryBulk, setIsApplyingCategoryBulk] = useState(false)
+    const [pendingCategoryEntryIds, setPendingCategoryEntryIds] = useState([])
     const [pendingDeleteIds, setPendingDeleteIds] = useState([])
     const [pendingLlmPayload, setPendingLlmPayload] = useState(null)
     const [isDeletingEntries, setIsDeletingEntries] = useState(false)
@@ -711,6 +711,20 @@ function LedgerEntriesTable({
             description: "",
         })
         setIsCreatingCategory(false)
+    }, [])
+
+    const addPendingCategoryIds = useCallback((ids = []) => {
+        const safeIds = Array.isArray(ids) ? ids.filter(Boolean) : []
+        if (safeIds.length === 0) return
+
+        setPendingCategoryEntryIds((current) => [...new Set([...current, ...safeIds])])
+    }, [])
+
+    const removePendingCategoryIds = useCallback((ids = []) => {
+        const safeIds = new Set(Array.isArray(ids) ? ids.filter(Boolean) : [])
+        if (safeIds.size === 0) return
+
+        setPendingCategoryEntryIds((current) => current.filter((id) => !safeIds.has(id)))
     }, [])
 
     const updateCategoryPickerPosition = useCallback(() => {
@@ -1367,45 +1381,56 @@ function LedgerEntriesTable({
         })
     }, [categoryPickerState.search, categoryPickerGroups])
 
-    const changeEntryCategory = async (id, categoryName) => {
-        try {
-            const selectedCategory = categories.find((item) => item.name === categoryName)
-            const shouldApplyToSelection =
-                effectiveSelectedEntryIds.length > 0 &&
-                effectiveSelectedEntryIds.includes(id)
-            const candidateTargetIds = shouldApplyToSelection ? effectiveSelectedEntryIds : [id]
-            const targetIds = candidateTargetIds.filter((targetId) => {
-                const targetEntry = ledgerEntries.find((entry) => entry.id === targetId)
-                return !(Boolean(targetEntry?.isSplit) || (Array.isArray(targetEntry?.splits) && targetEntry.splits.length > 1))
+    const changeEntryCategory = useCallback((id, categoryName, categoryId = null) => {
+        const selectedCategoryId = categoryName
+            ? (categoryId || categories.find((item) => item.name === categoryName)?.id || null)
+            : null
+        const shouldApplyToSelection =
+            effectiveSelectedEntryIds.length > 0 &&
+            effectiveSelectedEntryIds.includes(id)
+        const candidateTargetIds = shouldApplyToSelection ? effectiveSelectedEntryIds : [id]
+        const targetIds = candidateTargetIds.filter((targetId) => {
+            const targetEntry = ledgerEntries.find((entry) => entry.id === targetId)
+            return !(Boolean(targetEntry?.isSplit) || (Array.isArray(targetEntry?.splits) && targetEntry.splits.length > 1))
+        })
+
+        if (targetIds.length === 0) return
+
+        addPendingCategoryIds(targetIds)
+
+        const request = targetIds.length > 1 && onUpdateEntries
+            ? onUpdateEntries(
+                targetIds.map((targetId) => ({
+                    id: targetId,
+                    patch: {
+                        category: categoryName || null,
+                        categoryId: selectedCategoryId,
+                    },
+                }))
+            )
+            : onUpdateEntry?.(targetIds[0], {
+                category: categoryName || null,
+                categoryId: selectedCategoryId,
             })
 
-            if (targetIds.length === 0) return
+        Promise.resolve(request)
+            .catch((err) => {
+                console.error(err)
+            })
+            .finally(() => {
+                removePendingCategoryIds(targetIds)
+            })
+    }, [
+        addPendingCategoryIds,
+        categories,
+        effectiveSelectedEntryIds,
+        ledgerEntries,
+        onUpdateEntries,
+        onUpdateEntry,
+        removePendingCategoryIds,
+    ])
 
-            setIsApplyingCategoryBulk(true)
-            if (targetIds.length > 1 && onUpdateEntries) {
-                await onUpdateEntries(
-                    targetIds.map((targetId) => ({
-                        id: targetId,
-                        patch: {
-                            category: categoryName || null,
-                            categoryId: categoryName ? selectedCategory?.id || null : null,
-                        },
-                    }))
-                )
-            } else {
-                await onUpdateEntry?.(targetIds[0], {
-                    category: categoryName || null,
-                    categoryId: categoryName ? selectedCategory?.id || null : null,
-                })
-            }
-        } catch (err) {
-            console.error(err)
-        } finally {
-            setIsApplyingCategoryBulk(false)
-        }
-    }
-
-    const selectCategoryFromPicker = async (categoryName) => {
+    const selectCategoryFromPicker = (categoryName) => {
         if (!categoryPickerState.entryId) return
 
         if (categoryPickerState.isEditing) {
@@ -1422,7 +1447,7 @@ function LedgerEntriesTable({
         }
 
         closeCategoryPicker()
-        await changeEntryCategory(categoryPickerState.entryId, categoryName)
+        changeEntryCategory(categoryPickerState.entryId, categoryName)
     }
 
     const handleCreateCategoryFromPicker = async () => {
@@ -1450,10 +1475,9 @@ function LedgerEntriesTable({
                     category: true,
                 }))
             } else {
-                await onUpdateEntry?.(categoryPickerState.entryId, {
-                    category: createdCategory.name,
-                    categoryId: createdCategory.id,
-                })
+                closeCategoryPicker()
+                changeEntryCategory(categoryPickerState.entryId, createdCategory.name, createdCategory.id)
+                return
             }
 
             closeCategoryPicker()
@@ -1816,7 +1840,7 @@ function LedgerEntriesTable({
                                 isMultiSelectionMode={isMultiSelectionMode}
                                 isBatchEditing={isBatchEditing}
                                 editingTouched={editingTouched}
-                                isApplyingCategoryBulk={isApplyingCategoryBulk}
+                                isApplyingCategory={pendingCategoryEntryIds.includes(entry.id)}
                                 isCategoryPickerOpen={categoryPickerState.entryId === entry.id}
                             />
 

@@ -3,6 +3,7 @@ import {
     updateClientByIdService,
     listClientsByOfficeIdService,
     getClientByIdService,
+    getClientLedgerBootstrapService,
     deleteClientByIdService,
 } from "../services/clients.service.js"
 import { userHasPermissionService } from "../services/roles.service.js"
@@ -145,6 +146,21 @@ export async function getClientByIdController(req, res) {
 
         const canReadOwnerInfo = await userHasPermissionService(req.userProfile, "clientsOwnerInfo:read")
         return res.status(200).json(sanitizeClientOwnerInfo(client, canReadOwnerInfo))
+    } catch (error) {
+        return sendErrorResponse(res, error)
+    }
+}
+
+export async function getClientLedgerBootstrapController(req, res) {
+    try {
+        const { id } = req.params
+        const payload = await getClientLedgerBootstrapService(id, req.query)
+        const canReadOwnerInfo = await userHasPermissionService(req.userProfile, "clientsOwnerInfo:read")
+
+        return res.status(200).json({
+            ...payload,
+            client: sanitizeClientOwnerInfo(payload?.client, canReadOwnerInfo),
+        })
     } catch (error) {
         return sendErrorResponse(res, error)
     }
