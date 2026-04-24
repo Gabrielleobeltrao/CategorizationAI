@@ -6,6 +6,8 @@ export async function listTransactionsByClientId(clientId, options = {}) {
 
   const page = Number(options.page || 1)
   const limit = Number(options.limit || 200)
+  const paginationMode = String(options.paginationMode || "page").trim().toLowerCase()
+  const cursor = String(options.cursor || "").trim()
   const search = String(options.search || "").trim()
   const silentLoading = Boolean(options.silentLoading)
   const accountIds = Array.isArray(options.accountIds) ? options.accountIds : []
@@ -25,9 +27,15 @@ export async function listTransactionsByClientId(clientId, options = {}) {
 
   const params = new URLSearchParams({
     clientId: cleanClientId,
-    page: String(page),
     limit: String(limit),
   })
+
+  if (paginationMode === "cursor") {
+    params.set("paginationMode", "cursor")
+    if (cursor) params.set("cursor", cursor)
+  } else {
+    params.set("page", String(page))
+  }
 
   if (search) {
     params.set("search", search)

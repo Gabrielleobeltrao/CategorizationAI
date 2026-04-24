@@ -41,3 +41,15 @@ export async function deleteAccountById(accountId) {
     method: "DELETE",
   })
 }
+
+export async function deleteAccountsByIds(ids = []) {
+  const targetIds = Array.isArray(ids) ? ids.map((id) => String(id || "").trim()).filter(Boolean) : []
+  if (targetIds.length === 0) {
+    throw new Error("ids must be a non-empty array")
+  }
+
+  return api("/api/accounts/batch-delete", {
+    method: "POST",
+    body: JSON.stringify({ ids: targetIds }),
+  })
+}
