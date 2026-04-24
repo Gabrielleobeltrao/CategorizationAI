@@ -136,6 +136,14 @@ const TWO_WORD_MERCHANT_SUFFIXES = new Set([
   "club",
 ])
 
+function resolveZelleCategoryType(name = "", llmType = "") {
+  const normalizedName = String(name || "").trim().toLowerCase()
+  const normalizedType = String(llmType || "").trim().toLowerCase()
+
+  if (normalizedName.startsWith("sub -")) return "cost_of_goods_sold"
+  return normalizedType === "expense" ? "operating_expense" : "income"
+}
+
 function normalizeObjectIdString(value) {
   const raw = String(value || "").trim()
   if (!raw || !ObjectId.isValid(raw)) return null
@@ -1815,7 +1823,7 @@ export async function categorizeZelleTransactionsService(input) {
       if (categoryByNameKey.has(key)) return
       categoriesToEnsure.set(key, {
         name,
-        type: String(item?.type || "").trim().toLowerCase() === "expense" ? "expense" : "income",
+        type: resolveZelleCategoryType(name, item?.type),
       })
     })
 
@@ -1824,11 +1832,9 @@ export async function categorizeZelleTransactionsService(input) {
       if (!name) return
       const key = normalizeNameKey(name)
       if (!key || categoryByNameKey.has(key) || categoriesToEnsure.has(key)) return
-      const normalizedName = name.toLowerCase()
-      const inferredType = normalizedName.startsWith("sub -") ? "expense" : "income"
       categoriesToEnsure.set(key, {
         name,
-        type: inferredType,
+        type: resolveZelleCategoryType(name, ""),
       })
     })
 
