@@ -56,6 +56,18 @@ export async function deleteCategoryById(categoryId) {
   })
 }
 
+export async function deleteCategoriesByIds(ids = []) {
+  const targetIds = Array.isArray(ids) ? ids.map((id) => String(id || "").trim()).filter(Boolean) : []
+  if (targetIds.length === 0) {
+    throw new Error("ids must be a non-empty array")
+  }
+
+  return api("/api/categories/batch-delete", {
+    method: "POST",
+    body: JSON.stringify({ ids: targetIds }),
+  })
+}
+
 export async function clearUnusedCategoriesByClientId(clientId) {
   const cleanClientId = String(clientId || "").trim()
   if (!cleanClientId) throw new Error("clientId is required")

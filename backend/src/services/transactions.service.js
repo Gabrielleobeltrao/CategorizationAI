@@ -1376,6 +1376,8 @@ export async function listTransactionsPaginatedService(query) {
   const clientId = query?.clientId
   const page = query?.page
   const limit = query?.limit
+  const paginationMode = String(query?.paginationMode || "page").trim().toLowerCase()
+  const cursor = String(query?.cursor || "").trim()
   const search = String(query?.search || "").trim().slice(0, 100)
   const accountIds = parseCsv(query?.accountIds)
   const categoryIds = parseCsv(query?.categoryIds)
@@ -1414,6 +1416,8 @@ export async function listTransactionsPaginatedService(query) {
     clientId,
     page,
     limit,
+    paginationMode,
+    cursor,
     search,
     accountIds,
     categoryIds,

@@ -526,7 +526,7 @@ function Home() {
             <h2 className="text-lg font-semibold">Recent Activity</h2>
             <p className="text-sm text-gray-500">Latest office operations</p>
 
-            <ul className="mt-4 flex max-h-[36.5rem] flex-col gap-2 overflow-y-auto pr-1">
+            <ul className="mt-4 flex flex-col gap-2">
               {dashboard.recentActivities.length === 0 && (
                 <li className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
                   No recent activities in the last 3 days

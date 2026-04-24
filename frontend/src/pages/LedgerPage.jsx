@@ -1,9 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react"
 import { useLocation, useOutletContext, useParams, useSearchParams } from "react-router-dom"
-import LedgerEntriesTable from "../components/ledger/LedgerEntriesTable"
-import LedgerHeader from "../components/ledger/LedgerHeader"
-import AccountsSection from "../components/ledger/AccountsSection"
-import CategoriesSection from "../components/ledger/CategoriesSection"
 import PopupModal from "../components/ui/PopupModal"
 import ConfirmModal from "../components/ui/ConfirmModal"
 import TagsInput from "../components/ui/TagsInput"
@@ -11,6 +7,7 @@ import TagRulesHelp from "../components/ui/TagRulesHelp"
 import { getClientById } from "../services/clients.service"
 import {
     createAccount,
+    deleteAccountsByIds,
     deleteAccountById,
     listAccountsByClientId,
     updateAccountById,
@@ -18,6 +15,7 @@ import {
 import {
     createCategory,
     clearUnusedCategoriesByClientId,
+    deleteCategoriesByIds,
     deleteCategoryById,
     listCategoriesByClientId,
     updateCategoryById,
@@ -39,6 +37,11 @@ import { trackClientOpened } from "../utils/recentClients"
 import { emitDashboardRefresh } from "../utils/dashboardRefresh"
 import { CATEGORY_TYPE_OPTIONS, getCategoryTypeLabel, normalizeCategoryType } from "../constants/categoryTypes"
 
+const LedgerEntriesTable = lazy(() => import("../components/ledger/LedgerEntriesTable"))
+const AccountsSection = lazy(() => import("../components/ledger/AccountsSection"))
+const CategoriesSection = lazy(() => import("../components/ledger/CategoriesSection"))
+const LedgerHeader = lazy(() => import("../components/ledger/LedgerHeader"))
+
 const DEFAULT_TRANSACTIONS_FILTERS = {
     accountIds: [],
     categoryIds: [],
@@ -56,6 +59,7 @@ const DEFAULT_TRANSACTIONS_FILTERS = {
     maxAmount: "",
 }
 const TRANSACTIONS_IMPORT_DONE_EVENT = "app:transactions-import-job-done"
+const TRANSACTIONS_PAGE_SIZE = 50
 
 function getLedgerFiltersStorageKey(clientId = "") {
     return `ledger-filters:${clientId || "global"}`
@@ -204,6 +208,51 @@ function formatCurrency(value = 0) {
     }).format(Number(value || 0))
 }
 
+function LedgerSectionFallback({ className = "" }) {
+    return (
+        <div className={`flex items-center justify-center rounded-lg bg-white px-4 py-8 text-sm text-gray-500 ${className}`}>
+            Loading...
+        </div>
+    )
+}
+
+function mergeLedgerEntryWithPatch(entry = {}, patch = {}) {
+    const nextAmount = patch.amount !== undefined ? Number(patch.amount || 0) : Number(entry.amount || 0)
+    const nextCategoryId = patch.categoryId !== undefined ? (patch.categoryId || "") : entry.categoryId
+    const hasCategoryPatch = Object.prototype.hasOwnProperty.call(patch, "category")
+    const hasCategoryIdPatch = Object.prototype.hasOwnProperty.call(patch, "categoryId")
+    const nextCategory = hasCategoryPatch
+        ? (patch.category || (nextCategoryId ? "" : getDefaultUncategorizedLabelByAmount(nextAmount)))
+        : hasCategoryIdPatch && !nextCategoryId
+            ? getDefaultUncategorizedLabelByAmount(nextAmount)
+            : entry.category
+
+    return {
+        ...entry,
+        date: patch.date !== undefined ? (patch.date || "") : entry.date,
+        description: patch.description !== undefined ? (patch.description || "") : entry.description,
+        accountId: patch.accountId !== undefined ? (patch.accountId || "") : entry.accountId,
+        account: patch.accountName !== undefined ? (patch.accountName || "") : entry.account,
+        categoryId: nextCategoryId,
+        category: nextCategory,
+        amount: nextAmount,
+        splits: patch.splits !== undefined ? patch.splits : entry.splits,
+        isSplit: patch.isSplit !== undefined ? Boolean(patch.isSplit) : entry.isSplit,
+        llmProcessed: patch.llmProcessed !== undefined ? Boolean(patch.llmProcessed) : entry.llmProcessed,
+        llmStatus: patch.llmStatus !== undefined ? String(patch.llmStatus || "") : entry.llmStatus,
+        llmProcessedAt: patch.llmProcessedAt !== undefined ? patch.llmProcessedAt : entry.llmProcessedAt,
+        categorizedSource: patch.categorizedSource !== undefined
+            ? String(patch.categorizedSource || "")
+            : entry.categorizedSource,
+        llmCategorySuggestionId: patch.llmCategorySuggestionId !== undefined
+            ? patch.llmCategorySuggestionId
+            : entry.llmCategorySuggestionId,
+        llmCategorySuggestionName: patch.llmCategorySuggestionName !== undefined
+            ? patch.llmCategorySuggestionName
+            : entry.llmCategorySuggestionName,
+    }
+}
+
 function LedgerPage() {
     const outletContext = useOutletContext() || {}
     const sharedScrollRef = outletContext?.contentScrollRef || null
@@ -230,6 +279,7 @@ function LedgerPage() {
     const [transactionsHasMore, setTransactionsHasMore] = useState(false)
     const [isLoadingTransactions, setIsLoadingTransactions] = useState(false)
     const [isLoadingMoreTransactions, setIsLoadingMoreTransactions] = useState(false)
+    const [transactionsNextCursor, setTransactionsNextCursor] = useState(null)
     const [isCategorizingWithLlm, setIsCategorizingWithLlm] = useState(false)
     const [pendingLlmEntryIds, setPendingLlmEntryIds] = useState([])
     const [transactionsSearchTerm, setTransactionsSearchTerm] = useState(persistedState.searchTerm)
@@ -265,7 +315,8 @@ function LedgerPage() {
     const localPageScrollRef = useRef(null)
     const pageScrollRef = sharedScrollRef || localPageScrollRef
     const loadingMoreRef = useRef(false)
-    const pageRef = useRef(1)
+    const prefetchedTransactionsPageRef = useRef(null)
+    const transactionsQueryKeyRef = useRef("")
     const lastScrollTopRef = useRef(0)
     const handledCompletedJobIdsRef = useRef(new Set())
     const activeSection = location.pathname.endsWith("/ledger/accounts")
@@ -329,7 +380,8 @@ function LedgerPage() {
         const persisted = readPersistedLedgerState(clientId)
         setTransactionsSearchTerm(persisted.searchTerm)
         setTransactionsFilters(persisted.filters)
-        pageRef.current = 1
+        setTransactionsNextCursor(null)
+        prefetchedTransactionsPageRef.current = null
     }, [clientId])
 
     useEffect(() => {
@@ -351,6 +403,45 @@ function LedgerPage() {
         setHasAppliedPreselectedCategory(false)
     }, [clientId, preselectedCategoryName])
 
+    const getTransactionsQueryOptions = useCallback((cursor = "") => ({
+        paginationMode: "cursor",
+        cursor,
+        limit: TRANSACTIONS_PAGE_SIZE,
+        search: transactionsSearchTerm,
+        ...transactionsFilters,
+    }), [transactionsFilters, transactionsSearchTerm])
+
+    const transactionsQueryKey = JSON.stringify({
+        clientId,
+        search: transactionsSearchTerm,
+        filters: normalizeTransactionsFilters(transactionsFilters),
+    })
+
+    const prefetchTransactionsPage = useCallback(async (cursor) => {
+        const safeCursor = String(cursor || "").trim()
+        if (!clientId || !safeCursor) return
+
+        const queryKey = transactionsQueryKeyRef.current
+        try {
+            const payload = await listTransactionsByClientId(clientId, {
+                ...getTransactionsQueryOptions(safeCursor),
+                silentLoading: true,
+            })
+
+            if (transactionsQueryKeyRef.current !== queryKey) return
+
+            prefetchedTransactionsPageRef.current = {
+                cursor: safeCursor,
+                queryKey,
+                payload,
+            }
+        } catch {
+            if (prefetchedTransactionsPageRef.current?.cursor === safeCursor) {
+                prefetchedTransactionsPageRef.current = null
+            }
+        }
+    }, [clientId, getTransactionsQueryOptions])
+
     useEffect(() => {
         if (!clientId || !isBaseDataLoaded || hasAppliedPreselectedCategory) return
 
@@ -371,7 +462,6 @@ function LedgerPage() {
             includeUncategorizedIncome: lowerCategory === "uncategorized" || lowerCategory === "uncategorized income",
             includeUncategorizedExpenses: lowerCategory === "uncategorized" || lowerCategory === "uncategorized expenses",
         })
-        pageRef.current = 1
         setHasAppliedPreselectedCategory(true)
     }, [
         clientId,
@@ -387,41 +477,44 @@ function LedgerPage() {
         if (!clientId) {
             setLedgerEntries([])
             setTransactionsHasMore(false)
+            setTransactionsNextCursor(null)
             setTransactionsPeriodOptions({ years: [], months: [] })
-            pageRef.current = 1
             lastScrollTopRef.current = 0
             setTransactionsFilters(DEFAULT_TRANSACTIONS_FILTERS)
+            prefetchedTransactionsPageRef.current = null
+            transactionsQueryKeyRef.current = ""
             return () => {
                 active = false
             }
         }
 
         setIsLoadingTransactions(true)
+        prefetchedTransactionsPageRef.current = null
+        transactionsQueryKeyRef.current = transactionsQueryKey
 
         listTransactionsByClientId(clientId, {
-            page: 1,
-            limit: 30,
-            search: transactionsSearchTerm,
-            ...transactionsFilters,
+            ...getTransactionsQueryOptions(),
         })
             .then((payload) => {
                 if (!active) return
                 const items = Array.isArray(payload?.items) ? payload.items : []
                 const mapped = items.map(mapTransaction)
-                const page = Number(payload?.page || 1)
-                const totalPages = Number(payload?.totalPages || 1)
+                const nextCursor = String(payload?.nextCursor || "").trim()
 
                 setLedgerEntries(mapped)
-                setTransactionsHasMore(page < totalPages)
-                pageRef.current = page
+                setTransactionsHasMore(Boolean(payload?.hasMore && nextCursor))
+                setTransactionsNextCursor(nextCursor || null)
                 lastScrollTopRef.current = 0
+                if (payload?.hasMore && nextCursor) {
+                    prefetchTransactionsPage(nextCursor)
+                }
             })
             .catch((err) => {
                 if (!active) return
                 error(err.message || "Failed to load transactions")
                 setLedgerEntries([])
                 setTransactionsHasMore(false)
-                pageRef.current = 1
+                setTransactionsNextCursor(null)
             })
             .finally(() => {
                 if (!active) return
@@ -431,7 +524,7 @@ function LedgerPage() {
         return () => {
             active = false
         }
-    }, [clientId, transactionsSearchTerm, transactionsFilters, error])
+    }, [clientId, error, getTransactionsQueryOptions, prefetchTransactionsPage, transactionsQueryKey])
 
     useEffect(() => {
         let active = true
@@ -532,28 +625,45 @@ function LedgerPage() {
         try {
             loadingMoreRef.current = true
             setIsLoadingMoreTransactions(true)
-            const nextPage = pageRef.current + 1
-            const payload = await listTransactionsByClientId(clientId, {
-                page: nextPage,
-                limit: 30,
-                search: transactionsSearchTerm,
-                ...transactionsFilters,
-                silentLoading: true,
-            })
-
-            const items = Array.isArray(payload?.items) ? payload.items : []
-            const mapped = items.map(mapTransaction)
-            const page = Number(payload?.page || nextPage)
-            const totalPages = Number(payload?.totalPages || page)
-
-            if (items.length === 0 || page <= pageRef.current) {
+            const currentQueryKey = transactionsQueryKeyRef.current
+            const targetCursor = String(transactionsNextCursor || "").trim()
+            if (!targetCursor) {
                 setTransactionsHasMore(false)
                 return
             }
 
+            let payload = null
+            const cachedPage = prefetchedTransactionsPageRef.current
+            if (
+                cachedPage &&
+                cachedPage.cursor === targetCursor &&
+                cachedPage.queryKey === currentQueryKey
+            ) {
+                payload = cachedPage.payload
+                prefetchedTransactionsPageRef.current = null
+            } else {
+                payload = await listTransactionsByClientId(clientId, {
+                    ...getTransactionsQueryOptions(targetCursor),
+                    silentLoading: true,
+                })
+            }
+
+            const items = Array.isArray(payload?.items) ? payload.items : []
+            const mapped = items.map(mapTransaction)
+            const nextCursor = String(payload?.nextCursor || "").trim()
+
+            if (items.length === 0) {
+                setTransactionsHasMore(false)
+                setTransactionsNextCursor(null)
+                return
+            }
+
             setLedgerEntries((current) => [...current, ...mapped])
-            setTransactionsHasMore(page < totalPages)
-            pageRef.current = page
+            setTransactionsHasMore(Boolean(payload?.hasMore && nextCursor))
+            setTransactionsNextCursor(nextCursor || null)
+            if (payload?.hasMore && nextCursor) {
+                prefetchTransactionsPage(nextCursor)
+            }
         } catch (err) {
             error(err.message || "Failed to load more transactions")
         } finally {
@@ -593,28 +703,45 @@ function LedgerPage() {
 
     const handleApplyTransactionsFilters = (nextFilters = DEFAULT_TRANSACTIONS_FILTERS) => {
         setTransactionsFilters(normalizeTransactionsFilters(nextFilters))
-        pageRef.current = 1
     }
 
     const handleUpdateTransaction = async (id, patch) => {
+        let previousEntry = null
+
         try {
+            setLedgerEntries((current) =>
+                current.map((item) => {
+                    if (item.id !== id) return item
+                    previousEntry = item
+                    return mergeLedgerEntryWithPatch(item, patch)
+                })
+            )
+
             const updated = await updateTransactionById(id, patch)
             const normalized = mapTransaction(updated)
             setLedgerEntries((current) =>
                 current.map((item) => (item.id === id ? normalized : item))
             )
-            await refreshTransactionsSummary()
+            refreshTransactionsSummary().catch(() => {})
             if (patch?.date !== undefined) {
-                const periodOptions = await listTransactionPeriodOptions(clientId, { silentLoading: true })
-                setTransactionsPeriodOptions({
-                    years: Array.isArray(periodOptions?.years) ? periodOptions.years : [],
-                    months: Array.isArray(periodOptions?.months) ? periodOptions.months : [],
-                })
+                listTransactionPeriodOptions(clientId, { silentLoading: true })
+                    .then((periodOptions) => {
+                        setTransactionsPeriodOptions({
+                            years: Array.isArray(periodOptions?.years) ? periodOptions.years : [],
+                            months: Array.isArray(periodOptions?.months) ? periodOptions.months : [],
+                        })
+                    })
+                    .catch(() => {})
             }
             emitDashboardRefresh("transaction-updated")
             success("Transaction updated successfully")
             return updated
         } catch (err) {
+            if (previousEntry) {
+                setLedgerEntries((current) =>
+                    current.map((item) => (item.id === id ? previousEntry : item))
+                )
+            }
             error(err.message || "Failed to update transaction")
             throw err
         }
@@ -632,43 +759,31 @@ function LedgerPage() {
 
         if (safeUpdates.length === 0) return
 
+        const previousEntriesById = new Map()
+
         try {
-            await updateTransactionsByIds(safeUpdates)
-
-            const patchById = new Map(
-                safeUpdates.map((item) => [item.id, item.patch])
-            )
-
             setLedgerEntries((current) =>
                 current.map((entry) => {
-                    const patch = patchById.get(entry.id)
-                    if (!patch) return entry
-
-                    const nextAmount = patch.amount !== undefined ? Number(patch.amount || 0) : entry.amount
-                    const nextCategoryId = patch.categoryId !== undefined ? (patch.categoryId || "") : entry.categoryId
-                    const nextCategory = patch.category !== undefined
-                        ? (patch.category || (nextCategoryId ? "" : getDefaultUncategorizedLabelByAmount(nextAmount)))
-                        : entry.category
-
-                    return {
-                        ...entry,
-                        date: patch.date !== undefined ? (patch.date || "") : entry.date,
-                        accountId: patch.accountId !== undefined ? (patch.accountId || "") : entry.accountId,
-                        account: patch.accountName !== undefined ? (patch.accountName || "") : entry.account,
-                        categoryId: nextCategoryId,
-                        category: nextCategory,
-                    }
+                    const nextUpdate = safeUpdates.find((item) => item.id === entry.id)
+                    if (!nextUpdate) return entry
+                    previousEntriesById.set(entry.id, entry)
+                    return mergeLedgerEntryWithPatch(entry, nextUpdate.patch)
                 })
             )
-            await refreshTransactionsSummary()
+
+            await updateTransactionsByIds(safeUpdates)
+            refreshTransactionsSummary().catch(() => {})
 
             const touchedDate = safeUpdates.some((item) => Object.prototype.hasOwnProperty.call(item.patch, "date"))
             if (touchedDate) {
-                const periodOptions = await listTransactionPeriodOptions(clientId, { silentLoading: true })
-                setTransactionsPeriodOptions({
-                    years: Array.isArray(periodOptions?.years) ? periodOptions.years : [],
-                    months: Array.isArray(periodOptions?.months) ? periodOptions.months : [],
-                })
+                listTransactionPeriodOptions(clientId, { silentLoading: true })
+                    .then((periodOptions) => {
+                        setTransactionsPeriodOptions({
+                            years: Array.isArray(periodOptions?.years) ? periodOptions.years : [],
+                            months: Array.isArray(periodOptions?.months) ? periodOptions.months : [],
+                        })
+                    })
+                    .catch(() => {})
             }
 
             emitDashboardRefresh("transactions-batch-updated")
@@ -678,6 +793,11 @@ function LedgerPage() {
                     : `${safeUpdates.length} transactions updated successfully`
             )
         } catch (err) {
+            if (previousEntriesById.size > 0) {
+                setLedgerEntries((current) =>
+                    current.map((entry) => previousEntriesById.get(entry.id) || entry)
+                )
+            }
             error(err.message || "Failed to update transactions")
             throw err
         }
@@ -687,12 +807,15 @@ function LedgerPage() {
         try {
             await deleteTransactionById(id)
             setLedgerEntries((current) => current.filter((item) => item.id !== id))
-            await refreshTransactionsSummary()
-            const periodOptions = await listTransactionPeriodOptions(clientId, { silentLoading: true })
-            setTransactionsPeriodOptions({
-                years: Array.isArray(periodOptions?.years) ? periodOptions.years : [],
-                months: Array.isArray(periodOptions?.months) ? periodOptions.months : [],
-            })
+            refreshTransactionsSummary().catch(() => {})
+            listTransactionPeriodOptions(clientId, { silentLoading: true })
+                .then((periodOptions) => {
+                    setTransactionsPeriodOptions({
+                        years: Array.isArray(periodOptions?.years) ? periodOptions.years : [],
+                        months: Array.isArray(periodOptions?.months) ? periodOptions.months : [],
+                    })
+                })
+                .catch(() => {})
             emitDashboardRefresh("transaction-deleted")
             success("Transaction deleted successfully")
         } catch (err) {
@@ -713,12 +836,15 @@ function LedgerPage() {
             }
             const targetSet = new Set(targetIds)
             setLedgerEntries((current) => current.filter((item) => !targetSet.has(item.id)))
-            await refreshTransactionsSummary()
-            const periodOptions = await listTransactionPeriodOptions(clientId, { silentLoading: true })
-            setTransactionsPeriodOptions({
-                years: Array.isArray(periodOptions?.years) ? periodOptions.years : [],
-                months: Array.isArray(periodOptions?.months) ? periodOptions.months : [],
-            })
+            refreshTransactionsSummary().catch(() => {})
+            listTransactionPeriodOptions(clientId, { silentLoading: true })
+                .then((periodOptions) => {
+                    setTransactionsPeriodOptions({
+                        years: Array.isArray(periodOptions?.years) ? periodOptions.years : [],
+                        months: Array.isArray(periodOptions?.months) ? periodOptions.months : [],
+                    })
+                })
+                .catch(() => {})
             emitDashboardRefresh("transactions-batch-deleted")
             success(
                 targetIds.length === 1
@@ -750,34 +876,31 @@ function LedgerPage() {
         const [categoriesData, payload] = await Promise.all([
             listCategoriesByClientId(clientId),
             listTransactionsByClientId(clientId, {
-                page: 1,
-                limit: 30,
-                search: transactionsSearchTerm,
-                ...transactionsFilters,
+                ...getTransactionsQueryOptions(),
                 silentLoading: true,
             }),
         ])
 
         const items = Array.isArray(payload?.items) ? payload.items : []
         const mapped = items.map(mapTransaction)
-        const page = Number(payload?.page || 1)
-        const totalPages = Number(payload?.totalPages || 1)
+        const nextCursor = String(payload?.nextCursor || "").trim()
 
         setCategoryList(Array.isArray(categoriesData) ? categoriesData.map(mapCategory) : [])
         setLedgerEntries(mapped)
-        setTransactionsHasMore(page < totalPages)
-        pageRef.current = page
-    }, [clientId, transactionsSearchTerm, transactionsFilters])
+        setTransactionsHasMore(Boolean(payload?.hasMore && nextCursor))
+        setTransactionsNextCursor(nextCursor || null)
+        prefetchedTransactionsPageRef.current = null
+        if (payload?.hasMore && nextCursor) {
+            prefetchTransactionsPage(nextCursor)
+        }
+    }, [clientId, getTransactionsQueryOptions, prefetchTransactionsPage])
 
     const refreshLedgerAfterImport = useCallback(async () => {
         if (!clientId) return
 
         const [payload, periodOptions] = await Promise.all([
             listTransactionsByClientId(clientId, {
-                page: 1,
-                limit: 30,
-                search: transactionsSearchTerm,
-                ...transactionsFilters,
+                ...getTransactionsQueryOptions(),
                 silentLoading: true,
             }),
             listTransactionPeriodOptions(clientId, { silentLoading: true }),
@@ -786,17 +909,20 @@ function LedgerPage() {
 
         const items = Array.isArray(payload?.items) ? payload.items : []
         const mapped = items.map(mapTransaction)
-        const page = Number(payload?.page || 1)
-        const totalPages = Number(payload?.totalPages || 1)
+        const nextCursor = String(payload?.nextCursor || "").trim()
 
         setLedgerEntries(mapped)
-        setTransactionsHasMore(page < totalPages)
-        pageRef.current = page
+        setTransactionsHasMore(Boolean(payload?.hasMore && nextCursor))
+        setTransactionsNextCursor(nextCursor || null)
+        prefetchedTransactionsPageRef.current = null
+        if (payload?.hasMore && nextCursor) {
+            prefetchTransactionsPage(nextCursor)
+        }
         setTransactionsPeriodOptions({
             years: Array.isArray(periodOptions?.years) ? periodOptions.years : [],
             months: Array.isArray(periodOptions?.months) ? periodOptions.months : [],
         })
-    }, [clientId, refreshTransactionsSummary, transactionsFilters, transactionsSearchTerm])
+    }, [clientId, getTransactionsQueryOptions, prefetchTransactionsPage, refreshTransactionsSummary])
 
     useEffect(() => {
         if (typeof window === "undefined") return undefined
@@ -1048,7 +1174,7 @@ function LedgerPage() {
 
         try {
             setIsSubmitting(true)
-            await Promise.all(targetIds.map((id) => deleteAccountById(id)))
+            await deleteAccountsByIds(targetIds)
             const targetSet = new Set(targetIds)
             setAccounts((current) => current.filter((item) => !targetSet.has(item.id)))
             setAccountIdsToDelete([])
@@ -1087,7 +1213,7 @@ function LedgerPage() {
 
         try {
             setIsSubmitting(true)
-            await Promise.all(targetIds.map((id) => deleteCategoryById(id)))
+            await deleteCategoriesByIds(targetIds)
             const targetSet = new Set(targetIds)
             setCategoryList((current) => current.filter((item) => !targetSet.has(item.id)))
             setCategoryIdsToDelete([])
@@ -1141,9 +1267,11 @@ function LedgerPage() {
             className="relative w-full min-w-0 box-border p-4"
         >
             <div className="min-h-full min-w-0 flex flex-col gap-4 pb-4">
-                <LedgerHeader
-                    clientName={client?.name || ""}
-                />
+                <Suspense fallback={<LedgerSectionFallback />}>
+                    <LedgerHeader
+                        clientName={client?.name || ""}
+                    />
+                </Suspense>
 
                 <section className={`min-h-[460px] min-w-0 rounded-lg border border-gray-200 bg-white p-4 flex flex-col ${activeSection === "ledger" ? "overflow-visible" : "overflow-hidden"}`}>
                     {activeSection === "ledger" && (
@@ -1169,59 +1297,65 @@ function LedgerPage() {
                                 </button>
                             </div>
                             <div className="min-h-0 min-w-0 flex-1">
-                                <LedgerEntriesTable
-                                    ledgerEntries={ledgerEntries}
-                                    accounts={accounts}
-                                    categories={categoryList}
-                                    yearOptions={transactionsPeriodOptions.years}
-                                    monthOptions={transactionsPeriodOptions.months}
-                                    clientId={clientId}
-                                    searchTerm={transactionsSearchTerm}
-                                    filters={transactionsFilters}
-                                    onApplyFilters={handleApplyTransactionsFilters}
-                                    onSearchTermChange={setTransactionsSearchTerm}
-                                    onUpdateEntry={handleUpdateTransaction}
-                                    onUpdateEntries={handleUpdateTransactionsBulk}
-                                    onDeleteEntry={handleDeleteTransaction}
-                                    onDeleteEntries={handleDeleteTransactionsBulk}
-                                    onImportTransactions={handleImportTransactions}
-                                    onCreateCategory={handleCreateCategoryFromTransaction}
-                                    onOpenCreateAccount={() => setShowAccountForm(true)}
-                                    overlayBoundaryRef={pageScrollRef}
-                                    onCategorizeWithLlm={handleCategorizeWithLlmPreview}
-                                    isCategorizingWithLlm={isCategorizingWithLlm}
-                                    pendingLlmEntryIds={pendingLlmEntryIds}
-                                    isLoading={isLoadingTransactions}
-                                    isLoadingMore={isLoadingMoreTransactions}
-                                    showUploadModal={showUploadModal}
-                                    onCloseUploadModal={() => setShowUploadModal(false)}
-                                />
+                                <Suspense fallback={<LedgerSectionFallback className="h-full min-h-[320px]" />}>
+                                    <LedgerEntriesTable
+                                        ledgerEntries={ledgerEntries}
+                                        accounts={accounts}
+                                        categories={categoryList}
+                                        yearOptions={transactionsPeriodOptions.years}
+                                        monthOptions={transactionsPeriodOptions.months}
+                                        clientId={clientId}
+                                        searchTerm={transactionsSearchTerm}
+                                        filters={transactionsFilters}
+                                        onApplyFilters={handleApplyTransactionsFilters}
+                                        onSearchTermChange={setTransactionsSearchTerm}
+                                        onUpdateEntry={handleUpdateTransaction}
+                                        onUpdateEntries={handleUpdateTransactionsBulk}
+                                        onDeleteEntry={handleDeleteTransaction}
+                                        onDeleteEntries={handleDeleteTransactionsBulk}
+                                        onImportTransactions={handleImportTransactions}
+                                        onCreateCategory={handleCreateCategoryFromTransaction}
+                                        onOpenCreateAccount={() => setShowAccountForm(true)}
+                                        overlayBoundaryRef={pageScrollRef}
+                                        onCategorizeWithLlm={handleCategorizeWithLlmPreview}
+                                        isCategorizingWithLlm={isCategorizingWithLlm}
+                                        pendingLlmEntryIds={pendingLlmEntryIds}
+                                        isLoading={isLoadingTransactions}
+                                        isLoadingMore={isLoadingMoreTransactions}
+                                        showUploadModal={showUploadModal}
+                                        onCloseUploadModal={() => setShowUploadModal(false)}
+                                    />
+                                </Suspense>
                             </div>
                         </section>
                     )}
 
                     {activeSection === "accounts" && (
-                        <AccountsSection
-                            accounts={accounts}
-                            onCreate={() => setShowAccountForm(true)}
-                            onSaveEdit={handleSaveAccountEdit}
-                            onDelete={setAccountToDelete}
-                            onDeleteMany={setAccountIdsToDelete}
-                        />
+                        <Suspense fallback={<LedgerSectionFallback className="h-full min-h-[320px]" />}>
+                            <AccountsSection
+                                accounts={accounts}
+                                onCreate={() => setShowAccountForm(true)}
+                                onSaveEdit={handleSaveAccountEdit}
+                                onDelete={setAccountToDelete}
+                                onDeleteMany={setAccountIdsToDelete}
+                            />
+                        </Suspense>
                     )}
 
                     {activeSection === "categories" && (
-                        <CategoriesSection
-                            categories={categoryList}
-                            onCreate={() => setShowCategoryForm(true)}
-                            onClearUnused={() => setIsClearUnusedCategoriesModalOpen(true)}
-                            onSaveEdit={handleSaveCategoryEdit}
-                            onDelete={setCategoryToDelete}
-                            onDeleteMany={setCategoryIdsToDelete}
-                            tagOptions={officeTags}
-                            onDeleteTag={deleteTag}
-                            deletingTag={deletingTag}
-                        />
+                        <Suspense fallback={<LedgerSectionFallback className="h-full min-h-[320px]" />}>
+                            <CategoriesSection
+                                categories={categoryList}
+                                onCreate={() => setShowCategoryForm(true)}
+                                onClearUnused={() => setIsClearUnusedCategoriesModalOpen(true)}
+                                onSaveEdit={handleSaveCategoryEdit}
+                                onDelete={setCategoryToDelete}
+                                onDeleteMany={setCategoryIdsToDelete}
+                                tagOptions={officeTags}
+                                onDeleteTag={deleteTag}
+                                deletingTag={deletingTag}
+                            />
+                        </Suspense>
                     )}
                 </section>
             </div>

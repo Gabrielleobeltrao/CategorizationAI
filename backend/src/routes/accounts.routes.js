@@ -5,11 +5,13 @@ import {
   listAccountsByClientIdController,
   getAccountByIdController,
   deleteAccountByIdController,
+  deleteAccountsBatchController,
 } from "../controllers/account.controller.js"
 import { requireAuth } from "../middlewares/requireAuth.js"
 import {
   validateObjectIdParam,
   validateObjectIdBody,
+  validateObjectIdBodyArray,
 } from "../middlewares/validateObjectId.js"
 import { ensureResourceExists } from "../middlewares/authorizeScope.js"
 import { requirePermission } from "../middlewares/requirePermission.js"
@@ -59,6 +61,14 @@ router.delete(
   validateObjectIdParam("id"),
   ensureResourceExists({ collection: "account", from: "params", field: "id", assignKey: "account" }),
   deleteAccountByIdController
+)
+
+router.post(
+  "/accounts/batch-delete",
+  requireAuth,
+  requirePermission("accounts:delete"),
+  validateObjectIdBodyArray("ids"),
+  deleteAccountsBatchController
 )
 
 export default router

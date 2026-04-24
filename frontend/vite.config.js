@@ -9,4 +9,18 @@ export default defineConfig({
     host: "127.0.0.1",
     port: 5173,
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return
+
+          if (id.includes("recharts")) return "charts"
+          if (id.includes("pdfjs-dist")) return "pdf"
+          if (id.includes("react-router")) return "router"
+          if (id.includes("/react/") || id.includes("/react-dom/")) return "react-vendor"
+        },
+      },
+    },
+  },
 })

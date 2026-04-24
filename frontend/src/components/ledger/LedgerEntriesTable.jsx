@@ -352,6 +352,33 @@ function getCategoryPickerPosition(anchorElement, isCreating = false, popupEleme
     }
 }
 
+function findVirtualIndexForOffset(offsets = [], heights = [], targetOffset = 0) {
+    if (offsets.length === 0) return 0
+
+    let low = 0
+    let high = offsets.length - 1
+
+    while (low <= high) {
+        const mid = Math.floor((low + high) / 2)
+        const start = offsets[mid]
+        const end = start + (heights[mid] || 0)
+
+        if (targetOffset < start) {
+            high = mid - 1
+            continue
+        }
+
+        if (targetOffset >= end) {
+            low = mid + 1
+            continue
+        }
+
+        return mid
+    }
+
+    return Math.max(0, Math.min(offsets.length - 1, low))
+}
+
 function isZelleEntry(entry = {}) {
     return String(entry?.description || "").toLowerCase().includes("zelle")
 }
@@ -417,6 +444,10 @@ function LedgerEntriesTable({
         top: 0,
         left: 0,
         width: 360,
+    })
+    const [virtualScrollState, setVirtualScrollState] = useState({
+        scrollTop: 0,
+        viewportHeight: 0,
     })
     const [newCategoryDraft, setNewCategoryDraft] = useState({
         name: "",
@@ -834,6 +865,112 @@ function LedgerEntriesTable({
         return count
     }, [appliedFilters])
 
+    const shouldVirtualize = useMemo(
+        () =>
+            ledgerEntries.length > 80 &&
+            !categoryPickerState.entryId &&
+            !splittingEntryId &&
+            editingTargetIds.length === 0,
+        [categoryPickerState.entryId, editingTargetIds.length, ledgerEntries.length, splittingEntryId]
+    )
+
+    const virtualMetrics = useMemo(() => {
+        if (!shouldVirtualize) return null
+
+        const offsets = []
+        const heights = []
+        let totalHeight = 0
+
+        ledgerEntries.forEach((entry) => {
+            offsets.push(totalHeight)
+
+            let estimatedHeight = 56
+            const splitCount = Array.isArray(entry?.splits) ? entry.splits.length : 0
+
+            if (splittingEntryId === entry.id) {
+                estimatedHeight += splitDraftRows.length * 48
+                estimatedHeight += 44
+                if (splitError) estimatedHeight += 28
+            } else if (splitCount > 1) {
+                estimatedHeight += splitCount * 48
+            }
+
+            heights.push(estimatedHeight)
+            totalHeight += estimatedHeight
+        })
+
+        return {
+            offsets,
+            heights,
+            totalHeight,
+        }
+    }, [ledgerEntries, shouldVirtualize, splitDraftRows.length, splitError, splittingEntryId])
+
+    const virtualWindow = useMemo(() => {
+        if (!shouldVirtualize || !virtualMetrics) {
+            return {
+                startIndex: 0,
+                endIndex: ledgerEntries.length - 1,
+                topSpacerHeight: 0,
+                bottomSpacerHeight: 0,
+            }
+        }
+
+        const overscanPx = 600
+        const startOffset = Math.max(0, virtualScrollState.scrollTop - overscanPx)
+        const endOffset = virtualScrollState.scrollTop + virtualScrollState.viewportHeight + overscanPx
+        const startIndex = findVirtualIndexForOffset(virtualMetrics.offsets, virtualMetrics.heights, startOffset)
+        const endIndex = findVirtualIndexForOffset(virtualMetrics.offsets, virtualMetrics.heights, endOffset)
+        const topSpacerHeight = virtualMetrics.offsets[startIndex] || 0
+        const endItemOffset = virtualMetrics.offsets[endIndex] || 0
+        const endItemHeight = virtualMetrics.heights[endIndex] || 0
+        const bottomSpacerHeight = Math.max(
+            0,
+            virtualMetrics.totalHeight - (endItemOffset + endItemHeight)
+        )
+
+        return {
+            startIndex,
+            endIndex,
+            topSpacerHeight,
+            bottomSpacerHeight,
+        }
+    }, [ledgerEntries.length, shouldVirtualize, virtualMetrics, virtualScrollState])
+
+    const renderedEntries = useMemo(() => {
+        if (!shouldVirtualize) {
+            return ledgerEntries.map((entry, index) => ({ entry, index }))
+        }
+
+        return ledgerEntries
+            .slice(virtualWindow.startIndex, virtualWindow.endIndex + 1)
+            .map((entry, offset) => ({
+                entry,
+                index: virtualWindow.startIndex + offset,
+            }))
+    }, [ledgerEntries, shouldVirtualize, virtualWindow.endIndex, virtualWindow.startIndex])
+
+    useEffect(() => {
+        const container = scrollContainerRef.current
+        if (!container) return undefined
+
+        const syncVirtualScrollState = () => {
+            setVirtualScrollState({
+                scrollTop: container.scrollTop,
+                viewportHeight: container.clientHeight,
+            })
+        }
+
+        syncVirtualScrollState()
+        container.addEventListener("scroll", syncVirtualScrollState)
+        window.addEventListener("resize", syncVirtualScrollState)
+
+        return () => {
+            container.removeEventListener("scroll", syncVirtualScrollState)
+            window.removeEventListener("resize", syncVirtualScrollState)
+        }
+    }, [ledgerEntries.length])
+
     useEffect(() => {
         const onPointerDown = (event) => {
             if (!showFilterModal) return
@@ -1245,14 +1382,22 @@ function LedgerEntriesTable({
             if (targetIds.length === 0) return
 
             setIsApplyingCategoryBulk(true)
-            await Promise.all(
-                targetIds.map((targetId) =>
-                    onUpdateEntry?.(targetId, {
-                        category: categoryName || null,
-                        categoryId: categoryName ? selectedCategory?.id || null : null,
-                    })
+            if (targetIds.length > 1 && onUpdateEntries) {
+                await onUpdateEntries(
+                    targetIds.map((targetId) => ({
+                        id: targetId,
+                        patch: {
+                            category: categoryName || null,
+                            categoryId: categoryName ? selectedCategory?.id || null : null,
+                        },
+                    }))
                 )
-            )
+            } else {
+                await onUpdateEntry?.(targetIds[0], {
+                    category: categoryName || null,
+                    categoryId: categoryName ? selectedCategory?.id || null : null,
+                })
+            }
         } catch (err) {
             console.error(err)
         } finally {
@@ -1276,8 +1421,8 @@ function LedgerEntriesTable({
             return
         }
 
-        await changeEntryCategory(categoryPickerState.entryId, categoryName)
         closeCategoryPicker()
+        await changeEntryCategory(categoryPickerState.entryId, categoryName)
     }
 
     const handleCreateCategoryFromPicker = async () => {
@@ -1614,11 +1759,15 @@ function LedgerEntriesTable({
                             <h4>Actions</h4>
                         </div>
                     </div>
-                    <div
+                <div
                     ref={scrollContainerRef}
                     className="min-h-0 min-w-0 flex-1 overflow-auto rounded-b-lg border-b-4 border-gray-100"
                 >
-                    {ledgerEntries.map((entry, index) => (
+                    {shouldVirtualize && virtualWindow.topSpacerHeight > 0 && (
+                        <div style={{ height: `${virtualWindow.topSpacerHeight}px` }} aria-hidden="true" />
+                    )}
+
+                    {renderedEntries.map(({ entry, index }) => (
                         <div key={entry.id}>
                             <LedgerEntryRow
                                 index={index}
@@ -1858,6 +2007,10 @@ function LedgerEntriesTable({
                             )}
                         </div>
                     ))}
+
+                    {shouldVirtualize && virtualWindow.bottomSpacerHeight > 0 && (
+                        <div style={{ height: `${virtualWindow.bottomSpacerHeight}px` }} aria-hidden="true" />
+                    )}
 
                     {isLoading && (
                         <div className="px-3 py-8 text-center text-sm text-gray-500">

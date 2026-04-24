@@ -4,6 +4,7 @@ import {
   listAccountsByClientIdService,
   getAccountByIdService,
   deleteAccountByIdService,
+  deleteAccountsByIdsService,
 } from "../services/account.service.js"
 import { sendErrorResponse } from "../utils/httpError.js"
 
@@ -57,6 +58,16 @@ export async function deleteAccountByIdController(req, res) {
     const { id } = req.params
     await deleteAccountByIdService(id)
     return res.status(204).send()
+  } catch (error) {
+    return sendErrorResponse(res, error)
+  }
+}
+
+export async function deleteAccountsBatchController(req, res) {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids : []
+    const result = await deleteAccountsByIdsService(ids)
+    return res.status(200).json(result)
   } catch (error) {
     return sendErrorResponse(res, error)
   }

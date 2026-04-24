@@ -62,6 +62,21 @@ export async function deleteAccountById(id) {
   return db.collection("account").deleteOne({ _id: new ObjectId(id) })
 }
 
+export async function deleteAccountsByIds(ids = []) {
+  const db = getDB()
+  const objectIds = Array.isArray(ids)
+    ? ids
+        .filter((id) => id && ObjectId.isValid(String(id)))
+        .map((id) => new ObjectId(String(id)))
+    : []
+
+  if (objectIds.length === 0) {
+    return { deletedCount: 0 }
+  }
+
+  return db.collection("account").deleteMany({ _id: { $in: objectIds } })
+}
+
 export async function deleteAccountsByClientId(clientId) {
   const db = getDB()
   return db.collection("account").deleteMany({ clientId })

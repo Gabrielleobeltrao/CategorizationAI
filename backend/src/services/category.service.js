@@ -10,6 +10,7 @@ import {
 import { getClientById } from "../repositories/clients.repository.js"
 import {
   countTransactionsByCategoryId,
+  listLinkedCategoryIds,
   listUsedCategoryIdsByClientId,
 } from "../repositories/transactions.repository.js"
 import { normalizeCategoryType } from "../config/categoryTypes.js"
@@ -172,6 +173,29 @@ export async function deleteCategoryByIdService(id) {
   }
 
   return deleteCategoryById(id)
+}
+
+export async function deleteCategoriesByIdsService(ids = []) {
+  const safeIds = Array.isArray(ids)
+    ? [...new Set(ids.map((id) => String(id || "").trim()).filter(Boolean))]
+    : []
+
+  if (safeIds.length === 0) {
+    throw new Error("ids must be a non-empty array")
+  }
+
+  const linkedCategoryIds = await listLinkedCategoryIds(safeIds)
+  if (linkedCategoryIds.length > 0) {
+    throw new AppError("Cannot delete categories with linked transactions", 409, {
+      linkedCategoryIds,
+    })
+  }
+
+  const result = await deleteCategoriesByIds(safeIds)
+  return {
+    requestedCount: safeIds.length,
+    deletedCount: Number(result?.deletedCount || 0),
+  }
 }
 
 export async function clearUnusedCategoriesByClientIdService(clientId) {

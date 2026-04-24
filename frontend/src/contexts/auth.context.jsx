@@ -9,7 +9,10 @@ let bootstrapPromise = null
 let bootstrapCache = null
 
 async function loadAuthSnapshot() {
-  const sessionData = await api("/api/auth/get-session", { silentLoading: true }).catch(() => null)
+  const [sessionData, profile] = await Promise.all([
+    api("/api/auth/get-session", { silentLoading: true }).catch(() => null),
+    getMyProfile().catch(() => null),
+  ])
   const isAuthenticated = Boolean(sessionData?.session && sessionData?.user)
 
   if (!isAuthenticated) {
@@ -18,8 +21,6 @@ async function loadAuthSnapshot() {
       profile: null,
     }
   }
-
-  const profile = await getMyProfile().catch(() => null)
 
   return {
     isAuthenticated: true,
