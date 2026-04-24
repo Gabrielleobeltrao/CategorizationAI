@@ -5,12 +5,14 @@ import {
   listCategoriesByClientIdController,
   getCategoryByIdController,
   deleteCategoryByIdController,
+  deleteCategoriesBatchController,
   clearUnusedCategoriesByClientIdController,
 } from "../controllers/category.controller.js"
 import { requireAuth } from "../middlewares/requireAuth.js"
 import {
   validateObjectIdParam,
   validateObjectIdBody,
+  validateObjectIdBodyArray,
 } from "../middlewares/validateObjectId.js"
 import { ensureResourceExists } from "../middlewares/authorizeScope.js"
 import { requirePermission } from "../middlewares/requirePermission.js"
@@ -69,6 +71,14 @@ router.delete(
   validateObjectIdParam("id"),
   ensureResourceExists({ collection: "categories", from: "params", field: "id", assignKey: "category" }),
   deleteCategoryByIdController
+)
+
+router.post(
+  "/categories/batch-delete",
+  requireAuth,
+  requirePermission("categories:delete"),
+  validateObjectIdBodyArray("ids"),
+  deleteCategoriesBatchController
 )
 
 export default router

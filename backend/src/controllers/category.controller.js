@@ -4,6 +4,7 @@ import {
   listCategoriesByClientIdService,
   getCategoryByIdService,
   deleteCategoryByIdService,
+  deleteCategoriesByIdsService,
   clearUnusedCategoriesByClientIdService,
 } from "../services/category.service.js"
 import { sendErrorResponse } from "../utils/httpError.js"
@@ -62,6 +63,16 @@ export async function deleteCategoryByIdController(req, res) {
     const { id } = req.params
     await deleteCategoryByIdService(id)
     return res.status(204).send()
+  } catch (error) {
+    return sendErrorResponse(res, error)
+  }
+}
+
+export async function deleteCategoriesBatchController(req, res) {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids : []
+    const result = await deleteCategoriesByIdsService(ids)
+    return res.status(200).json(result)
   } catch (error) {
     return sendErrorResponse(res, error)
   }

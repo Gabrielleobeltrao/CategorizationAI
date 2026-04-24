@@ -4,9 +4,13 @@ import {
   listAccountsByClientId,
   getAccountById,
   deleteAccountById,
+  deleteAccountsByIds,
   deleteAccountsByClientId,
 } from "../repositories/account.repository.js"
-import { countTransactionsByAccountId } from "../repositories/transactions.repository.js"
+import {
+  countTransactionsByAccountId,
+  listLinkedAccountIds,
+} from "../repositories/transactions.repository.js"
 import { AppError } from "../utils/appError.js"
 
 export async function createAccountService(input) {
@@ -73,6 +77,29 @@ export async function deleteAccountByIdService(id) {
   }
 
   return deleteAccountById(id)
+}
+
+export async function deleteAccountsByIdsService(ids = []) {
+  const safeIds = Array.isArray(ids)
+    ? [...new Set(ids.map((id) => String(id || "").trim()).filter(Boolean))]
+    : []
+
+  if (safeIds.length === 0) {
+    throw new Error("ids must be a non-empty array")
+  }
+
+  const linkedAccountIds = await listLinkedAccountIds(safeIds)
+  if (linkedAccountIds.length > 0) {
+    throw new AppError("Cannot delete accounts with linked transactions", 409, {
+      linkedAccountIds,
+    })
+  }
+
+  const result = await deleteAccountsByIds(safeIds)
+  return {
+    requestedCount: safeIds.length,
+    deletedCount: Number(result?.deletedCount || 0),
+  }
 }
 
 export async function deleteAccountsByClientIdService(clientId) {

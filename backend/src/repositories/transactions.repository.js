@@ -8,6 +8,35 @@ function escapeRegex(value = "") {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
+function encodeTransactionsCursor(item = {}) {
+  const date = String(item?.date || "").trim()
+  const id = String(item?._id || "").trim()
+  if (!date || !id) return null
+
+  return Buffer.from(JSON.stringify({ date, id })).toString("base64url")
+}
+
+function decodeTransactionsCursor(cursor = "") {
+  const safeCursor = String(cursor || "").trim()
+  if (!safeCursor) return null
+
+  try {
+    const parsed = JSON.parse(Buffer.from(safeCursor, "base64url").toString("utf8"))
+    const date = String(parsed?.date || "").trim()
+    const id = String(parsed?.id || "").trim()
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null
+    if (!ObjectId.isValid(id)) return null
+
+    return {
+      date,
+      id,
+    }
+  } catch {
+    return null
+  }
+}
+
 // cria índice uma vez (chame no startup ou antes do primeiro uso)
 export async function ensureTransactionsIndexes() {
   const db = getDB()
@@ -194,6 +223,19 @@ export async function countTransactionsByAccountId(accountId) {
   return db.collection("transactions").countDocuments({ accountId })
 }
 
+export async function listLinkedAccountIds(accountIds = []) {
+  const db = getDB()
+  const safeAccountIds = Array.isArray(accountIds)
+    ? [...new Set(accountIds.map((id) => String(id || "").trim()).filter(Boolean))]
+    : []
+
+  if (safeAccountIds.length === 0) return []
+
+  return db.collection("transactions").distinct("accountId", {
+    accountId: { $in: safeAccountIds },
+  })
+}
+
 export async function countTransactionsByCategoryId(categoryId) {
   const db = getDB()
   return db.collection("transactions").countDocuments({
@@ -202,6 +244,27 @@ export async function countTransactionsByCategoryId(categoryId) {
       { "splits.categoryId": categoryId },
     ],
   })
+}
+
+export async function listLinkedCategoryIds(categoryIds = []) {
+  const db = getDB()
+  const collection = db.collection("transactions")
+  const safeCategoryIds = Array.isArray(categoryIds)
+    ? [...new Set(categoryIds.map((id) => String(id || "").trim()).filter(Boolean))]
+    : []
+
+  if (safeCategoryIds.length === 0) return []
+
+  const [directCategoryIds, splitCategoryIds] = await Promise.all([
+    collection.distinct("categoryId", {
+      categoryId: { $in: safeCategoryIds },
+    }),
+    collection.distinct("splits.categoryId", {
+      "splits.categoryId": { $in: safeCategoryIds },
+    }),
+  ])
+
+  return [...new Set([...directCategoryIds, ...splitCategoryIds].filter(Boolean))]
 }
 
 export async function listUsedCategoryIdsByClientId(clientId) {
@@ -735,6 +798,8 @@ export async function listTransactionsPaginated({
   clientId,
   page = 1,
   limit = 50,
+  paginationMode = "page",
+  cursor = "",
   search = "",
   accountIds = [],
   categoryIds = [],
@@ -757,6 +822,9 @@ export async function listTransactionsPaginated({
   const safePage = Math.max(1, Number(page) || 1)
   const safeLimit = Math.min(200, Math.max(1, Number(limit) || 50))
   const skip = (safePage - 1) * safeLimit
+  const safePaginationMode = String(paginationMode || "page").trim().toLowerCase() === "cursor"
+    ? "cursor"
+    : "page"
 
   const filter = buildTransactionsFilter({
     clientId,
@@ -776,6 +844,37 @@ export async function listTransactionsPaginated({
     llmProcessed,
     iconType,
   })
+
+  if (safePaginationMode === "cursor") {
+    const parsedCursor = decodeTransactionsCursor(cursor)
+    const cursorFilter = parsedCursor
+      ? {
+          $or: [
+            { date: { $lt: parsedCursor.date } },
+            { date: parsedCursor.date, _id: { $lt: new ObjectId(parsedCursor.id) } },
+          ],
+        }
+      : null
+
+    const finalFilter = cursorFilter ? { $and: [filter, cursorFilter] } : filter
+    const rawItems = await collection
+      .find(finalFilter)
+      .sort({ date: -1, _id: -1 })
+      .limit(safeLimit + 1)
+      .toArray()
+
+    const hasMore = rawItems.length > safeLimit
+    const items = hasMore ? rawItems.slice(0, safeLimit) : rawItems
+    const lastItem = items.length > 0 ? items[items.length - 1] : null
+
+    return {
+      items,
+      limit: safeLimit,
+      hasMore,
+      nextCursor: hasMore && lastItem ? encodeTransactionsCursor(lastItem) : null,
+      paginationMode: "cursor",
+    }
+  }
 
   const [items, total] = await Promise.all([
     collection
