@@ -395,11 +395,7 @@ function SettingsPage() {
             </div>
           </div>
 
-          <div className="border-t border-gray-200 py-4">
-            <h2 className="text-lg font-semibold text-gray-900">Workspace details</h2>
-          </div>
-
-          <div className="divide-y divide-gray-100">
+          <div className="border-t border-gray-200 divide-y divide-gray-100">
             <div className="grid grid-cols-1 gap-2 py-4 md:grid-cols-[180px_minmax(0,1fr)] md:gap-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
                 Office ID

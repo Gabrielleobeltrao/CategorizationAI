@@ -94,6 +94,28 @@ function getEmployeeStatusStyles(status) {
     }
 }
 
+function mapEmployeeItem(item = {}) {
+    return {
+        id: item?._id || item?.id || `${Date.now()}`,
+        officeId: item?.officeId || "",
+        name: item?.name || "",
+        email: item?.email || "",
+        role: item?.role || "staff",
+        status: item?.status || "active",
+    }
+}
+
+function mapRoleItem(item = {}) {
+    return {
+        id: String(item?.id || item?._id || ""),
+        key: String(item?.key || ""),
+        label: String(item?.label || ""),
+        description: String(item?.description || ""),
+        permissions: normalizePermissions(item?.permissions),
+        isSystem: Boolean(item?.isSystem),
+    }
+}
+
 function EmployeesPage() {
     const { profile: currentUserProfile } = useAuth()
 
@@ -322,14 +344,14 @@ function EmployeesPage() {
 
             setEmployees((current) => [
                 ...current,
-                {
-                    id: result?.userProfile?._id || `${Date.now()}`,
+                mapEmployeeItem({
+                    ...(result?.userProfile || {}),
                     officeId,
-                    name: newEmployeeName,
-                    email: newEmployeeEmail,
-                    role: newEmployeeRole || "staff",
-                    status: "active",
-                },
+                    name: result?.userProfile?.name || newEmployeeName,
+                    email: result?.userProfile?.email || newEmployeeEmail,
+                    role: result?.userProfile?.role || newEmployeeRole || "staff",
+                    status: result?.userProfile?.status || "active",
+                }),
             ])
 
             success("Employee created successfully")
@@ -338,7 +360,6 @@ function EmployeesPage() {
             setNewEmployeePassword("")
             setNewEmployeeRole("staff")
             setShowEmployeeForm(false)
-            setRefreshKey((current) => current + 1)
         } catch (err) {
             error(err.message || "Failed to create employee")
         } finally {
@@ -428,7 +449,6 @@ function EmployeesPage() {
                 temporaryPassword: result?.temporaryPassword || "",
             })
             success("Temporary password generated")
-            setRefreshKey((current) => current + 1)
         } catch (err) {
             error(err.message || "Failed to reset employee password")
         } finally {
@@ -513,15 +533,18 @@ function EmployeesPage() {
             }
 
             if (editingRoleId) {
-                await updateCustomRoleById(editingRoleId, payload)
+                const updated = await updateCustomRoleById(editingRoleId, payload)
+                setRoles((current) =>
+                    current.map((item) => (String(item.id || "") === editingRoleId ? mapRoleItem(updated) : item))
+                )
                 success("Role updated successfully")
             } else {
-                await createCustomRole(payload)
+                const created = await createCustomRole(payload)
+                setRoles((current) => [...current, mapRoleItem(created)])
                 success("Role created successfully")
             }
 
             closeRoleForm()
-            setRolesRefreshKey((current) => current + 1)
         } catch (err) {
             error(err.message || "Failed to save role")
         } finally {
@@ -535,9 +558,11 @@ function EmployeesPage() {
         try {
             setIsSubmitting(true)
             await deleteCustomRoleById(roleToDelete.id)
+            setRoles((current) =>
+                current.filter((item) => String(item.id || "") !== String(roleToDelete.id || ""))
+            )
             success("Role deleted successfully")
             setRoleToDelete(null)
-            setRolesRefreshKey((current) => current + 1)
         } catch (err) {
             error(err.message || "Failed to delete role")
         } finally {
