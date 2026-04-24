@@ -15,6 +15,35 @@ import {
   getProfitLossKpiPresentation,
 } from "../utils/amountPresentation"
 
+function getProfitLossYearStorageKey(clientId = "") {
+  return `profit-loss:selected-year:${String(clientId || "").trim() || "global"}`
+}
+
+function readStoredProfitLossYear(clientId = "") {
+  if (typeof window === "undefined") return ""
+
+  try {
+    return String(window.localStorage.getItem(getProfitLossYearStorageKey(clientId)) || "").trim()
+  } catch {
+    return ""
+  }
+}
+
+function writeStoredProfitLossYear(clientId = "", year = "") {
+  if (typeof window === "undefined") return
+
+  try {
+    const safeYear = String(year || "").trim()
+    if (!safeYear) {
+      window.localStorage.removeItem(getProfitLossYearStorageKey(clientId))
+      return
+    }
+    window.localStorage.setItem(getProfitLossYearStorageKey(clientId), safeYear)
+  } catch {
+    // ignore storage errors
+  }
+}
+
 function formatPeriodLabel(value) {
   const [prefix, raw] = String(value || "").split(":")
   if (String(value || "").toUpperCase() === "ALL") return "All time"
@@ -35,7 +64,7 @@ function ProfitLossPage() {
   const { clientId } = useParams()
   const navigate = useNavigate()
   const { error } = useNotification()
-  const [period, setPeriod] = useState("MONTH")
+  const [period, setPeriod] = useState("YEAR")
   const [isManual, setIsManual] = useState(false)
   const [showPercentView, setShowPercentView] = useState(false)
   const [fromDate, setFromDate] = useState("2026-03-01")
@@ -143,10 +172,21 @@ function ProfitLossPage() {
       return
     }
 
+    const storedYear = readStoredProfitLossYear(clientId)
+    if (storedYear && yearOptions.includes(storedYear) && year !== storedYear) {
+      setYear(storedYear)
+      return
+    }
+
     if (!yearOptions.includes(year)) {
       setYear(yearOptions[0])
     }
-  }, [yearOptions, year])
+  }, [clientId, yearOptions, year])
+
+  useEffect(() => {
+    if (!clientId || !year) return
+    writeStoredProfitLossYear(clientId, year)
+  }, [clientId, year])
 
   useEffect(() => {
     let active = true

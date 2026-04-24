@@ -30,7 +30,6 @@ import {
     updateTransactionsByIds,
     deleteTransactionById,
     deleteTransactionsByIds,
-    createTransactionsBatch,
 } from "../services/transactions.service"
 import { useNotification } from "../contexts/notification.context"
 import { useCategorizationJobs } from "../contexts/categorizationJobs.context"
@@ -56,7 +55,7 @@ const DEFAULT_TRANSACTIONS_FILTERS = {
     minAmount: "",
     maxAmount: "",
 }
-const TRANSACTIONS_UPLOAD_CHUNK_SIZE = 400
+const TRANSACTIONS_IMPORT_DONE_EVENT = "app:transactions-import-job-done"
 
 function getLedgerFiltersStorageKey(clientId = "") {
     return `ledger-filters:${clientId || "global"}`
@@ -215,7 +214,7 @@ function LedgerPage() {
     const persistedState = readPersistedLedgerState(clientId)
     const preselectedCategoryName = String(searchParams.get("category") || "").trim()
     const { success, error } = useNotification()
-    const { jobs, startCategorizationJob } = useCategorizationJobs()
+    const { jobs, startCategorizationJob, startTransactionsImportJob } = useCategorizationJobs()
     const { profile } = useAuth()
     const officeId = String(profile?.officeId || "").trim()
     const { tags: officeTags, reloadTags, deleteTag, deletingTag } = useOfficeTags(officeId, {
@@ -732,67 +731,17 @@ function LedgerPage() {
         }
     }
 
-    const handleImportTransactions = async (transactions, summary = null, onProgress) => {
+    const handleImportTransactions = async (transactions, summary = null) => {
         const total = Array.isArray(transactions) ? transactions.length : 0
         if (total === 0) {
             throw new Error("No transactions to import")
         }
-
-        const totalChunks = Math.ceil(total / TRANSACTIONS_UPLOAD_CHUNK_SIZE)
-        let insertedCount = 0
-
-        onProgress?.({
-            status: "uploading",
-            currentChunk: 0,
-            totalChunks,
-            processed: 0,
-            total,
-            insertedCount,
+        const result = await startTransactionsImportJob({
+            clientId,
+            transactions,
+            summary,
         })
-
-        for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex += 1) {
-            const start = chunkIndex * TRANSACTIONS_UPLOAD_CHUNK_SIZE
-            const end = start + TRANSACTIONS_UPLOAD_CHUNK_SIZE
-            const chunk = transactions.slice(start, end)
-
-            const result = await createTransactionsBatch(chunk, { silentLoading: true })
-            insertedCount += Number(result?.insertedCount || 0)
-
-            onProgress?.({
-                status: "uploading",
-                currentChunk: chunkIndex + 1,
-                totalChunks,
-                processed: Math.min(end, total),
-                total,
-                insertedCount,
-            })
-        }
-
-        onProgress?.({
-            status: "done",
-            currentChunk: totalChunks,
-            totalChunks,
-            processed: total,
-            total,
-            insertedCount,
-        })
-
-        const totalRows = Number(summary?.totals?.totalRows || transactions.length)
-        const skippedRows = Number(summary?.totals?.skippedRows || Math.max(totalRows - insertedCount, 0))
-        const filesCount = Number(summary?.totals?.files || 1)
-
-        success(
-            `${insertedCount} transactions imported from ${filesCount} file(s). ${skippedRows} skipped out of ${totalRows} row(s).`
-        )
-        emitDashboardRefresh("transactions-imported")
-
-        const periodOptions = await listTransactionPeriodOptions(clientId, { silentLoading: true })
-        setTransactionsPeriodOptions({
-            years: Array.isArray(periodOptions?.years) ? periodOptions.years : [],
-            months: Array.isArray(periodOptions?.months) ? periodOptions.months : [],
-        })
-        await refreshTransactionsSummary()
-        setTransactionsFilters((current) => ({ ...current }))
+        success(`Transactions import added to queue. Job ${result.jobId}`)
     }
 
     const refreshLedgerAfterCategorization = useCallback(async () => {
@@ -819,6 +768,51 @@ function LedgerPage() {
         setTransactionsHasMore(page < totalPages)
         pageRef.current = page
     }, [clientId, transactionsSearchTerm, transactionsFilters])
+
+    const refreshLedgerAfterImport = useCallback(async () => {
+        if (!clientId) return
+
+        const [payload, periodOptions] = await Promise.all([
+            listTransactionsByClientId(clientId, {
+                page: 1,
+                limit: 30,
+                search: transactionsSearchTerm,
+                ...transactionsFilters,
+                silentLoading: true,
+            }),
+            listTransactionPeriodOptions(clientId, { silentLoading: true }),
+            refreshTransactionsSummary(),
+        ])
+
+        const items = Array.isArray(payload?.items) ? payload.items : []
+        const mapped = items.map(mapTransaction)
+        const page = Number(payload?.page || 1)
+        const totalPages = Number(payload?.totalPages || 1)
+
+        setLedgerEntries(mapped)
+        setTransactionsHasMore(page < totalPages)
+        pageRef.current = page
+        setTransactionsPeriodOptions({
+            years: Array.isArray(periodOptions?.years) ? periodOptions.years : [],
+            months: Array.isArray(periodOptions?.months) ? periodOptions.months : [],
+        })
+    }, [clientId, refreshTransactionsSummary, transactionsFilters, transactionsSearchTerm])
+
+    useEffect(() => {
+        if (typeof window === "undefined") return undefined
+
+        const handleTransactionsImportDone = (event) => {
+            const eventClientId = String(event?.detail?.clientId || "").trim()
+            if (!eventClientId || eventClientId !== String(clientId || "").trim()) return
+            refreshLedgerAfterImport().catch(() => {})
+        }
+
+        window.addEventListener(TRANSACTIONS_IMPORT_DONE_EVENT, handleTransactionsImportDone)
+
+        return () => {
+            window.removeEventListener(TRANSACTIONS_IMPORT_DONE_EVENT, handleTransactionsImportDone)
+        }
+    }, [clientId, refreshLedgerAfterImport])
 
     const handleCategorizeWithLlmPreview = (payload = {}) => {
         const mode = payload?.mode === "selected" ? "selected" : "all_client"
