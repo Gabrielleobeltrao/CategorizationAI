@@ -36,6 +36,14 @@ const SEMANTIC_MEMORY_PROMOTION_CONFIDENCE_THRESHOLD = 0.95
 const SEMANTIC_MEMORY_MIN_OCCURRENCES = 5
 const LLM_INTRA_JOB_BATCH_SIZE = Number(process.env.LLM_BATCH_SIZE || 20)
 
+function runDetachedTask(task) {
+  Promise.resolve()
+    .then(task)
+    .catch((error) => {
+      console.error("[transactions.service] detached task failed", error)
+    })
+}
+
 const DESCRIPTION_NOISE_TOKENS = new Set([
   "pos",
   "dbt",
@@ -1261,12 +1269,14 @@ export async function updateTransactionByIdService(id, patch) {
     !normalizeObjectIdString(safePatch.categoryId)
 
   if (isHumanCategoryChange) {
-    const categoryDocsById = await resolveCategoryDocsByIds([safePatch.categoryId])
-    await upsertHumanMemoryEntries([updatedTransaction], categoryDocsById)
+    runDetachedTask(async () => {
+      const categoryDocsById = await resolveCategoryDocsByIds([safePatch.categoryId])
+      await upsertHumanMemoryEntries([updatedTransaction], categoryDocsById)
+    })
   }
 
   if (isHumanCategoryRemoval) {
-    await rejectMemoryEntriesForTransactions([updatedTransaction])
+    runDetachedTask(() => rejectMemoryEntriesForTransactions([updatedTransaction]))
   }
 
   return updatedTransaction
@@ -1330,24 +1340,26 @@ export async function updateTransactionsByIdsService(input = {}) {
   ]
 
   if (memoryCategoryIds.length > 0) {
-    const categoryDocsById = await resolveCategoryDocsByIds(memoryCategoryIds)
-    const updatedTransactionsForMemory = normalizedUpdates
-      .map((item) => {
-        const currentTransaction = currentTransactionById.get(String(item.id))
-        if (!currentTransaction) return null
+    runDetachedTask(async () => {
+      const categoryDocsById = await resolveCategoryDocsByIds(memoryCategoryIds)
+      const updatedTransactionsForMemory = normalizedUpdates
+        .map((item) => {
+          const currentTransaction = currentTransactionById.get(String(item.id))
+          if (!currentTransaction) return null
 
-        const categoryId = normalizeObjectIdString(item.patch?.categoryId)
-        if (!categoryId) return null
+          const categoryId = normalizeObjectIdString(item.patch?.categoryId)
+          if (!categoryId) return null
 
-        return mergeTransactionWithPatch(currentTransaction, {
-          ...item.patch,
-          categoryId,
-          category: categoryDocsById.get(categoryId)?.name || item.patch?.category || null,
+          return mergeTransactionWithPatch(currentTransaction, {
+            ...item.patch,
+            categoryId,
+            category: categoryDocsById.get(categoryId)?.name || item.patch?.category || null,
+          })
         })
-      })
-      .filter(Boolean)
+        .filter(Boolean)
 
-    await upsertHumanMemoryEntries(updatedTransactionsForMemory, categoryDocsById)
+      await upsertHumanMemoryEntries(updatedTransactionsForMemory, categoryDocsById)
+    })
   }
 
   const removedCategoryTransactions = normalizedUpdates
@@ -1356,7 +1368,7 @@ export async function updateTransactionsByIdsService(input = {}) {
     .filter(Boolean)
 
   if (removedCategoryTransactions.length > 0) {
-    await rejectMemoryEntriesForTransactions(removedCategoryTransactions)
+    runDetachedTask(() => rejectMemoryEntriesForTransactions(removedCategoryTransactions))
   }
 
   return {

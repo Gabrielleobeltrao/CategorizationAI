@@ -39,7 +39,7 @@ function LedgerEntryRow({
     isMultiSelectionMode = false,
     isBatchEditing = false,
     editingTouched = {},
-    isApplyingCategoryBulk = false,
+    isApplyingCategory = false,
     isCategoryPickerOpen = false,
 }) {
     const shouldUseDraftDate = isEditing && (!isBatchEditing || editingTouched?.date)
@@ -145,8 +145,7 @@ function LedgerEntryRow({
                 <div className="relative w-full">
                     <button
                         type="button"
-                        className={`w-full rounded-full border-3 bg-white p-2 pl-3 pr-8 text-left ${isCategoryPickerOpen ? "border-gray-300" : "border-gray-100"} ${isApplyingCategoryBulk ? "cursor-not-allowed opacity-60" : ""}`}
-                        disabled={isApplyingCategoryBulk}
+                        className={`w-full rounded-full border-3 bg-white p-2 pl-3 pr-8 text-left ${isCategoryPickerOpen ? "border-gray-300" : "border-gray-100"} ${isApplyingCategory ? "cursor-wait opacity-80" : ""}`}
                         onClick={(event) => onOpenCategoryPicker?.({
                             entryId: id,
                             anchorElement: event.currentTarget,
