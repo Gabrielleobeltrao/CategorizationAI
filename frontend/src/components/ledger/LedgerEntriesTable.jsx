@@ -6,7 +6,6 @@ import PopupModal from "../ui/PopupModal"
 import { getTransactionAmountPresentation } from "../../utils/amountPresentation"
 import { CATEGORY_TYPE_OPTIONS } from "../../constants/categoryTypes"
 import { getCategoryDisplayName } from "../../utils/categoryPresentation"
-import { parseStatementPdf } from "../../utils/statementPdf"
 
 const UNCATEGORIZED_INCOME_FILTER_VALUE = "__uncategorized_income__"
 const UNCATEGORIZED_EXPENSES_FILTER_VALUE = "__uncategorized_expenses__"
@@ -266,12 +265,6 @@ function buildDefaultColumnRoles(columns = []) {
     return roles
 }
 
-function isPdfFile(file) {
-    const fileName = String(file?.name || "").toLowerCase()
-    const fileType = String(file?.type || "").toLowerCase()
-    return fileType === "application/pdf" || fileName.endsWith(".pdf")
-}
-
 function formatPreviewCell(value = "", mappedTarget = "ignore") {
     if (mappedTarget === "date") return formatPreviewDate(value)
     if (mappedTarget === "amount") return formatPreviewAmount(value)
@@ -324,7 +317,7 @@ function getUploadRowOverride(uploadedFile, rowIndex) {
     return uploadedFile?.rowOverrides?.[rowIndex] || { description: "", ignored: false }
 }
 
-function getCategoryPickerPosition(anchorElement, isCreating = false, popupElement = null, boundaryElement = null) {
+function getCategoryPickerPosition(anchorElement, isCreating = false, popupElement = null) {
     if (!anchorElement || typeof window === "undefined") {
         return {
             top: 16,
@@ -334,60 +327,29 @@ function getCategoryPickerPosition(anchorElement, isCreating = false, popupEleme
     }
 
     const viewportPadding = 16
-    const boundaryRect = boundaryElement?.getBoundingClientRect?.() || {
-        top: 0,
-        left: 0,
-        right: window.innerWidth,
-        bottom: window.innerHeight,
-        width: window.innerWidth,
-        height: window.innerHeight,
-    }
-    const boundaryScrollTop = Number(boundaryElement?.scrollTop || 0)
-    const boundaryScrollLeft = Number(boundaryElement?.scrollLeft || 0)
-    const boundaryClientWidth = Number(boundaryElement?.clientWidth || boundaryRect.width)
-    const boundaryClientHeight = Number(boundaryElement?.clientHeight || boundaryRect.height)
     const rect = anchorElement.getBoundingClientRect()
-    const maxWidth = Math.max(320, boundaryClientWidth - viewportPadding * 2)
+    const maxWidth = Math.max(320, window.innerWidth - viewportPadding * 2)
     const width = Math.min(maxWidth, Math.max(360, Math.round(rect.width + 40)))
     const popupHeight = popupElement
         ? Math.round(popupElement.getBoundingClientRect().height)
         : (isCreating ? 420 : 360)
     const estimatedHeight = popupHeight
-    const anchorTopInBoundary = rect.top - boundaryRect.top + boundaryScrollTop
-    const anchorBottomInBoundary = rect.bottom - boundaryRect.top + boundaryScrollTop
-    const anchorLeftInBoundary = rect.left - boundaryRect.left + boundaryScrollLeft
-    const visibleBottom = boundaryScrollTop + boundaryClientHeight
-    const visibleRight = boundaryScrollLeft + boundaryClientWidth
-    const availableBelow = visibleBottom - anchorBottomInBoundary - viewportPadding
-    const availableAbove = anchorTopInBoundary - boundaryScrollTop - viewportPadding
+    const availableBelow = window.innerHeight - rect.bottom - viewportPadding
+    const availableAbove = rect.top - viewportPadding
     const shouldOpenAbove = availableBelow < Math.min(estimatedHeight, 280) && availableAbove > availableBelow
     const top = shouldOpenAbove
-        ? Math.max(boundaryScrollTop + viewportPadding, anchorTopInBoundary - estimatedHeight - 8)
-        : Math.min(visibleBottom - estimatedHeight - viewportPadding, anchorBottomInBoundary + 8)
+        ? Math.max(viewportPadding, rect.top - estimatedHeight - 8)
+        : Math.min(window.innerHeight - estimatedHeight - viewportPadding, rect.bottom + 8)
     const left = Math.min(
-        Math.max(boundaryScrollLeft + viewportPadding, anchorLeftInBoundary),
-        visibleRight - width - viewportPadding
+        Math.max(viewportPadding, rect.left),
+        window.innerWidth - width - viewportPadding
     )
 
     return {
-        top: Math.max(boundaryScrollTop + viewportPadding, top),
+        top: Math.max(viewportPadding, top),
         left,
         width,
     }
-}
-
-function isAnchorInsideBoundary(anchorElement, boundaryElement = null) {
-    if (!anchorElement || !boundaryElement?.getBoundingClientRect) return true
-
-    const anchorRect = anchorElement.getBoundingClientRect()
-    const boundaryRect = boundaryElement.getBoundingClientRect()
-
-    return (
-        anchorRect.top >= boundaryRect.top &&
-        anchorRect.bottom <= boundaryRect.bottom &&
-        anchorRect.left >= boundaryRect.left &&
-        anchorRect.right <= boundaryRect.right
-    )
 }
 
 function isZelleEntry(entry = {}) {
@@ -723,18 +685,11 @@ function LedgerEntriesTable({
     const updateCategoryPickerPosition = useCallback(() => {
         const anchorElement = categoryPickerAnchorRef.current
         if (!anchorElement) return
-        const boundaryElement = overlayBoundaryRef?.current || null
-
-        if (!isAnchorInsideBoundary(anchorElement, boundaryElement)) {
-            closeCategoryPicker()
-            return
-        }
 
         const position = getCategoryPickerPosition(
             anchorElement,
             categoryPickerState.isCreating,
-            categoryPickerRef.current,
-            boundaryElement
+            categoryPickerRef.current
         )
 
         setCategoryPickerState((current) => (
@@ -745,7 +700,7 @@ function LedgerEntriesTable({
                 }
                 : current
         ))
-    }, [categoryPickerState.isCreating, closeCategoryPicker, overlayBoundaryRef])
+    }, [categoryPickerState.isCreating])
 
     const openCategoryPicker = useCallback((payload = {}) => {
         const entryId = String(payload?.entryId || "").trim()
@@ -762,8 +717,7 @@ function LedgerEntriesTable({
         const initialPosition = getCategoryPickerPosition(
             payload.anchorElement,
             false,
-            null,
-            overlayBoundaryRef?.current || null
+            null
         )
 
         setCategoryPickerState({
@@ -918,7 +872,6 @@ function LedgerEntriesTable({
         document.addEventListener("mousedown", handlePointerDown)
         window.addEventListener("keydown", handleEscape)
         window.addEventListener("resize", handleReposition)
-        overlayBoundaryRef?.current?.addEventListener("scroll", handleReposition)
         scrollContainerRef.current?.addEventListener("scroll", handleReposition)
 
         return () => {
@@ -926,10 +879,9 @@ function LedgerEntriesTable({
             document.removeEventListener("mousedown", handlePointerDown)
             window.removeEventListener("keydown", handleEscape)
             window.removeEventListener("resize", handleReposition)
-            overlayBoundaryRef?.current?.removeEventListener("scroll", handleReposition)
             scrollContainerRef.current?.removeEventListener("scroll", handleReposition)
         }
-    }, [categoryPickerState.entryId, closeCategoryPicker, overlayBoundaryRef, updateCategoryPickerPosition])
+    }, [categoryPickerState.entryId, closeCategoryPicker, updateCategoryPickerPosition])
 
     const startEditEntry = (entry) => {
         const shouldStartBatchEdit =
@@ -1379,9 +1331,7 @@ function LedgerEntriesTable({
             setUploadParseError("")
             const parsedFiles = await Promise.all(
                 files.map(async (file, index) => {
-                    const parsedFile = isPdfFile(file)
-                        ? await parseStatementPdf(file)
-                        : parseCsvText(await file.text())
+                    const parsedFile = parseCsvText(await file.text())
 
                     return {
                         id: `${file.name}-${file.size}-${file.lastModified}-${index}`,
@@ -2347,7 +2297,7 @@ function LedgerEntriesTable({
             {categoryPickerState.entryId && typeof document !== "undefined" && createPortal(
                 <div
                     ref={categoryPickerRef}
-                    className="absolute z-[170] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-[0_24px_70px_-24px_rgba(15,23,42,0.45)] ring-1 ring-black/5"
+                    className="fixed z-[170] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-[0_24px_70px_-24px_rgba(15,23,42,0.45)] ring-1 ring-black/5"
                     style={{
                         top: `${categoryPickerState.top}px`,
                         left: `${categoryPickerState.left}px`,
@@ -2568,7 +2518,7 @@ function LedgerEntriesTable({
                         )}
                     </div>
                 </div>,
-                overlayBoundaryRef?.current || document.body
+                document.body
             )}
 
             <ConfirmModal
@@ -2790,7 +2740,7 @@ function LedgerEntriesTable({
                         <input
                             ref={csvFileInputRef}
                             type="file"
-                            accept=".csv,text/csv,.pdf,application/pdf"
+                            accept=".csv,text/csv"
                             multiple
                             className="hidden"
                             onChange={handleCsvFilesSelected}
@@ -2802,7 +2752,7 @@ function LedgerEntriesTable({
                         >
                             Upload Files
                         </button>
-                        <span className="text-xs text-gray-500">You can upload one or more CSV or PDF statement files</span>
+                        <span className="text-xs text-gray-500">You can upload one or more CSV statement files</span>
                     </div>
 
                     {uploadedCsvFiles.length === 0 && (
@@ -2850,7 +2800,7 @@ function LedgerEntriesTable({
                                                 <div className="flex items-center gap-2">
                                                     <h3 className="text-sm font-semibold text-gray-700">{uploadedFile.fileName}</h3>
                                                     <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
-                                                        {uploadedFile.sourceType === "pdf" ? "PDF" : "CSV"}
+                                                        CSV
                                                     </span>
                                                 </div>
                                             </div>

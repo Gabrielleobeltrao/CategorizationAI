@@ -7,6 +7,7 @@ import {
   listCategorizationJobs,
 } from "../services/categorizationJobs.service"
 import { getClientById } from "../services/clients.service"
+import { createTransactionsBatch } from "../services/transactions.service"
 import { emitDashboardRefresh } from "../utils/dashboardRefresh"
 
 const CategorizationJobsContext = createContext(null)
@@ -14,9 +15,15 @@ const CategorizationJobsContext = createContext(null)
 const TERMINAL_STATUSES = new Set(["done", "failed"])
 const DISMISSED_JOBS_STORAGE_KEY = "categorization_jobs_dismissed_ids"
 const PRIVATE_BETA_REVIEW_EVENT = "app:private-beta-review-required"
+const TRANSACTIONS_UPLOAD_CHUNK_SIZE = 400
+const TRANSACTIONS_IMPORT_DONE_EVENT = "app:transactions-import-job-done"
 
 function getJobId(job = {}) {
   return String(job?._id || job?.id || job?.jobId || "")
+}
+
+function getJobType(job = {}) {
+  return String(job?.type || "categorize_all_llm").trim().toLowerCase()
 }
 
 function getStatusLabel(status = "") {
@@ -52,6 +59,14 @@ function writeDismissedJobIdsToStorage(idsSet = new Set()) {
   }
 }
 
+function getJobTitle(job = {}, clientName = "") {
+  const type = getJobType(job)
+  if (type === "import_transactions") {
+    return `Importing transactions for ${clientName || "Client"}`
+  }
+  return `Categorizing ${clientName || "Client"}`
+}
+
 function upsertJobs(currentJobs, incomingJobs) {
   const next = [...currentJobs]
 
@@ -83,10 +98,10 @@ function CategorizationJobsQueue({ jobs = [], clientNameById = {}, onDismissJob 
 
   return (
     <div className="fixed right-4 top-4 z-[1000] w-[340px] max-w-[calc(100vw-24px)]">
-      <div className="rounded-xl border border-gray-200 bg-white shadow-xl">
+        <div className="rounded-xl border border-gray-200 bg-white shadow-xl">
         <div className="border-b border-gray-100 px-3 py-2">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-            AI Categorization Queue
+            Background Jobs
           </h3>
         </div>
         <div className="max-h-[48vh] overflow-y-auto p-2">
@@ -100,12 +115,13 @@ function CategorizationJobsQueue({ jobs = [], clientNameById = {}, onDismissJob 
               const clientId = String(job?.clientId || "").trim()
               const clientName = String(clientNameById[clientId] || "").trim()
               const isTerminal = TERMINAL_STATUSES.has(status)
+              const type = getJobType(job)
 
               return (
                 <li key={id} className="rounded-lg border border-gray-100 bg-gray-50 p-2">
                   <div className="flex items-center justify-between gap-2">
                     <p className="truncate text-xs font-medium text-gray-700">
-                      Categorizing {clientName || "Client"}
+                      {getJobTitle(job, clientName)}
                     </p>
                     <span
                       className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
@@ -135,7 +151,9 @@ function CategorizationJobsQueue({ jobs = [], clientNameById = {}, onDismissJob 
                   ) : (
                     <>
                       <div className="mt-1 text-[11px] text-gray-600">
-                        {processed} / {total || 0} processed
+                        {type === "import_transactions"
+                          ? `${processed} / ${total || 0} rows uploaded`
+                          : `${processed} / ${total || 0} processed`}
                       </div>
                       <div className="mt-1 h-1.5 rounded-full bg-gray-200">
                         <div
@@ -192,7 +210,11 @@ export function CategorizationJobsProvider({ children }) {
   }, [refreshJobs])
 
   useEffect(() => {
-    const active = jobs.filter((job) => !TERMINAL_STATUSES.has(String(job?.status || "")))
+    const active = jobs.filter((job) => {
+      const status = String(job?.status || "")
+      const type = getJobType(job)
+      return type !== "import_transactions" && !TERMINAL_STATUSES.has(status)
+    })
     if (active.length === 0) return undefined
 
     let cancelled = false
@@ -227,7 +249,8 @@ export function CategorizationJobsProvider({ children }) {
       if (!id || notifiedIdsRef.current.has(id)) return
 
       const status = String(job?.status || "")
-      if (status === "done") {
+      const type = getJobType(job)
+      if (status === "done" && type === "categorize_all_llm") {
         const totalProcessedCount = Number(job?.result?.totalProcessedCount || job?.processed || 0)
         success(`AI categorization completed: ${totalProcessedCount} transactions processed.`)
         if (typeof window !== "undefined") {
@@ -243,9 +266,34 @@ export function CategorizationJobsProvider({ children }) {
         }
         emitDashboardRefresh("categorization-job-done")
         notifiedIdsRef.current.add(id)
-      } else if (status === "failed") {
+      } else if (status === "failed" && type === "categorize_all_llm") {
         error(job?.errorMessage || "AI categorization failed.")
         emitDashboardRefresh("categorization-job-failed")
+        notifiedIdsRef.current.add(id)
+      } else if (status === "done" && type === "import_transactions") {
+        const insertedCount = Number(job?.result?.insertedCount || 0)
+        const totalRows = Number(job?.result?.totalRows || job?.total || 0)
+        const skippedRows = Number(job?.result?.skippedRows || Math.max(totalRows - insertedCount, 0))
+        const filesCount = Number(job?.result?.filesCount || 1)
+
+        success(
+          `${insertedCount} transactions imported from ${filesCount} file(s). ${skippedRows} skipped out of ${totalRows} row(s).`
+        )
+        emitDashboardRefresh("transactions-imported")
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent(TRANSACTIONS_IMPORT_DONE_EVENT, {
+              detail: {
+                jobId: id,
+                clientId: String(job?.clientId || "").trim(),
+              },
+            })
+          )
+        }
+        notifiedIdsRef.current.add(id)
+      } else if (status === "failed" && type === "import_transactions") {
+        error(job?.errorMessage || "Transactions import failed.")
+        emitDashboardRefresh("transactions-import-failed")
         notifiedIdsRef.current.add(id)
       }
     })
@@ -317,6 +365,127 @@ export function CategorizationJobsProvider({ children }) {
     return { jobId }
   }, [])
 
+  const startTransactionsImportJob = useCallback(async ({ clientId, transactions, summary }) => {
+    const safeClientId = String(clientId || "").trim()
+    const safeTransactions = Array.isArray(transactions) ? transactions : []
+
+    if (!safeClientId) throw new Error("clientId is required")
+    if (safeTransactions.length === 0) throw new Error("No transactions to import")
+
+    const total = safeTransactions.length
+    const totalChunks = Math.ceil(total / TRANSACTIONS_UPLOAD_CHUNK_SIZE)
+    const totalRows = Number(summary?.totals?.totalRows || total)
+    const filesCount = Number(summary?.totals?.files || 1)
+    const skippedRows = Number(summary?.totals?.skippedRows || Math.max(totalRows - total, 0))
+    const jobId = `import-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+    const createdAt = new Date().toISOString()
+
+    dismissedJobIdsRef.current.delete(jobId)
+    writeDismissedJobIdsToStorage(dismissedJobIdsRef.current)
+
+    setJobs((current) =>
+      upsertJobs(current, [{
+        _id: jobId,
+        type: "import_transactions",
+        status: "queued",
+        stage: "queued",
+        clientId: safeClientId,
+        total,
+        processed: 0,
+        progressPct: 0,
+        createdAt,
+      }])
+    )
+
+    setTimeout(async () => {
+      let insertedCount = 0
+
+      try {
+        setJobs((current) =>
+          upsertJobs(current, [{
+            _id: jobId,
+            type: "import_transactions",
+            status: "running",
+            stage: "uploading",
+            clientId: safeClientId,
+            total,
+            processed: 0,
+            progressPct: 0,
+            createdAt,
+          }])
+        )
+
+        for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex += 1) {
+          const start = chunkIndex * TRANSACTIONS_UPLOAD_CHUNK_SIZE
+          const end = start + TRANSACTIONS_UPLOAD_CHUNK_SIZE
+          const chunk = safeTransactions.slice(start, end)
+          const result = await createTransactionsBatch(chunk, { silentLoading: true })
+          insertedCount += Number(result?.insertedCount || 0)
+
+          const processed = Math.min(end, total)
+          const progressPct = total > 0
+            ? Math.max(0, Math.min(100, Math.round((processed / total) * 100)))
+            : 0
+
+          setJobs((current) =>
+            upsertJobs(current, [{
+              _id: jobId,
+              type: "import_transactions",
+              status: "running",
+              stage: "uploading",
+              clientId: safeClientId,
+              total,
+              processed,
+              progressPct,
+              createdAt,
+            }])
+          )
+        }
+
+        setJobs((current) =>
+          upsertJobs(current, [{
+            _id: jobId,
+            type: "import_transactions",
+            status: "done",
+            stage: "done",
+            clientId: safeClientId,
+            total,
+            processed: total,
+            progressPct: 100,
+            createdAt,
+            completedAt: new Date().toISOString(),
+            result: {
+              insertedCount,
+              totalRows,
+              skippedRows,
+              filesCount,
+            },
+          }])
+        )
+      } catch (jobError) {
+        setJobs((current) =>
+          upsertJobs(current, [{
+            _id: jobId,
+            type: "import_transactions",
+            status: "failed",
+            stage: "failed",
+            clientId: safeClientId,
+            total,
+            processed: insertedCount,
+            progressPct: total > 0
+              ? Math.max(0, Math.min(100, Math.round((insertedCount / total) * 100)))
+              : 0,
+            createdAt,
+            completedAt: new Date().toISOString(),
+            errorMessage: jobError?.message || "Transactions import failed",
+          }])
+        )
+      }
+    }, 0)
+
+    return { jobId }
+  }, [])
+
   const dismissJob = useCallback((jobId) => {
     const target = String(jobId || "").trim()
     if (!target) return
@@ -328,9 +497,10 @@ export function CategorizationJobsProvider({ children }) {
   const value = useMemo(() => ({
     jobs,
     startCategorizationJob,
+    startTransactionsImportJob,
     refreshJobs,
     dismissJob,
-  }), [jobs, startCategorizationJob, refreshJobs, dismissJob])
+  }), [jobs, startCategorizationJob, startTransactionsImportJob, refreshJobs, dismissJob])
 
   return (
     <CategorizationJobsContext.Provider value={value}>
