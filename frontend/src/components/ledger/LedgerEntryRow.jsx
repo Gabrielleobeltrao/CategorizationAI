@@ -279,8 +279,8 @@ function LedgerEntryRow({
                             <button
                                 type="button"
                                 className={`rounded-md p-1 ${isMultiSelectionMode ? "cursor-not-allowed text-gray-300" : "text-gray-500 hover:bg-gray-200 hover:text-gray-800"}`}
-                                title="Split transaction"
-                                aria-label="Split transaction"
+                                title={isSplit ? "Edit split" : "Split transaction"}
+                                aria-label={isSplit ? "Edit split" : "Split transaction"}
                                 disabled={isMultiSelectionMode}
                                 onClick={() => {
                                     if (isMultiSelectionMode) return
