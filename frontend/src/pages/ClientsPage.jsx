@@ -9,8 +9,10 @@ import { useOfficeTags } from "../hooks/useOfficeTags"
 import { useResolvedOfficeContext } from "../hooks/useResolvedOfficeContext"
 import { trackClientOpened } from "../utils/recentClients"
 import {
+    clearClientsListCache,
     createClient,
     deleteClientById,
+    getCachedClientsListByOfficeId,
     listClientsByOfficeId,
     updateClientById,
 } from "../services/clients.service"
@@ -216,9 +218,22 @@ function ClientsPage() {
             }
         }
 
-        setIsLoading(true)
+        const requestOptions = { page, limit, search: debouncedSearchTerm }
+        const cachedPayload = getCachedClientsListByOfficeId(officeId, requestOptions)
 
-        listClientsByOfficeId(officeId, { page, limit, search: debouncedSearchTerm })
+        if (cachedPayload) {
+            const mapped = Array.isArray(cachedPayload?.items)
+                ? cachedPayload.items.map(mapClientItem)
+                : []
+            setClients(mapped)
+            setTotal(Number(cachedPayload?.total || 0))
+            setTotalPages(Number(cachedPayload?.totalPages || 1))
+            setIsLoading(false)
+        } else {
+            setIsLoading(true)
+        }
+
+        listClientsByOfficeId(officeId, requestOptions)
             .then((payload) => {
                 if (!active) return
                 const mapped = Array.isArray(payload?.items)
@@ -280,6 +295,7 @@ function ClientsPage() {
             })
 
             success("Client created successfully")
+            clearClientsListCache(officeId)
             setNewClientName("")
             setNewClientBusinessType("")
             setNewClientDescription("")
@@ -341,6 +357,7 @@ function ClientsPage() {
             )
 
             success("Client updated successfully")
+            clearClientsListCache(officeId)
             closeEditClientModal()
             reloadTags()
         } catch (err) {
@@ -433,6 +450,7 @@ function ClientsPage() {
                 current.filter((id) => id !== clientToDelete.id)
             )
             setClientToDelete(null)
+            clearClientsListCache(officeId)
 
             if (clients.length === 1 && page > 1) {
                 setPage((current) => Math.max(1, current - 1))

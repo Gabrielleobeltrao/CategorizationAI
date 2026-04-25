@@ -1,5 +1,49 @@
 import { api } from "../lib/api"
 
+const employeesByOfficeCache = new Map()
+const availableRolesCache = new Map()
+let rolePermissionsCache = null
+
+function getOfficeScopedCacheKey(officeId) {
+  return String(officeId || "").trim()
+}
+
+export function getCachedEmployeesByOfficeId(officeId) {
+  return employeesByOfficeCache.get(getOfficeScopedCacheKey(officeId)) || null
+}
+
+export function clearEmployeesCache(officeId = "") {
+  const key = getOfficeScopedCacheKey(officeId)
+  if (!key) {
+    employeesByOfficeCache.clear()
+    return
+  }
+
+  employeesByOfficeCache.delete(key)
+}
+
+export function getCachedAvailableRoles(officeId) {
+  return availableRolesCache.get(getOfficeScopedCacheKey(officeId)) || null
+}
+
+export function clearAvailableRolesCache(officeId = "") {
+  const key = getOfficeScopedCacheKey(officeId)
+  if (!key) {
+    availableRolesCache.clear()
+    return
+  }
+
+  availableRolesCache.delete(key)
+}
+
+export function getCachedRolePermissions() {
+  return rolePermissionsCache
+}
+
+export function clearRolePermissionsCache() {
+  rolePermissionsCache = null
+}
+
 export async function createEmployeeAccount(input) {
   const name = input?.name?.trim()
   const email = input?.email?.trim()
@@ -29,7 +73,9 @@ export async function listEmployeesByOfficeId(officeId) {
   const cleanOfficeId = officeId?.trim()
   if (!cleanOfficeId) throw new Error("officeId is required")
 
-  return api(`/api/offices/${cleanOfficeId}/user-profiles`)
+  const payload = await api(`/api/offices/${cleanOfficeId}/user-profiles`)
+  employeesByOfficeCache.set(cleanOfficeId, payload)
+  return payload
 }
 
 export async function listAvailableRoles(officeId) {
@@ -38,11 +84,15 @@ export async function listAvailableRoles(officeId) {
   if (safeOfficeId) query.set("officeId", safeOfficeId)
 
   const path = query.toString() ? `/api/roles?${query.toString()}` : "/api/roles"
-  return api(path)
+  const payload = await api(path)
+  availableRolesCache.set(getOfficeScopedCacheKey(safeOfficeId), payload)
+  return payload
 }
 
 export async function listRolePermissions() {
-  return api("/api/roles/permissions")
+  const payload = await api("/api/roles/permissions")
+  rolePermissionsCache = payload
+  return payload
 }
 
 export async function createCustomRole(input) {

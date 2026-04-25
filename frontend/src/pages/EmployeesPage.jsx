@@ -6,8 +6,13 @@ import { useResolvedOfficeContext } from "../hooks/useResolvedOfficeContext"
 import {
     createCustomRole,
     createEmployeeAccount,
+    clearAvailableRolesCache,
+    clearEmployeesCache,
     deleteCustomRoleById,
     deleteEmployeeById,
+    getCachedAvailableRoles,
+    getCachedEmployeesByOfficeId,
+    getCachedRolePermissions,
     listAvailableRoles,
     listRolePermissions,
     listEmployeesByOfficeId,
@@ -151,8 +156,6 @@ function EmployeesPage() {
         description: "",
         permissions: [],
     })
-    const [refreshKey, setRefreshKey] = useState(0)
-    const [rolesRefreshKey, setRolesRefreshKey] = useState(0)
     const displayedRoles = roles.length > 0 ? roles : fallbackRoles
     const { success, error } = useNotification()
     const { officeId, isResolvingOfficeContext } = useResolvedOfficeContext()
@@ -235,7 +238,16 @@ function EmployeesPage() {
             }
         }
 
-        setIsLoadingRoles(true)
+        const cachedRoles = getCachedAvailableRoles(officeId)
+        if (cachedRoles) {
+            const safeCachedRoles = Array.isArray(cachedRoles) ? cachedRoles : []
+            setRoles(safeCachedRoles)
+            const defaultRole = safeCachedRoles.find((item) => item.key === "staff")?.key || safeCachedRoles[0]?.key || "staff"
+            setNewEmployeeRole(defaultRole)
+            setIsLoadingRoles(false)
+        } else {
+            setIsLoadingRoles(true)
+        }
 
         listAvailableRoles(officeId)
             .then((items) => {
@@ -259,10 +271,15 @@ function EmployeesPage() {
         return () => {
             active = false
         }
-    }, [officeId, rolesRefreshKey, error])
+    }, [officeId, error])
 
     useEffect(() => {
         let active = true
+        const cachedPermissions = getCachedRolePermissions()
+        if (Array.isArray(cachedPermissions) && cachedPermissions.length > 0) {
+            setPermissionCatalog(cachedPermissions)
+        }
+
         listRolePermissions()
             .then((items) => {
                 if (!active) return
@@ -289,7 +306,23 @@ function EmployeesPage() {
             }
         }
 
-        setIsLoadingEmployees(true)
+        const cachedEmployees = getCachedEmployeesByOfficeId(officeId)
+        if (cachedEmployees) {
+            const mappedCachedEmployees = Array.isArray(cachedEmployees)
+                ? cachedEmployees.map((profile) => ({
+                    id: profile?._id || `${Date.now()}`,
+                    officeId: profile?.officeId || officeId,
+                    name: profile?.name || "",
+                    email: profile?.email || "Email not available",
+                    role: profile?.role || "staff",
+                    status: profile?.status || "active",
+                }))
+                : []
+            setEmployees(mappedCachedEmployees)
+            setIsLoadingEmployees(false)
+        } else {
+            setIsLoadingEmployees(true)
+        }
 
         listEmployeesByOfficeId(officeId)
             .then((profiles) => {
@@ -311,7 +344,9 @@ function EmployeesPage() {
             .catch((err) => {
                 if (!active) return
                 error(err.message || "Failed to load employees")
-                setEmployees([])
+                if (!cachedEmployees) {
+                    setEmployees([])
+                }
             })
             .finally(() => {
                 if (!active) return
@@ -321,7 +356,7 @@ function EmployeesPage() {
         return () => {
             active = false
         }
-    }, [officeId, refreshKey, error])
+    }, [officeId, error])
 
     const handleCreateEmployee = async (e) => {
         e.preventDefault()
@@ -353,6 +388,7 @@ function EmployeesPage() {
                     status: result?.userProfile?.status || "active",
                 }),
             ])
+            clearEmployeesCache(officeId)
 
             success("Employee created successfully")
             setNewEmployeeName("")
@@ -412,6 +448,7 @@ function EmployeesPage() {
                         : item
                 )
             )
+            clearEmployeesCache(officeId)
 
             success("Employee updated successfully")
             cancelEditEmployee()
@@ -428,6 +465,7 @@ function EmployeesPage() {
             setIsSubmitting(true)
             await deleteEmployeeById(employeeToDelete.id)
             setEmployees((current) => current.filter((item) => item.id !== employeeToDelete.id))
+            clearEmployeesCache(officeId)
             success("Employee deleted successfully")
             setEmployeeToDelete(null)
         } catch (err) {
@@ -537,10 +575,12 @@ function EmployeesPage() {
                 setRoles((current) =>
                     current.map((item) => (String(item.id || "") === editingRoleId ? mapRoleItem(updated) : item))
                 )
+                clearAvailableRolesCache(officeId)
                 success("Role updated successfully")
             } else {
                 const created = await createCustomRole(payload)
                 setRoles((current) => [...current, mapRoleItem(created)])
+                clearAvailableRolesCache(officeId)
                 success("Role created successfully")
             }
 
@@ -561,6 +601,7 @@ function EmployeesPage() {
             setRoles((current) =>
                 current.filter((item) => String(item.id || "") !== String(roleToDelete.id || ""))
             )
+            clearAvailableRolesCache(officeId)
             success("Role deleted successfully")
             setRoleToDelete(null)
         } catch (err) {
