@@ -2063,33 +2063,17 @@ function LedgerEntriesTable({
                                                 <span />
                                                 <span />
                                                 <span />
-                                                <div className="relative w-full">
-                                                    <select
-                                                        className="w-full rounded-full border-3 border-gray-100 bg-white p-2 pl-3 appearance-none"
-                                                        value={getSplitCategoryId(split)}
-                                                        onChange={(e) =>
-                                                            updateSavedSplitCategory(entry, splitIndex, e.target.value)
-                                                        }
-                                                    >
-                                                        <option value="">Uncategorized</option>
-                                                        {categories.map((category) => (
-                                                            <option key={category.id} value={category.id}>
-                                                                {category.name}
-                                                            </option>
-                                                        ))}
-                                                    </select>
-                                                    <svg
-                                                        className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
-                                                        viewBox="0 0 24 24"
-                                                        fill="none"
-                                                        stroke="currentColor"
-                                                        strokeWidth="2.5"
-                                                        strokeLinecap="round"
-                                                        strokeLinejoin="round"
-                                                    >
-                                                        <path d="M6 9l6 6 6-6" />
-                                                    </svg>
-                                                </div>
+                                                <span className="truncate rounded-full border-3 border-gray-100 bg-white p-2 pl-3 text-sm text-gray-700">
+                                                    {getCategoryDisplayName({
+                                                        categoryName:
+                                                            split?.category ||
+                                                            categories.find((item) => item.id === getSplitCategoryId(split))?.name ||
+                                                            getDefaultUncategorizedLabelByAmount(split?.amount || 0),
+                                                        categoryType:
+                                                            categories.find((item) => item.id === getSplitCategoryId(split))?.type || "",
+                                                        amount: Number(split?.amount || 0),
+                                                    })}
+                                                </span>
                                                 <span />
                                                 <span className={`text-right ${splitAmountPresentation.className}`}>{splitAmountPresentation.text}</span>
                                                 <span />
