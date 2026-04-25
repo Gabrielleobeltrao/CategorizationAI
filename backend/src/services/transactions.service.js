@@ -1193,51 +1193,67 @@ export async function updateTransactionByIdService(id, patch) {
   }
 
   if (patch.splits !== undefined) {
-    if (!Array.isArray(patch.splits)) {
-      throw new Error("splits must be an array")
-    }
-
-    if (patch.splits.length < 2) {
-      throw new Error("splits must have at least 2 items")
-    }
-
-    const normalizedSplits = patch.splits.map((split, index) => {
-      const amount = Number(split?.amount)
-      if (!Number.isFinite(amount)) {
-        throw new Error(`splits[${index}].amount must be a number`)
+    if (patch.splits == null || (Array.isArray(patch.splits) && patch.splits.length === 0)) {
+      if (patch.isSplit !== false) {
+        throw new Error("splits must have at least 2 items")
       }
 
-      const categoryId = split?.categoryId ?? null
-      if (categoryId !== null && categoryId !== "" && !ObjectId.isValid(String(categoryId))) {
-        throw new Error(`splits[${index}].categoryId is invalid`)
+      const parentAmount = Number(
+        typeof safePatch.amount === "number" ? safePatch.amount : currentTransaction.amount
+      )
+
+      safePatch.splits = []
+      safePatch.isSplit = false
+      safePatch.categoryId = null
+      safePatch.category = getDefaultUncategorizedLabelByAmount(parentAmount)
+      Object.assign(safePatch, buildCategorizedFields(false))
+    } else {
+      if (!Array.isArray(patch.splits)) {
+        throw new Error("splits must be an array")
       }
 
-      const category = split?.category == null ? null : String(split.category).trim()
-
-      return {
-        categoryId: categoryId ? String(categoryId) : null,
-        category: category || null,
-        amount: Number(amount.toFixed(2)),
+      if (patch.splits.length < 2) {
+        throw new Error("splits must have at least 2 items")
       }
-    })
 
-    const parentAmount = Number(
-      typeof safePatch.amount === "number" ? safePatch.amount : currentTransaction.amount
-    )
-    const splitTotal = normalizedSplits.reduce((sum, split) => sum + Number(split.amount || 0), 0)
+      const normalizedSplits = patch.splits.map((split, index) => {
+        const amount = Number(split?.amount)
+        if (!Number.isFinite(amount)) {
+          throw new Error(`splits[${index}].amount must be a number`)
+        }
 
-    if (Math.abs(Number(splitTotal.toFixed(2)) - Number(parentAmount.toFixed(2))) > 0.01) {
-      throw new Error("sum of split amounts must match transaction amount")
+        const categoryId = split?.categoryId ?? null
+        if (categoryId !== null && categoryId !== "" && !ObjectId.isValid(String(categoryId))) {
+          throw new Error(`splits[${index}].categoryId is invalid`)
+        }
+
+        const category = split?.category == null ? null : String(split.category).trim()
+
+        return {
+          categoryId: categoryId ? String(categoryId) : null,
+          category: category || null,
+          amount: Number(amount.toFixed(2)),
+        }
+      })
+
+      const parentAmount = Number(
+        typeof safePatch.amount === "number" ? safePatch.amount : currentTransaction.amount
+      )
+      const splitTotal = normalizedSplits.reduce((sum, split) => sum + Number(split.amount || 0), 0)
+
+      if (Math.abs(Number(splitTotal.toFixed(2)) - Number(parentAmount.toFixed(2))) > 0.01) {
+        throw new Error("sum of split amounts must match transaction amount")
+      }
+
+      safePatch.splits = normalizedSplits
+      safePatch.isSplit = true
+      safePatch.categoryId = null
+      safePatch.category = null
+      Object.assign(
+        safePatch,
+        buildCategorizedFields(areSplitsCategorized(normalizedSplits), "manual")
+      )
     }
-
-    safePatch.splits = normalizedSplits
-    safePatch.isSplit = true
-    safePatch.categoryId = null
-    safePatch.category = null
-    Object.assign(
-      safePatch,
-      buildCategorizedFields(areSplitsCategorized(normalizedSplits), "manual")
-    )
   }
 
   const isCurrentSplit =

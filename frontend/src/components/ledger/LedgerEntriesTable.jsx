@@ -422,6 +422,8 @@ function LedgerEntriesTable({
     const [splitDraftRows, setSplitDraftRows] = useState([])
     const [splitError, setSplitError] = useState("")
     const [isSavingSplit, setIsSavingSplit] = useState(false)
+    const [entryToUnsplit, setEntryToUnsplit] = useState(null)
+    const [isRevertingSplit, setIsRevertingSplit] = useState(false)
     const [searchInput, setSearchInput] = useState(() => searchTerm || "")
     const [showFilterModal, setShowFilterModal] = useState(false)
     const [uploadedCsvFiles, setUploadedCsvFiles] = useState([])
@@ -625,6 +627,15 @@ function LedgerEntriesTable({
 
         return () => clearTimeout(timeoutId)
     }, [searchInput, searchTerm, onSearchTermChange])
+
+    useEffect(() => {
+        setSearchInput(String(searchTerm || ""))
+    }, [searchTerm])
+
+    useEffect(() => {
+        if (showFilterModal) return
+        setDraftFilters(appliedFilters)
+    }, [appliedFilters, showFilterModal])
 
     const accountOptions = useMemo(() => {
         const safeAccounts = Array.isArray(accounts) ? accounts : []
@@ -1058,6 +1069,29 @@ function LedgerEntriesTable({
         setEditingTouched({})
     }
 
+    useEffect(() => {
+        if (selectedEntryIds.length === 0) return
+
+        setSelectedEntryIds((current) => {
+            const next = current.filter((id) => visibleEntryIdsSet.has(id))
+            return next.length === current.length ? current : next
+        })
+    }, [selectedEntryIds.length, visibleEntryIdsSet])
+
+    useEffect(() => {
+        if (editingTargetIds.length === 0) return
+
+        const nextTargetIds = editingTargetIds.filter((id) => visibleEntryIdsSet.has(id))
+        if (nextTargetIds.length === editingTargetIds.length) return
+
+        if (nextTargetIds.length === 0) {
+            cancelEditEntry()
+            return
+        }
+
+        setEditingTargetIds(nextTargetIds)
+    }, [editingTargetIds, visibleEntryIdsSet])
+
     const saveEditEntry = async (id) => {
         if (!editingDraft) return
 
@@ -1214,6 +1248,26 @@ function LedgerEntriesTable({
         setSplittingEntryId("")
         setSplitDraftRows([])
         setSplitError("")
+    }
+
+    const confirmUnsplitEntry = async () => {
+        if (!entryToUnsplit?.id) return
+
+        try {
+            setIsRevertingSplit(true)
+            await onUpdateEntry?.(entryToUnsplit.id, {
+                splits: [],
+                isSplit: false,
+                categoryId: null,
+                category: null,
+            })
+            cancelSplitEntry()
+            setEntryToUnsplit(null)
+        } catch (err) {
+            console.error(err)
+        } finally {
+            setIsRevertingSplit(false)
+        }
     }
 
     const updateSplitRow = (localId, patch) => {
@@ -1785,7 +1839,7 @@ function LedgerEntriesTable({
                     </div>
                 <div
                     ref={scrollContainerRef}
-                    className="min-h-0 min-w-0 flex-1 overflow-auto rounded-b-lg border-b-4 border-gray-100"
+                    className="relative min-h-0 min-w-0 flex-1 overflow-auto rounded-b-lg border-b-4 border-gray-100"
                 >
                     {shouldVirtualize && virtualWindow.topSpacerHeight > 0 && (
                         <div style={{ height: `${virtualWindow.topSpacerHeight}px` }} aria-hidden="true" />
@@ -1927,13 +1981,28 @@ function LedgerEntriesTable({
                                         <span />
                                         <span />
                                         <div className="flex items-center justify-between gap-2">
-                                            <button
-                                                type="button"
-                                                className="w-fit rounded-md bg-white px-3 py-1.5 font-semibold text-gray-700 hover:bg-gray-50"
-                                                onClick={addSplitRow}
-                                            >
-                                                Add line
-                                            </button>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    className="w-fit rounded-md bg-white px-3 py-1.5 font-semibold text-gray-700 hover:bg-gray-50"
+                                                    onClick={addSplitRow}
+                                                >
+                                                    Add line
+                                                </button>
+                                                {Array.isArray(entry.splits) && entry.splits.length > 1 && (
+                                                    <button
+                                                        type="button"
+                                                        className="inline-flex items-center gap-2 rounded-md bg-white px-3 py-1.5 font-semibold text-gray-700 hover:bg-gray-50"
+                                                        onClick={() => setEntryToUnsplit(entry)}
+                                                    >
+                                                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                            <path d="M3 7h10a4 4 0 1 1 0 8H9" />
+                                                            <path d="M7 11 3 7l4-4" />
+                                                        </svg>
+                                                        <span>Revert split</span>
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                         <span className={`text-right font-semibold ${
                                             Math.abs(
@@ -2036,7 +2105,7 @@ function LedgerEntriesTable({
                         <div style={{ height: `${virtualWindow.bottomSpacerHeight}px` }} aria-hidden="true" />
                     )}
 
-                    {isLoading && (
+                    {isLoading && ledgerEntries.length === 0 && (
                         <div className="px-3 py-8 text-center text-sm text-gray-500">
                             Loading transactions...
                         </div>
@@ -2697,6 +2766,21 @@ function LedgerEntriesTable({
                 </div>,
                 document.body
             )}
+
+            <ConfirmModal
+                isOpen={Boolean(entryToUnsplit)}
+                title="Revert Split?"
+                message="This will remove all split lines and return the transaction to a regular uncategorized transaction."
+                confirmLabel="Revert split"
+                cancelLabel="Cancel"
+                confirmTone="danger"
+                isLoading={isRevertingSplit}
+                onConfirm={confirmUnsplitEntry}
+                onClose={() => {
+                    if (isRevertingSplit) return
+                    setEntryToUnsplit(null)
+                }}
+            />
 
             <ConfirmModal
                 isOpen={pendingDeleteIds.length > 0}

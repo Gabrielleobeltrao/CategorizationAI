@@ -1,5 +1,35 @@
 import { api } from "../lib/api"
 
+const clientsListCache = new Map()
+
+function getClientsListCacheKey(officeId, options = {}) {
+  return JSON.stringify({
+    officeId: String(officeId || "").trim(),
+    page: Number(options.page || 1),
+    limit: Number(options.limit || 10),
+    search: String(options.search || "").trim(),
+  })
+}
+
+export function getCachedClientsListByOfficeId(officeId, options = {}) {
+  const key = getClientsListCacheKey(officeId, options)
+  return clientsListCache.get(key) || null
+}
+
+export function clearClientsListCache(officeId = "") {
+  const safeOfficeId = String(officeId || "").trim()
+  if (!safeOfficeId) {
+    clientsListCache.clear()
+    return
+  }
+
+  for (const key of clientsListCache.keys()) {
+    if (key.includes(`"officeId":"${safeOfficeId}"`)) {
+      clientsListCache.delete(key)
+    }
+  }
+}
+
 export async function listClientsByOfficeId(officeId, options = {}) {
   const cleanOfficeId = String(officeId || "").trim()
   if (!cleanOfficeId) throw new Error("officeId is required")
@@ -16,7 +46,9 @@ export async function listClientsByOfficeId(officeId, options = {}) {
     params.set("search", search)
   }
 
-  return api(`/api/offices/${cleanOfficeId}/clients?${params.toString()}`)
+  const payload = await api(`/api/offices/${cleanOfficeId}/clients?${params.toString()}`)
+  clientsListCache.set(getClientsListCacheKey(cleanOfficeId, options), payload)
+  return payload
 }
 
 export async function createClient(input) {

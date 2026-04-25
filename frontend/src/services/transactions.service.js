@@ -142,18 +142,22 @@ export async function summarizeTransactionsByClientId(clientId, options = {}) {
   return api(`/api/transactions/summary?${params.toString()}`, { silentLoading })
 }
 
-export async function updateTransactionById(transactionId, patch) {
+export async function updateTransactionById(transactionId, patch, options = {}) {
   const id = String(transactionId || "").trim()
   if (!id) throw new Error("transactionId is required")
   if (!patch || typeof patch !== "object") throw new Error("patch is required")
+  const silentLoading = options?.silentLoading !== undefined
+    ? Boolean(options.silentLoading)
+    : true
 
   return api(`/api/transactions/${id}`, {
     method: "PATCH",
     body: JSON.stringify(patch),
+    silentLoading,
   })
 }
 
-export async function updateTransactionsByIds(updates = []) {
+export async function updateTransactionsByIds(updates = [], options = {}) {
   const safeUpdates = Array.isArray(updates)
     ? updates
         .map((item) => ({
@@ -166,31 +170,43 @@ export async function updateTransactionsByIds(updates = []) {
   if (safeUpdates.length === 0) {
     throw new Error("updates must be a non-empty array")
   }
+  const silentLoading = options?.silentLoading !== undefined
+    ? Boolean(options.silentLoading)
+    : true
 
   return api("/api/transactions/batch-update", {
     method: "PATCH",
     body: JSON.stringify({ updates: safeUpdates }),
+    silentLoading,
   })
 }
 
-export async function deleteTransactionById(transactionId) {
+export async function deleteTransactionById(transactionId, options = {}) {
   const id = String(transactionId || "").trim()
   if (!id) throw new Error("transactionId is required")
+  const silentLoading = options?.silentLoading !== undefined
+    ? Boolean(options.silentLoading)
+    : true
 
   return api(`/api/transactions/${id}`, {
     method: "DELETE",
+    silentLoading,
   })
 }
 
-export async function deleteTransactionsByIds(ids = []) {
+export async function deleteTransactionsByIds(ids = [], options = {}) {
   const targetIds = Array.isArray(ids) ? ids.map((id) => String(id || "").trim()).filter(Boolean) : []
   if (targetIds.length === 0) {
     throw new Error("ids must be a non-empty array")
   }
+  const silentLoading = options?.silentLoading !== undefined
+    ? Boolean(options.silentLoading)
+    : true
 
   return api("/api/transactions/batch-delete", {
     method: "POST",
     body: JSON.stringify({ ids: targetIds }),
+    silentLoading,
   })
 }
 

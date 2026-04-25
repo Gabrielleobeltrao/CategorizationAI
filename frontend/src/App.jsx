@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react'
+import { Suspense, lazy, useEffect } from 'react'
 import { BrowserRouter as BrowserRouter, Routes, Route } from 'react-router-dom'
 import ProtectedRoute from './components/auth/ProtectedRoute.jsx'
 import { NotificationProvider } from './contexts/notification.context.jsx'
@@ -6,18 +6,31 @@ import { CategorizationJobsProvider } from './contexts/categorizationJobs.contex
 import { OpenTestProvider } from './contexts/openTest.context.jsx'
 import GlobalLoadingOverlay from './components/ui/GlobalLoadingOverlay.jsx'
 
-const LandingPage = lazy(() => import('./pages/LandingPage.jsx'))
-const Login = lazy(() => import('./pages/Login.jsx'))
-const Register = lazy(() => import('./pages/Register.jsx'))
-const CompleteRegistration = lazy(() => import('./pages/CompleteRegistration.jsx'))
-const Home = lazy(() => import('./pages/Home.jsx'))
-const LedgerPage = lazy(() => import('./pages/LedgerPage.jsx'))
-const ClientsPage = lazy(() => import('./pages/ClientsPage.jsx'))
-const EmployeesPage = lazy(() => import('./pages/EmployeesPage.jsx'))
-const ProfitLossPage = lazy(() => import('./pages/ProfitLossPage.jsx'))
-const SettingsPage = lazy(() => import('./pages/SettingsPage.jsx'))
-const UpdatePassword = lazy(() => import('./pages/UpdatePassword.jsx'))
-const AppShell = lazy(() => import('./components/layout/AppShell.jsx'))
+const loadLandingPage = () => import('./pages/LandingPage.jsx')
+const loadLoginPage = () => import('./pages/Login.jsx')
+const loadRegisterPage = () => import('./pages/Register.jsx')
+const loadCompleteRegistrationPage = () => import('./pages/CompleteRegistration.jsx')
+const loadHomePage = () => import('./pages/Home.jsx')
+const loadLedgerPage = () => import('./pages/LedgerPage.jsx')
+const loadClientsPage = () => import('./pages/ClientsPage.jsx')
+const loadEmployeesPage = () => import('./pages/EmployeesPage.jsx')
+const loadProfitLossPage = () => import('./pages/ProfitLossPage.jsx')
+const loadSettingsPage = () => import('./pages/SettingsPage.jsx')
+const loadUpdatePasswordPage = () => import('./pages/UpdatePassword.jsx')
+const loadAppShell = () => import('./components/layout/AppShell.jsx')
+
+const LandingPage = lazy(loadLandingPage)
+const Login = lazy(loadLoginPage)
+const Register = lazy(loadRegisterPage)
+const CompleteRegistration = lazy(loadCompleteRegistrationPage)
+const Home = lazy(loadHomePage)
+const LedgerPage = lazy(loadLedgerPage)
+const ClientsPage = lazy(loadClientsPage)
+const EmployeesPage = lazy(loadEmployeesPage)
+const ProfitLossPage = lazy(loadProfitLossPage)
+const SettingsPage = lazy(loadSettingsPage)
+const UpdatePassword = lazy(loadUpdatePasswordPage)
+const AppShell = lazy(loadAppShell)
 
 function RouteFallback() {
   return (
@@ -28,6 +41,24 @@ function RouteFallback() {
 }
 
 function App() {
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined
+
+    const preload = () => {
+      loadClientsPage()
+      loadEmployeesPage()
+      loadSettingsPage()
+    }
+
+    if (typeof window.requestIdleCallback === "function") {
+      const id = window.requestIdleCallback(preload, { timeout: 1200 })
+      return () => window.cancelIdleCallback?.(id)
+    }
+
+    const timeoutId = window.setTimeout(preload, 400)
+    return () => window.clearTimeout(timeoutId)
+  }, [])
+
   return (
     <NotificationProvider>
       <OpenTestProvider>

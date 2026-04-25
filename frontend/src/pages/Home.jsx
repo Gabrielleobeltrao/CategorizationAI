@@ -14,7 +14,10 @@ import {
 } from "recharts"
 import { useAuth } from "../contexts/auth.context"
 import { useNotification } from "../contexts/notification.context"
-import { getOfficeHomeDashboard } from "../services/home.service"
+import {
+  getCachedOfficeHomeDashboard,
+  getOfficeHomeDashboard,
+} from "../services/home.service"
 import {
   getRecentOpenedClients,
   subscribeRecentOpenedClients,
@@ -83,6 +86,22 @@ const OVERVIEW_VIEW_STORAGE_KEY = "home.performanceOverview.view"
 const OVERVIEW_PERIOD_STORAGE_KEY = "home.performanceOverview.period"
 const ALLOWED_OVERVIEW_VIEWS = new Set(["blocks", "line", "columns"])
 const ALLOWED_OVERVIEW_PERIODS = new Set(["month", "week"])
+
+function normalizeDashboardPayload(payload = {}) {
+  return {
+    header: {
+      ...EMPTY_DASHBOARD.header,
+      ...(payload?.header || {}),
+    },
+    kpis: Array.isArray(payload?.kpis) ? payload.kpis : [],
+    weekKpis: Array.isArray(payload?.weekKpis) ? payload.weekKpis : [],
+    weeklyTrend: Array.isArray(payload?.weeklyTrend) ? payload.weeklyTrend : [],
+    dailyTrend: Array.isArray(payload?.dailyTrend) ? payload.dailyTrend : [],
+    jobsQueue: Array.isArray(payload?.jobsQueue) ? payload.jobsQueue : [],
+    recentActivities: Array.isArray(payload?.recentActivities) ? payload.recentActivities : [],
+    meta: payload?.meta || {},
+  }
+}
 
 function readStoredOverviewOption(storageKey, allowedValues, fallbackValue) {
   if (typeof window === "undefined") return fallbackValue
@@ -215,6 +234,7 @@ function Home() {
     const safeOfficeId = String(officeId || "").trim()
     const showLoading = Boolean(options?.showLoading)
     const notifyError = options?.notifyError !== false
+    const cachedDashboard = getCachedOfficeHomeDashboard(safeOfficeId)
 
     if (!safeOfficeId) {
       setDashboard(EMPTY_DASHBOARD)
@@ -222,25 +242,20 @@ function Home() {
       return
     }
 
-    if (showLoading) setIsLoadingDashboard(true)
+    if (cachedDashboard) {
+      setDashboard(normalizeDashboardPayload(cachedDashboard))
+      if (showLoading) setIsLoadingDashboard(false)
+    } else if (showLoading) {
+      setIsLoadingDashboard(true)
+    }
 
     try {
       const payload = await getOfficeHomeDashboard(safeOfficeId, { noCache: true })
-      setDashboard({
-        header: {
-          ...EMPTY_DASHBOARD.header,
-          ...(payload?.header || {}),
-        },
-        kpis: Array.isArray(payload?.kpis) ? payload.kpis : [],
-        weekKpis: Array.isArray(payload?.weekKpis) ? payload.weekKpis : [],
-        weeklyTrend: Array.isArray(payload?.weeklyTrend) ? payload.weeklyTrend : [],
-        dailyTrend: Array.isArray(payload?.dailyTrend) ? payload.dailyTrend : [],
-        jobsQueue: Array.isArray(payload?.jobsQueue) ? payload.jobsQueue : [],
-        recentActivities: Array.isArray(payload?.recentActivities) ? payload.recentActivities : [],
-        meta: payload?.meta || {},
-      })
+      setDashboard(normalizeDashboardPayload(payload))
     } catch (err) {
-      setDashboard(EMPTY_DASHBOARD)
+      if (!cachedDashboard) {
+        setDashboard(EMPTY_DASHBOARD)
+      }
       if (notifyError) {
         error(err.message || "Failed to load home dashboard")
       }

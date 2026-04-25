@@ -7,21 +7,28 @@ const NotificationContext = createContext(null)
 export function NotificationProvider({ children }) {
   const [notification, setNotification] = useState(null)
 
-  const hide = useCallback(() => {
-    setNotification(null)
+  const hide = useCallback((targetId) => {
+    setNotification((current) => {
+      if (!current) return null
+      if (targetId === undefined || targetId === null || targetId === "") return null
+      return current.id === targetId ? null : current
+    })
   }, [])
 
-  const notify = useCallback((message, type = "info") => {
+  const notify = useCallback((message, type = "info", options = {}) => {
     if (!message) return
+    const persist = Boolean(options?.persist)
     setNotification({
-      id: Date.now(),
+      id: options?.id || Date.now(),
       type,
       message,
+      persist,
     })
   }, [])
 
   useEffect(() => {
     if (!notification) return
+    if (notification.persist) return
     const timeout = setTimeout(() => {
       setNotification(null)
     }, 3500)
@@ -35,8 +42,10 @@ export function NotificationProvider({ children }) {
       success: (message) => notify(message, "success"),
       error: (message) => notify(message, "error"),
       info: (message) => notify(message, "info"),
+      showLoading: (message, id = "loading") => notify(message, "loading", { id, persist: true }),
+      hideNotification: hide,
     }),
-    [notify]
+    [hide, notify]
   )
 
   return (
