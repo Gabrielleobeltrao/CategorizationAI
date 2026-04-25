@@ -37,12 +37,33 @@ function decodeTransactionsCursor(cursor = "") {
   }
 }
 
+const TRANSACTION_LIST_PROJECTION = {
+  _id: 1,
+  accountId: 1,
+  accountName: 1,
+  date: 1,
+  description: 1,
+  amount: 1,
+  categoryId: 1,
+  category: 1,
+  isSplit: 1,
+  llmProcessed: 1,
+  llmStatus: 1,
+  llmProcessedAt: 1,
+  categorizedSource: 1,
+  llmCategorySuggestionId: 1,
+  llmCategorySuggestionName: 1,
+  splits: 1,
+}
+
 // cria índice uma vez (chame no startup ou antes do primeiro uso)
 export async function ensureTransactionsIndexes() {
   const db = getDB()
   const collection = db.collection("transactions")
   await Promise.all([
     collection.createIndex({ clientId: 1, date: -1, _id: -1 }),
+    collection.createIndex({ clientId: 1, accountId: 1, date: -1, _id: -1 }),
+    collection.createIndex({ clientId: 1, categoryId: 1, date: -1, _id: -1 }),
     collection.createIndex({ clientId: 1, createdAt: -1 }),
     collection.createIndex({ clientId: 1, updatedAt: -1 }),
     collection.createIndex({ clientId: 1, llmProcessedAt: -1 }),
@@ -666,28 +687,51 @@ function buildTransactionsFilter({
     : []
 
   if (safeYears.length > 0 || safeMonths.length > 0) {
-    const dateRegexConditions = []
-
     if (safeYears.length > 0 && safeMonths.length > 0) {
+      const monthRangeConditions = []
       safeYears.forEach((year) => {
         safeMonths.forEach((month) => {
-          dateRegexConditions.push({ date: new RegExp(`^${year}-${month}-`) })
+          monthRangeConditions.push({
+            date: {
+              $gte: `${year}-${month}-01`,
+              $lte: `${year}-${month}-31`,
+            },
+          })
         })
       })
+
+      if (monthRangeConditions.length === 1) {
+        conditions.push(monthRangeConditions[0])
+      } else if (monthRangeConditions.length > 1) {
+        conditions.push({ $or: monthRangeConditions })
+      }
     } else if (safeYears.length > 0) {
+      const yearRangeConditions = []
       safeYears.forEach((year) => {
-        dateRegexConditions.push({ date: new RegExp(`^${year}-`) })
+        yearRangeConditions.push({
+          date: {
+            $gte: `${year}-01-01`,
+            $lte: `${year}-12-31`,
+          },
+        })
       })
+
+      if (yearRangeConditions.length === 1) {
+        conditions.push(yearRangeConditions[0])
+      } else if (yearRangeConditions.length > 1) {
+        conditions.push({ $or: yearRangeConditions })
+      }
     } else {
+      const dateRegexConditions = []
       safeMonths.forEach((month) => {
         dateRegexConditions.push({ date: new RegExp(`^\\d{4}-${month}-`) })
       })
-    }
 
-    if (dateRegexConditions.length === 1) {
-      conditions.push(dateRegexConditions[0])
-    } else if (dateRegexConditions.length > 1) {
-      conditions.push({ $or: dateRegexConditions })
+      if (dateRegexConditions.length === 1) {
+        conditions.push(dateRegexConditions[0])
+      } else if (dateRegexConditions.length > 1) {
+        conditions.push({ $or: dateRegexConditions })
+      }
     }
   }
 
@@ -858,7 +902,7 @@ export async function listTransactionsPaginated({
 
     const finalFilter = cursorFilter ? { $and: [filter, cursorFilter] } : filter
     const rawItems = await collection
-      .find(finalFilter)
+      .find(finalFilter, { projection: TRANSACTION_LIST_PROJECTION })
       .sort({ date: -1, _id: -1 })
       .limit(safeLimit + 1)
       .toArray()
@@ -878,7 +922,7 @@ export async function listTransactionsPaginated({
 
   const [items, total] = await Promise.all([
     collection
-      .find(filter)
+      .find(filter, { projection: TRANSACTION_LIST_PROJECTION })
       .sort({ date: -1, _id: -1 })
       .skip(skip)
       .limit(safeLimit)

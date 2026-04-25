@@ -60,6 +60,7 @@ const DEFAULT_TRANSACTIONS_FILTERS = {
 }
 const TRANSACTIONS_IMPORT_DONE_EVENT = "app:transactions-import-job-done"
 const TRANSACTIONS_PAGE_SIZE = 50
+const TRANSACTIONS_LOAD_MORE_THRESHOLD_PX = 600
 
 function getLedgerFiltersStorageKey(clientId = "") {
     return `ledger-filters:${clientId || "global"}`
@@ -103,6 +104,13 @@ function readPersistedLedgerState(clientId = "") {
         }
     } catch {
         return fallback
+    }
+}
+
+function buildAppliedTransactionsQuery(searchTerm = "", filters = {}) {
+    return {
+        searchTerm: String(searchTerm || ""),
+        filters: normalizeTransactionsFilters(filters),
     }
 }
 
@@ -282,8 +290,9 @@ function LedgerPage() {
     const [transactionsNextCursor, setTransactionsNextCursor] = useState(null)
     const [isCategorizingWithLlm, setIsCategorizingWithLlm] = useState(false)
     const [pendingLlmEntryIds, setPendingLlmEntryIds] = useState([])
-    const [transactionsSearchTerm, setTransactionsSearchTerm] = useState(persistedState.searchTerm)
-    const [transactionsFilters, setTransactionsFilters] = useState(persistedState.filters)
+    const [transactionsQuery, setTransactionsQuery] = useState(() =>
+        buildAppliedTransactionsQuery(persistedState.searchTerm, persistedState.filters)
+    )
     const [transactionsPeriodOptions, setTransactionsPeriodOptions] = useState({
         years: [],
         months: [],
@@ -318,8 +327,8 @@ function LedgerPage() {
     const localPageScrollRef = useRef(null)
     const pageScrollRef = sharedScrollRef || localPageScrollRef
     const loadingMoreRef = useRef(false)
-    const prefetchedTransactionsPageRef = useRef(null)
     const transactionsQueryKeyRef = useRef("")
+    const transactionsRequestIdRef = useRef(0)
     const lastScrollTopRef = useRef(0)
     const handledCompletedJobIdsRef = useRef(new Set())
     const activeSection = location.pathname.endsWith("/ledger/accounts")
@@ -327,6 +336,14 @@ function LedgerPage() {
         : location.pathname.endsWith("/ledger/categories")
             ? "categories"
             : "ledger"
+    const transactionsSearchTerm = transactionsQuery.searchTerm
+    const transactionsFilters = transactionsQuery.filters
+
+    const buildTransactionsQueryKey = useCallback((search, nextFilters) => JSON.stringify({
+        clientId,
+        search: String(search || ""),
+        filters: normalizeTransactionsFilters(nextFilters),
+    }), [clientId])
 
     const getTransactionsQueryOptions = useCallback((cursor = "") => ({
         paginationMode: "cursor",
@@ -335,37 +352,6 @@ function LedgerPage() {
         search: transactionsSearchTerm,
         ...transactionsFilters,
     }), [transactionsFilters, transactionsSearchTerm])
-
-    const transactionsQueryKey = JSON.stringify({
-        clientId,
-        search: transactionsSearchTerm,
-        filters: normalizeTransactionsFilters(transactionsFilters),
-    })
-
-    const prefetchTransactionsPage = useCallback(async (cursor) => {
-        const safeCursor = String(cursor || "").trim()
-        if (!clientId || !safeCursor) return
-
-        const queryKey = transactionsQueryKeyRef.current
-        try {
-            const payload = await listTransactionsByClientId(clientId, {
-                ...getTransactionsQueryOptions(safeCursor),
-                silentLoading: true,
-            })
-
-            if (transactionsQueryKeyRef.current !== queryKey) return
-
-            prefetchedTransactionsPageRef.current = {
-                cursor: safeCursor,
-                queryKey,
-                payload,
-            }
-        } catch {
-            if (prefetchedTransactionsPageRef.current?.cursor === safeCursor) {
-                prefetchedTransactionsPageRef.current = null
-            }
-        }
-    }, [clientId, getTransactionsQueryOptions])
 
     useEffect(() => {
         let active = true
@@ -412,15 +398,7 @@ function LedgerPage() {
                     totalAmount: Number(payload?.summary?.totalAmount || 0),
                     totalCount: Number(payload?.summary?.totalCount || 0),
                 })
-                prefetchedTransactionsPageRef.current = null
-                transactionsQueryKeyRef.current = JSON.stringify({
-                    clientId,
-                    search: persisted.searchTerm,
-                    filters: normalizeTransactionsFilters(persisted.filters),
-                })
-                if (transactionsPayload?.hasMore && nextCursor) {
-                    prefetchTransactionsPage(nextCursor)
-                }
+                transactionsQueryKeyRef.current = buildTransactionsQueryKey(persisted.searchTerm, persisted.filters)
                 skipNextTransactionsFetchRef.current = true
                 skipNextPeriodOptionsFetchRef.current = true
                 skipNextSummaryFetchRef.current = true
@@ -446,7 +424,7 @@ function LedgerPage() {
         return () => {
             active = false
         }
-    }, [clientId, error, prefetchTransactionsPage])
+    }, [buildTransactionsQueryKey, clientId, error])
 
     useEffect(() => {
         if (!clientId || !client?.name) return
@@ -459,10 +437,8 @@ function LedgerPage() {
 
     useEffect(() => {
         const persisted = readPersistedLedgerState(clientId)
-        setTransactionsSearchTerm(persisted.searchTerm)
-        setTransactionsFilters(persisted.filters)
+        setTransactionsQuery(buildAppliedTransactionsQuery(persisted.searchTerm, persisted.filters))
         setTransactionsNextCursor(null)
-        prefetchedTransactionsPageRef.current = null
     }, [clientId])
 
     useEffect(() => {
@@ -498,14 +474,15 @@ function LedgerPage() {
             (item) => String(item?.name || "").trim().toLowerCase() === lowerCategory
         )
 
-        setTransactionsFilters({
+        setTransactionsQuery(buildAppliedTransactionsQuery(transactionsSearchTerm, {
             ...DEFAULT_TRANSACTIONS_FILTERS,
             categoryIds: matchedCategory?.id ? [matchedCategory.id] : [],
             includeUncategorizedIncome: lowerCategory === "uncategorized" || lowerCategory === "uncategorized income",
             includeUncategorizedExpenses: lowerCategory === "uncategorized" || lowerCategory === "uncategorized expenses",
-        })
+        }))
         setHasAppliedPreselectedCategory(true)
     }, [
+        transactionsSearchTerm,
         clientId,
         isBaseDataLoaded,
         hasAppliedPreselectedCategory,
@@ -527,18 +504,20 @@ function LedgerPage() {
             setTransactionsHasMore(false)
             setTransactionsNextCursor(null)
             setTransactionsPeriodOptions({ years: [], months: [] })
-            lastScrollTopRef.current = 0
-            setTransactionsFilters(DEFAULT_TRANSACTIONS_FILTERS)
-            prefetchedTransactionsPageRef.current = null
+            setTransactionsSummary({
+                totalAmount: 0,
+                totalCount: 0,
+            })
             transactionsQueryKeyRef.current = ""
+            setIsLoadingTransactions(false)
             return () => {
                 active = false
             }
         }
 
-        setIsLoadingTransactions(true)
-        prefetchedTransactionsPageRef.current = null
-        transactionsQueryKeyRef.current = transactionsQueryKey
+        const requestId = ++transactionsRequestIdRef.current
+        const currentQueryKey = buildTransactionsQueryKey(transactionsSearchTerm, transactionsFilters)
+        transactionsQueryKeyRef.current = currentQueryKey
 
         if (skipNextTransactionsFetchRef.current) {
             skipNextTransactionsFetchRef.current = false
@@ -548,11 +527,14 @@ function LedgerPage() {
             }
         }
 
+        setIsLoadingTransactions(true)
+
         listTransactionsByClientId(clientId, {
             ...getTransactionsQueryOptions(),
         })
             .then((payload) => {
-                if (!active) return
+                if (!active || requestId !== transactionsRequestIdRef.current || transactionsQueryKeyRef.current !== currentQueryKey) return
+
                 const items = Array.isArray(payload?.items) ? payload.items : []
                 const mapped = items.map(mapTransaction)
                 const nextCursor = String(payload?.nextCursor || "").trim()
@@ -561,26 +543,31 @@ function LedgerPage() {
                 setTransactionsHasMore(Boolean(payload?.hasMore && nextCursor))
                 setTransactionsNextCursor(nextCursor || null)
                 lastScrollTopRef.current = 0
-                if (payload?.hasMore && nextCursor) {
-                    prefetchTransactionsPage(nextCursor)
-                }
             })
             .catch((err) => {
-                if (!active) return
+                if (!active || requestId !== transactionsRequestIdRef.current || transactionsQueryKeyRef.current !== currentQueryKey) return
                 error(err.message || "Failed to load transactions")
                 setLedgerEntries([])
                 setTransactionsHasMore(false)
                 setTransactionsNextCursor(null)
             })
             .finally(() => {
-                if (!active) return
+                if (!active || requestId !== transactionsRequestIdRef.current || transactionsQueryKeyRef.current !== currentQueryKey) return
                 setIsLoadingTransactions(false)
             })
 
         return () => {
             active = false
         }
-    }, [clientId, error, getTransactionsQueryOptions, isBaseDataLoaded, prefetchTransactionsPage, transactionsQueryKey])
+    }, [
+        buildTransactionsQueryKey,
+        clientId,
+        error,
+        getTransactionsQueryOptions,
+        isBaseDataLoaded,
+        transactionsFilters,
+        transactionsSearchTerm,
+    ])
 
     useEffect(() => {
         let active = true
@@ -702,20 +689,13 @@ function LedgerPage() {
                 return
             }
 
-            let payload = null
-            const cachedPage = prefetchedTransactionsPageRef.current
-            if (
-                cachedPage &&
-                cachedPage.cursor === targetCursor &&
-                cachedPage.queryKey === currentQueryKey
-            ) {
-                payload = cachedPage.payload
-                prefetchedTransactionsPageRef.current = null
-            } else {
-                payload = await listTransactionsByClientId(clientId, {
-                    ...getTransactionsQueryOptions(targetCursor),
-                    silentLoading: true,
-                })
+            const payload = await listTransactionsByClientId(clientId, {
+                ...getTransactionsQueryOptions(targetCursor),
+                silentLoading: true,
+            })
+
+            if (transactionsQueryKeyRef.current !== currentQueryKey) {
+                return
             }
 
             const items = Array.isArray(payload?.items) ? payload.items : []
@@ -731,9 +711,6 @@ function LedgerPage() {
             setLedgerEntries((current) => [...current, ...mapped])
             setTransactionsHasMore(Boolean(payload?.hasMore && nextCursor))
             setTransactionsNextCursor(nextCursor || null)
-            if (payload?.hasMore && nextCursor) {
-                prefetchTransactionsPage(nextCursor)
-            }
         } catch (err) {
             error(err.message || "Failed to load more transactions")
         } finally {
@@ -755,7 +732,7 @@ function LedgerPage() {
         if (loadingMoreRef.current) return
 
         const distanceToBottom = container.scrollHeight - (container.scrollTop + container.clientHeight)
-        if (distanceToBottom <= 100) {
+        if (distanceToBottom <= TRANSACTIONS_LOAD_MORE_THRESHOLD_PX) {
             loadMoreTransactions()
         }
     }, [activeSection, isLoadingTransactions, loadMoreTransactions, pageScrollRef, transactionsHasMore])
@@ -771,9 +748,65 @@ function LedgerPage() {
         }
     }, [handlePageScroll, pageScrollRef])
 
+    useEffect(() => {
+        if (activeSection !== "ledger") return
+        const container = pageScrollRef.current
+        if (!container) return
+        if (!transactionsHasMore || isLoadingTransactions || isLoadingMoreTransactions) return
+        if (loadingMoreRef.current) return
+
+        const distanceToBottom = container.scrollHeight - (container.scrollTop + container.clientHeight)
+        if (distanceToBottom <= TRANSACTIONS_LOAD_MORE_THRESHOLD_PX) {
+            loadMoreTransactions()
+        }
+    }, [
+        activeSection,
+        isLoadingMoreTransactions,
+        isLoadingTransactions,
+        ledgerEntries.length,
+        loadMoreTransactions,
+        pageScrollRef,
+        transactionsHasMore,
+    ])
+
     const handleApplyTransactionsFilters = (nextFilters = DEFAULT_TRANSACTIONS_FILTERS) => {
-        setTransactionsFilters(normalizeTransactionsFilters(nextFilters))
+        const normalizedFilters = normalizeTransactionsFilters(nextFilters)
+        const nextQuery = buildAppliedTransactionsQuery(transactionsSearchTerm, normalizedFilters)
+        const nextQueryKey = buildTransactionsQueryKey(nextQuery.searchTerm, nextQuery.filters)
+        const currentQueryKey = buildTransactionsQueryKey(transactionsSearchTerm, transactionsFilters)
+        if (nextQueryKey === currentQueryKey) {
+            return
+        }
+
+        transactionsQueryKeyRef.current = nextQueryKey
+        loadingMoreRef.current = false
+        setLedgerEntries([])
+        setTransactionsHasMore(false)
+        setTransactionsNextCursor(null)
+        setIsLoadingMoreTransactions(false)
+        lastScrollTopRef.current = 0
+        pageScrollRef.current?.scrollTo({ top: 0 })
+        setTransactionsQuery(nextQuery)
     }
+
+    const handleTransactionsSearchTermChange = useCallback((nextSearchTerm = "") => {
+        const nextQuery = buildAppliedTransactionsQuery(nextSearchTerm, transactionsFilters)
+        const nextQueryKey = buildTransactionsQueryKey(nextQuery.searchTerm, nextQuery.filters)
+        const currentQueryKey = buildTransactionsQueryKey(transactionsSearchTerm, transactionsFilters)
+        if (nextQueryKey === currentQueryKey) {
+            return
+        }
+
+        transactionsQueryKeyRef.current = nextQueryKey
+        loadingMoreRef.current = false
+        setLedgerEntries([])
+        setTransactionsHasMore(false)
+        setTransactionsNextCursor(null)
+        setIsLoadingMoreTransactions(false)
+        lastScrollTopRef.current = 0
+        pageScrollRef.current?.scrollTo({ top: 0 })
+        setTransactionsQuery(nextQuery)
+    }, [buildTransactionsQueryKey, pageScrollRef, transactionsFilters, transactionsSearchTerm])
 
     const handleUpdateTransaction = async (id, patch) => {
         let previousEntry = null
@@ -959,11 +992,7 @@ function LedgerPage() {
         setLedgerEntries(mapped)
         setTransactionsHasMore(Boolean(payload?.hasMore && nextCursor))
         setTransactionsNextCursor(nextCursor || null)
-        prefetchedTransactionsPageRef.current = null
-        if (payload?.hasMore && nextCursor) {
-            prefetchTransactionsPage(nextCursor)
-        }
-    }, [clientId, getTransactionsQueryOptions, prefetchTransactionsPage])
+    }, [clientId, getTransactionsQueryOptions])
 
     const refreshLedgerAfterImport = useCallback(async () => {
         if (!clientId) return
@@ -984,15 +1013,11 @@ function LedgerPage() {
         setLedgerEntries(mapped)
         setTransactionsHasMore(Boolean(payload?.hasMore && nextCursor))
         setTransactionsNextCursor(nextCursor || null)
-        prefetchedTransactionsPageRef.current = null
-        if (payload?.hasMore && nextCursor) {
-            prefetchTransactionsPage(nextCursor)
-        }
         setTransactionsPeriodOptions({
             years: Array.isArray(periodOptions?.years) ? periodOptions.years : [],
             months: Array.isArray(periodOptions?.months) ? periodOptions.months : [],
         })
-    }, [clientId, getTransactionsQueryOptions, prefetchTransactionsPage, refreshTransactionsSummary])
+    }, [clientId, getTransactionsQueryOptions, refreshTransactionsSummary])
 
     useEffect(() => {
         if (typeof window === "undefined") return undefined
@@ -1378,7 +1403,7 @@ function LedgerPage() {
                                         searchTerm={transactionsSearchTerm}
                                         filters={transactionsFilters}
                                         onApplyFilters={handleApplyTransactionsFilters}
-                                        onSearchTermChange={setTransactionsSearchTerm}
+                                        onSearchTermChange={handleTransactionsSearchTermChange}
                                         onUpdateEntry={handleUpdateTransaction}
                                         onUpdateEntries={handleUpdateTransactionsBulk}
                                         onDeleteEntry={handleDeleteTransaction}
