@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { updateMyProfile } from "../services/auth.service"
 import { useAuth } from "../contexts/auth.context"
-import { getOfficeById, updateOfficeById } from "../services/office.service"
+import { getCachedOfficeById, getOfficeById, updateOfficeById } from "../services/office.service"
 import { hasPermission } from "../utils/permissions"
 import { useNotification } from "../contexts/notification.context"
 
@@ -94,6 +94,13 @@ function SettingsPage() {
           setOffice(null)
           setForm(normalizeOfficeForm(null))
           return
+        }
+
+        const cachedOffice = getCachedOfficeById(officeId)
+        if (cachedOffice) {
+          setOffice(cachedOffice || null)
+          setForm(normalizeOfficeForm(cachedOffice))
+          setIsLoading(false)
         }
 
         const officeData = await getOfficeById(officeId)

@@ -618,17 +618,6 @@ function LedgerEntriesTable({
     }
 
     useEffect(() => {
-        const timeoutId = setTimeout(() => {
-            const nextValue = searchInput.trim()
-            const currentValue = String(searchTerm || "").trim()
-            if (nextValue === currentValue) return
-            onSearchTermChange?.(nextValue)
-        }, 300)
-
-        return () => clearTimeout(timeoutId)
-    }, [searchInput, searchTerm, onSearchTermChange])
-
-    useEffect(() => {
         setSearchInput(String(searchTerm || ""))
     }, [searchTerm])
 
@@ -641,6 +630,8 @@ function LedgerEntriesTable({
         const safeAccounts = Array.isArray(accounts) ? accounts : []
         return [...safeAccounts].sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")))
     }, [accounts])
+    const normalizedSearchInput = useMemo(() => String(searchInput || "").trim(), [searchInput])
+    const normalizedAppliedSearch = useMemo(() => String(searchTerm || "").trim(), [searchTerm])
     const hasDuplicateMappingInAnyFile = useMemo(
         () =>
             uploadedCsvFiles.some((uploadedFile) => {
@@ -723,6 +714,26 @@ function LedgerEntriesTable({
         })
         setIsCreatingCategory(false)
     }, [])
+
+    const applySearchInput = useCallback(() => {
+        const nextValue = String(searchInput || "").trim()
+        const currentValue = String(searchTerm || "").trim()
+        const isSearchUseful = nextValue.length === 0 || nextValue.length >= 2
+        if (!isSearchUseful) {
+            if (currentValue.length === 0) return
+            return
+        }
+        if (nextValue === currentValue) return
+        onSearchTermChange?.(nextValue)
+    }, [onSearchTermChange, searchInput, searchTerm])
+
+    useEffect(() => {
+        const timeoutId = setTimeout(() => {
+            applySearchInput()
+        }, 420)
+
+        return () => clearTimeout(timeoutId)
+    }, [applySearchInput])
 
     const addPendingCategoryIds = useCallback((ids = []) => {
         const safeIds = Array.isArray(ids) ? ids.filter(Boolean) : []

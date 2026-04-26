@@ -1,8 +1,216 @@
 import { ObjectId } from "mongodb"
 import { getDB } from "../db.js"
 
+const ATLAS_SEARCH_ENABLED = String(process.env.MONGODB_ATLAS_SEARCH_ENABLED || "true").trim().toLowerCase() !== "false"
+const CLIENTS_SEARCH_INDEX_NAME = String(process.env.MONGODB_ATLAS_SEARCH_CLIENTS_INDEX_NAME || "clients_autocomplete").trim()
+
 function escapeRegex(value = "") {
     return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+export function buildOwnerSearch(owners = [], ownerEmail = "", ownerPhone = "") {
+    const ownerChunks = Array.isArray(owners)
+        ? owners.flatMap((owner) => {
+            if (typeof owner === "string") return [owner]
+            if (!owner || typeof owner !== "object") return []
+
+            return [
+                owner.name,
+                owner.email,
+                owner.phone,
+            ]
+        })
+        : []
+
+    return [
+        ...ownerChunks,
+        ownerEmail,
+        ownerPhone,
+    ]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+        .join(" ")
+}
+
+function buildSearchableStringFieldDefinition() {
+    return [
+        { type: "token" },
+        { type: "string" },
+        {
+            type: "autocomplete",
+            tokenization: "edgeGram",
+            minGrams: 2,
+            maxGrams: 15,
+            foldDiacritics: true,
+        },
+    ]
+}
+
+function buildClientsSearchIndexDefinition() {
+    const searchableField = buildSearchableStringFieldDefinition()
+
+    return {
+        mappings: {
+            dynamic: false,
+            fields: {
+                officeId: { type: "token" },
+                createdAt: { type: "date" },
+                updatedAt: { type: "date" },
+                name: searchableField,
+                businessType: searchableField,
+                description: searchableField,
+                mainActivity: searchableField,
+                state: searchableField,
+                ownerSearch: searchableField,
+            },
+        },
+    }
+}
+
+function isAtlasSearchUnavailableError(error) {
+    const message = String(error?.message || "").toLowerCase()
+
+    return (
+        message.includes("unrecognized pipeline stage name: '$search'") ||
+        message.includes("search index commands are only supported with atlas") ||
+        message.includes("command not found") ||
+        message.includes("mongot") ||
+        message.includes("search index") ||
+        message.includes("index not found for search") ||
+        message.includes("query requires a search index")
+    )
+}
+
+function buildAtlasAutocompleteClause(path, query, boost, fuzzy = null) {
+    const autocomplete = {
+        path,
+        query,
+        tokenOrder: "any",
+        score: { boost: { value: boost } },
+    }
+
+    if (fuzzy) {
+        autocomplete.fuzzy = fuzzy
+    }
+
+    return { autocomplete }
+}
+
+function buildClientsAtlasSearchStage({ officeId, search = "" }) {
+    const safeOfficeId = String(officeId || "").trim()
+    const safeSearch = String(search || "").trim()
+
+    if (!ATLAS_SEARCH_ENABLED || !CLIENTS_SEARCH_INDEX_NAME || !safeOfficeId || !safeSearch) {
+        return null
+    }
+
+    return {
+        $search: {
+            index: CLIENTS_SEARCH_INDEX_NAME,
+            compound: {
+                filter: [
+                    {
+                        equals: {
+                            path: "officeId",
+                            value: safeOfficeId,
+                        },
+                    },
+                ],
+                should: [
+                    buildAtlasAutocompleteClause(
+                        "name",
+                        safeSearch,
+                        8,
+                        safeSearch.length >= 5
+                            ? {
+                                maxEdits: 1,
+                                prefixLength: 2,
+                                maxExpansions: 64,
+                            }
+                            : null
+                    ),
+                    buildAtlasAutocompleteClause("businessType", safeSearch, 3),
+                    buildAtlasAutocompleteClause("mainActivity", safeSearch, 4),
+                    buildAtlasAutocompleteClause("state", safeSearch, 2),
+                    buildAtlasAutocompleteClause("ownerSearch", safeSearch, 4),
+                    {
+                        text: {
+                            path: "name",
+                            query: safeSearch,
+                            score: { boost: { value: 6 } },
+                        },
+                    },
+                    {
+                        text: {
+                            path: "description",
+                            query: safeSearch,
+                            score: { boost: { value: 3 } },
+                        },
+                    },
+                    {
+                        text: {
+                            path: "mainActivity",
+                            query: safeSearch,
+                            score: { boost: { value: 4 } },
+                        },
+                    },
+                    {
+                        text: {
+                            path: "ownerSearch",
+                            query: safeSearch,
+                            score: { boost: { value: 4 } },
+                        },
+                    },
+                ],
+                minimumShouldMatch: 1,
+            },
+        },
+    }
+}
+
+async function ensureClientsSearchIndex() {
+    if (!ATLAS_SEARCH_ENABLED || !CLIENTS_SEARCH_INDEX_NAME) return
+
+    const db = getDB()
+    const collection = db.collection("clients")
+    const definition = buildClientsSearchIndexDefinition()
+
+    try {
+        const existingIndexes = await collection.listSearchIndexes(CLIENTS_SEARCH_INDEX_NAME).toArray()
+        if (existingIndexes.length === 0) {
+            await collection.createSearchIndex({
+                name: CLIENTS_SEARCH_INDEX_NAME,
+                definition,
+            })
+            return
+        }
+
+        const currentDefinition = existingIndexes[0]?.latestDefinition || existingIndexes[0]?.definition || null
+        if (JSON.stringify(currentDefinition) === JSON.stringify(definition)) {
+            return
+        }
+
+        await collection.updateSearchIndex(CLIENTS_SEARCH_INDEX_NAME, definition)
+    } catch (error) {
+        if (isAtlasSearchUnavailableError(error)) {
+            console.warn(`[clients.repository] Atlas Search unavailable, keeping fallback search path: ${error.message}`)
+            return
+        }
+
+        throw error
+    }
+}
+
+async function runClientsAtlasSearchAggregate(collection, pipeline = []) {
+    try {
+        return await collection.aggregate(pipeline).toArray()
+    } catch (error) {
+        if (isAtlasSearchUnavailableError(error)) {
+            return null
+        }
+
+        throw error
+    }
 }
 
 export async function ensureClientsIndexes() {
@@ -14,6 +222,8 @@ export async function ensureClientsIndexes() {
         collection.createIndex({ officeId: 1, name: 1 }),
         collection.createIndex({ officeId: 1, tagIds: 1 }),
     ])
+
+    await ensureClientsSearchIndex()
 }
 
 // criar
@@ -33,6 +243,7 @@ export async function createClient(input) {
         owners: Array.isArray(input.owners) ? input.owners : [],
         ownerEmail: input.ownerEmail,
         ownerPhone: input.ownerPhone,
+        ownerSearch: buildOwnerSearch(input.owners, input.ownerEmail, input.ownerPhone),
         createdAt: new Date(),
         updatedAt: new Date(),
     }
@@ -57,6 +268,7 @@ export async function updateClientById(id, patch) {
         owners: patch.owners,
         ownerEmail: patch.ownerEmail,
         ownerPhone: patch.ownerPhone,
+        ownerSearch: patch.ownerSearch,
         updatedAt: new Date(),
     }
 
@@ -86,6 +298,38 @@ export async function listClientsByOfficeId(officeId, options = {}) {
     const skip = (page - 1) * limit
     const search = String(options.search || "").trim()
     const filter = { officeId }
+    const collection = db.collection("clients")
+
+    if (search) {
+        const atlasSearchStage = buildClientsAtlasSearchStage({ officeId, search })
+        if (atlasSearchStage) {
+            const [items, totalResult] = await Promise.all([
+                runClientsAtlasSearchAggregate(collection, [
+                    atlasSearchStage,
+                    { $sort: { createdAt: -1, _id: -1 } },
+                    { $skip: skip },
+                    { $limit: limit },
+                ]),
+                runClientsAtlasSearchAggregate(collection, [
+                    atlasSearchStage,
+                    { $count: "total" },
+                ]),
+            ])
+
+            if (items && totalResult) {
+                const total = Number(totalResult?.[0]?.total || 0)
+                const totalPages = Math.max(1, Math.ceil(total / limit))
+
+                return {
+                    items,
+                    page,
+                    limit,
+                    total,
+                    totalPages,
+                }
+            }
+        }
+    }
 
     if (search) {
         const safeSearch = escapeRegex(search)
@@ -97,23 +341,23 @@ export async function listClientsByOfficeId(officeId, options = {}) {
             { description: searchRegex },
             { mainActivity: searchRegex },
             { state: searchRegex },
-            { owners: searchRegex },
             { "owners.name": searchRegex },
             { "owners.email": searchRegex },
             { "owners.phone": searchRegex },
+            { ownerSearch: searchRegex },
             { ownerEmail: searchRegex },
             { ownerPhone: searchRegex },
         ]
     }
 
     const [items, total] = await Promise.all([
-        db.collection("clients")
+        collection
             .find(filter)
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit)
             .toArray(),
-        db.collection("clients").countDocuments(filter),
+        collection.countDocuments(filter),
     ])
 
     const totalPages = Math.max(1, Math.ceil(total / limit))

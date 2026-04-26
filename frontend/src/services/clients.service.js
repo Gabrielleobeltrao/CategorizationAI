@@ -1,6 +1,8 @@
 import { api } from "../lib/api"
+import { readSessionCache, removeSessionCache, writeSessionCache } from "../utils/sessionCache"
 
 const clientsListCache = new Map()
+const CLIENTS_LIST_CACHE_PREFIX = "cache:clients-list:"
 
 function getClientsListCacheKey(officeId, options = {}) {
   return JSON.stringify({
@@ -13,19 +15,35 @@ function getClientsListCacheKey(officeId, options = {}) {
 
 export function getCachedClientsListByOfficeId(officeId, options = {}) {
   const key = getClientsListCacheKey(officeId, options)
-  return clientsListCache.get(key) || null
+  if (clientsListCache.has(key)) {
+    return clientsListCache.get(key) || null
+  }
+
+  const persisted = readSessionCache(`${CLIENTS_LIST_CACHE_PREFIX}${key}`, null)
+  if (persisted) {
+    clientsListCache.set(key, persisted)
+    return persisted
+  }
+
+  return null
 }
 
 export function clearClientsListCache(officeId = "") {
   const safeOfficeId = String(officeId || "").trim()
   if (!safeOfficeId) {
     clientsListCache.clear()
+    if (typeof window !== "undefined") {
+      Object.keys(window.sessionStorage)
+        .filter((storageKey) => storageKey.startsWith(CLIENTS_LIST_CACHE_PREFIX))
+        .forEach((storageKey) => removeSessionCache(storageKey))
+    }
     return
   }
 
   for (const key of clientsListCache.keys()) {
     if (key.includes(`"officeId":"${safeOfficeId}"`)) {
       clientsListCache.delete(key)
+      removeSessionCache(`${CLIENTS_LIST_CACHE_PREFIX}${key}`)
     }
   }
 }
@@ -47,7 +65,9 @@ export async function listClientsByOfficeId(officeId, options = {}) {
   }
 
   const payload = await api(`/api/offices/${cleanOfficeId}/clients?${params.toString()}`)
-  clientsListCache.set(getClientsListCacheKey(cleanOfficeId, options), payload)
+  const cacheKey = getClientsListCacheKey(cleanOfficeId, options)
+  clientsListCache.set(cacheKey, payload)
+  writeSessionCache(`${CLIENTS_LIST_CACHE_PREFIX}${cacheKey}`, payload)
   return payload
 }
 
