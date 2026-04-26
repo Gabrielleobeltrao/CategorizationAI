@@ -24,6 +24,7 @@ export async function listTransactionsByClientId(clientId, options = {}) {
   const iconType = String(options.iconType || "all").trim().toLowerCase()
   const minAmount = options.minAmount !== undefined ? String(options.minAmount).trim() : ""
   const maxAmount = options.maxAmount !== undefined ? String(options.maxAmount).trim() : ""
+  const signal = options?.signal
 
   const params = new URLSearchParams({
     clientId: cleanClientId,
@@ -83,7 +84,7 @@ export async function listTransactionsByClientId(clientId, options = {}) {
     params.set("maxAmount", maxAmount)
   }
 
-  return api(`/api/transactions?${params.toString()}`, { silentLoading })
+  return api(`/api/transactions?${params.toString()}`, { silentLoading, signal })
 }
 
 export async function listTransactionPeriodOptions(clientId, options = {}) {

@@ -26,6 +26,10 @@ import {
 import { ObjectId } from "mongodb"
 import categorizeTransaction from "../lib/ai/categorizeTransaction.js"
 import categorizeZelle from "../lib/ai/categorizeZelle.js"
+import {
+  buildTransactionSearchTerms,
+  buildTransactionSearchText,
+} from "../utils/transactionSearch.js"
 
 const LLM_CONFIDENCE_THRESHOLD = 0.8
 const LLM_MEMORY_CONFIDENCE_THRESHOLD = 0.9
@@ -193,6 +197,13 @@ function buildCategorizedFields(isCategorized, source, now = new Date()) {
   return {
     categorizedAt: now,
     categorizedSource: source,
+  }
+}
+
+function buildTransactionSearchPatch(transaction = {}) {
+  return {
+    searchTerms: buildTransactionSearchTerms(transaction),
+    searchText: buildTransactionSearchText(transaction),
   }
 }
 
@@ -1124,18 +1135,26 @@ export async function createTransactionsBatchService(transactions) {
     const isCategorized = isAssignedCategoryValue(transaction?.categoryId, transaction?.category)
 
     if (hasCategoryId || hasCategoryName) {
-      return {
+      const normalizedTransaction = {
         ...transaction,
         ...buildCategorizedFields(isCategorized, transaction?.categorizedSource || "import"),
       }
+      return {
+        ...normalizedTransaction,
+        ...buildTransactionSearchPatch(normalizedTransaction),
+      }
     }
 
-    return {
+    const normalizedTransaction = {
       ...transaction,
       categoryId: null,
       category: getDefaultUncategorizedLabelByAmount(amount),
       categorizedAt: null,
       categorizedSource: null,
+    }
+    return {
+      ...normalizedTransaction,
+      ...buildTransactionSearchPatch(normalizedTransaction),
     }
   })
 
@@ -1275,6 +1294,9 @@ export async function updateTransactionByIdService(id, patch) {
     throw new Error("no valid fields to update")
   }
 
+  const mergedTransactionForSearch = mergeTransactionWithPatch(currentTransaction, safePatch)
+  Object.assign(safePatch, buildTransactionSearchPatch(mergedTransactionForSearch))
+
   const updatedTransaction = await updateTransactionById(id, safePatch)
 
   const isHumanCategoryChange =
@@ -1343,6 +1365,14 @@ export async function updateTransactionsByIdsService(input = {}) {
   const currentTransactionById = new Map(
     currentTransactions.map((transaction) => [String(transaction._id), transaction])
   )
+
+  normalizedUpdates.forEach((item) => {
+    const currentTransaction = currentTransactionById.get(String(item.id))
+    if (!currentTransaction) return
+
+    const mergedTransaction = mergeTransactionWithPatch(currentTransaction, item.patch)
+    Object.assign(item.patch, buildTransactionSearchPatch(mergedTransaction))
+  })
 
   const result = await updateTransactionsByIds(normalizedUpdates)
 

@@ -4,6 +4,7 @@ import {
   listClientsByOfficeId,
   getClientById,
   deleteClientById,
+  buildOwnerSearch,
 } from "../repositories/clients.repository.js"
 import { listAccountsByClientIdService } from "./account.service.js"
 import { listCategoriesByClientIdService } from "./category.service.js"
@@ -158,6 +159,18 @@ export async function updateClientByIdService(id, patch, context = {}) {
 
   if (patch.ownerPhone !== undefined) {
     safePatch.ownerPhone = normalizeOptionalText(patch.ownerPhone)
+  }
+
+  if (
+    safePatch.owners !== undefined ||
+    safePatch.ownerEmail !== undefined ||
+    safePatch.ownerPhone !== undefined
+  ) {
+    safePatch.ownerSearch = buildOwnerSearch(
+      safePatch.owners !== undefined ? safePatch.owners : current.owners,
+      safePatch.ownerEmail !== undefined ? safePatch.ownerEmail : current.ownerEmail,
+      safePatch.ownerPhone !== undefined ? safePatch.ownerPhone : current.ownerPhone
+    )
   }
 
   if (Object.keys(safePatch).length === 0) {

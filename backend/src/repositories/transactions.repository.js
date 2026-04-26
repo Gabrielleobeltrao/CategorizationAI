@@ -1,11 +1,29 @@
 import { ObjectId } from "mongodb"
 import { getDB } from "../db.js"
+import {
+  buildTransactionSearchQuery,
+  buildTransactionSearchTerms,
+  buildTransactionSearchText,
+} from "../utils/transactionSearch.js"
 
 const BATCH_SIZE = 1000
-const ZELLE_DESCRIPTION_REGEX = /(^|[^a-z])(zel|zelle)([^a-z]|$)/i
+const ATLAS_SEARCH_INDEX_NAME = String(process.env.MONGODB_ATLAS_SEARCH_INDEX_NAME || "transactions_autocomplete").trim()
+const ATLAS_SEARCH_ENABLED = String(process.env.MONGODB_ATLAS_SEARCH_ENABLED || "true").trim().toLowerCase() !== "false"
 
 function escapeRegex(value = "") {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+function buildLegacySearchCondition(regex) {
+  return {
+    $or: [
+      { description: regex },
+      { accountName: regex },
+      { category: regex },
+      { "splits.category": regex },
+      { date: regex },
+    ],
+  }
 }
 
 function encodeTransactionsCursor(item = {}) {
@@ -53,7 +71,180 @@ const TRANSACTION_LIST_PROJECTION = {
   categorizedSource: 1,
   llmCategorySuggestionId: 1,
   llmCategorySuggestionName: 1,
+  searchText: 1,
   splits: 1,
+}
+
+function buildTransactionsSearchIndexDefinition() {
+  const searchableStringField = [
+    { type: "token" },
+    { type: "string" },
+    {
+      type: "autocomplete",
+      tokenization: "edgeGram",
+      minGrams: 2,
+      maxGrams: 15,
+      foldDiacritics: true,
+    },
+  ]
+
+  return {
+    mappings: {
+      dynamic: false,
+      fields: {
+        clientId: { type: "token" },
+        accountId: { type: "token" },
+        categoryId: { type: "token" },
+        categorizedSource: { type: "token" },
+        llmStatus: { type: "token" },
+        date: { type: "token" },
+        amount: { type: "number" },
+        llmProcessed: { type: "boolean" },
+        isSplit: { type: "boolean" },
+        description: searchableStringField,
+        accountName: searchableStringField,
+        category: searchableStringField,
+      },
+    },
+  }
+}
+
+function isAtlasSearchUnavailableError(error) {
+  const message = String(error?.message || "").toLowerCase()
+
+  return (
+    message.includes("unrecognized pipeline stage name: '$search'") ||
+    message.includes("search index commands are only supported with atlas") ||
+    message.includes("command not found") ||
+    message.includes("mongot") ||
+    message.includes("search index") ||
+    message.includes("index not found for search") ||
+    message.includes("query requires a search index")
+  )
+}
+
+function buildAtlasAutocompleteClause(path, query, boost, fuzzy = null) {
+  const autocomplete = {
+    path,
+    query,
+    tokenOrder: "any",
+    score: { boost: { value: boost } },
+  }
+
+  if (fuzzy) {
+    autocomplete.fuzzy = fuzzy
+  }
+
+  return { autocomplete }
+}
+
+function buildTransactionsAtlasSearchStage({ clientId, search = "" }) {
+  const safeClientId = String(clientId || "").trim()
+  const safeSearch = String(search || "").trim()
+  if (!ATLAS_SEARCH_ENABLED || !ATLAS_SEARCH_INDEX_NAME || !safeClientId || !safeSearch) {
+    return null
+  }
+
+  const should = [
+    buildAtlasAutocompleteClause(
+      "description",
+      safeSearch,
+      6,
+      safeSearch.length >= 5
+        ? {
+            maxEdits: 1,
+            prefixLength: 2,
+            maxExpansions: 64,
+          }
+        : null
+    ),
+    buildAtlasAutocompleteClause("accountName", safeSearch, 3),
+    buildAtlasAutocompleteClause("category", safeSearch, 2),
+    {
+      text: {
+        path: "description",
+        query: safeSearch,
+        score: { boost: { value: 4 } },
+      },
+    },
+    {
+      text: {
+        path: "accountName",
+        query: safeSearch,
+        score: { boost: { value: 2 } },
+      },
+    },
+    {
+      text: {
+        path: "category",
+        query: safeSearch,
+        score: { boost: { value: 1 } },
+      },
+    },
+  ]
+
+  return {
+    $search: {
+      index: ATLAS_SEARCH_INDEX_NAME,
+      compound: {
+        filter: [
+          {
+            equals: {
+              path: "clientId",
+              value: safeClientId,
+            },
+          },
+        ],
+        should,
+        minimumShouldMatch: 1,
+      },
+    },
+  }
+}
+
+async function ensureTransactionsSearchIndex() {
+  if (!ATLAS_SEARCH_ENABLED || !ATLAS_SEARCH_INDEX_NAME) return
+
+  const db = getDB()
+  const collection = db.collection("transactions")
+  const definition = buildTransactionsSearchIndexDefinition()
+
+  try {
+    const existingIndexes = await collection.listSearchIndexes(ATLAS_SEARCH_INDEX_NAME).toArray()
+    if (existingIndexes.length === 0) {
+      await collection.createSearchIndex({
+        name: ATLAS_SEARCH_INDEX_NAME,
+        definition,
+      })
+      return
+    }
+
+    const currentDefinition = existingIndexes[0]?.latestDefinition || existingIndexes[0]?.definition || null
+    if (JSON.stringify(currentDefinition) === JSON.stringify(definition)) {
+      return
+    }
+
+    await collection.updateSearchIndex(ATLAS_SEARCH_INDEX_NAME, definition)
+  } catch (error) {
+    if (isAtlasSearchUnavailableError(error)) {
+      console.warn(`[transactions.repository] Atlas Search unavailable, keeping fallback search path: ${error.message}`)
+      return
+    }
+
+    throw error
+  }
+}
+
+async function runTransactionsAtlasSearchAggregate(collection, pipeline = []) {
+  try {
+    return await collection.aggregate(pipeline).toArray()
+  } catch (error) {
+    if (isAtlasSearchUnavailableError(error)) {
+      return null
+    }
+
+    throw error
+  }
 }
 
 // cria índice uma vez (chame no startup ou antes do primeiro uso)
@@ -62,6 +253,7 @@ export async function ensureTransactionsIndexes() {
   const collection = db.collection("transactions")
   await Promise.all([
     collection.createIndex({ clientId: 1, date: -1, _id: -1 }),
+    collection.createIndex({ clientId: 1, searchTerms: 1 }),
     collection.createIndex({ clientId: 1, accountId: 1, date: -1, _id: -1 }),
     collection.createIndex({ clientId: 1, categoryId: 1, date: -1, _id: -1 }),
     collection.createIndex({ clientId: 1, createdAt: -1 }),
@@ -73,6 +265,8 @@ export async function ensureTransactionsIndexes() {
     collection.createIndex({ categoryId: 1 }),
     collection.createIndex({ "splits.categoryId": 1 }),
   ])
+
+  await ensureTransactionsSearchIndex()
 }
 
 // salva transações em lote (batch)
@@ -104,6 +298,8 @@ export async function insertTransactionsInBatches(transactions) {
       llmCategorySuggestionName: t.llmCategorySuggestionName ?? null,
       categorizedAt: t.categorizedAt ?? null,
       categorizedSource: t.categorizedSource ?? null,
+      searchTerms: buildTransactionSearchTerms(t),
+      searchText: buildTransactionSearchText(t),
       createdAt: new Date(),
       updatedAt: new Date(),
     }))
@@ -138,6 +334,8 @@ export async function updateTransactionById(id, patch) {
       llmAmbiguous: patch.llmAmbiguous,
       llmCategorySuggestionId: patch.llmCategorySuggestionId,
       llmCategorySuggestionName: patch.llmCategorySuggestionName,
+      searchTerms: patch.searchTerms,
+      searchText: patch.searchText,
       categorizedAt: patch.categorizedAt,
       categorizedSource: patch.categorizedSource,
       updatedAt: new Date(),
@@ -173,6 +371,8 @@ export async function updateTransactionsByIds(updates = []) {
         amount: patch.amount,
         categoryId: patch.categoryId,
         category: patch.category,
+        searchTerms: patch.searchTerms,
+        searchText: patch.searchText,
         categorizedAt: patch.categorizedAt,
         categorizedSource: patch.categorizedSource,
         updatedAt: new Date(),
@@ -537,16 +737,35 @@ function buildTransactionsFilter({
   const safeSearch = String(search || "").trim()
 
   if (safeSearch) {
-    const regex = new RegExp(escapeRegex(safeSearch), "i")
-    conditions.push({
-      $or: [
-      { description: regex },
-      { accountName: regex },
-      { category: regex },
-      { "splits.category": regex },
-      { date: regex },
-      ],
-    })
+    const { normalizedSearchText, tokens, hasOnlyIndexableTokens } = buildTransactionSearchQuery(safeSearch)
+
+    if (hasOnlyIndexableTokens) {
+      const regex = new RegExp(escapeRegex(normalizedSearchText), "i")
+      conditions.push({
+        $or: [
+          { searchTerms: { $all: tokens } },
+          {
+            $and: [
+              { searchTerms: { $exists: false } },
+              buildLegacySearchCondition(regex),
+            ],
+          },
+        ],
+      })
+    } else if (normalizedSearchText) {
+      const regex = new RegExp(escapeRegex(normalizedSearchText), "i")
+      conditions.push({
+        $or: [
+          { searchText: regex },
+          {
+            $and: [
+              { searchText: { $exists: false } },
+              buildLegacySearchCondition(regex),
+            ],
+          },
+        ],
+      })
+    }
   }
 
   const safeAccountIds = Array.isArray(accountIds) ? accountIds.filter(Boolean) : []
@@ -888,6 +1107,25 @@ export async function listTransactionsPaginated({
     llmProcessed,
     iconType,
   })
+  const atlasSearchStage = buildTransactionsAtlasSearchStage({ clientId, search })
+  const filterWithoutSearch = buildTransactionsFilter({
+    clientId,
+    search: "",
+    accountIds,
+    categoryIds,
+    includeUncategorizedIncome,
+    includeUncategorizedExpenses,
+    splitMode,
+    amountSign,
+    years,
+    months,
+    fromDate,
+    toDate,
+    minAmount,
+    maxAmount,
+    llmProcessed,
+    iconType,
+  })
 
   if (safePaginationMode === "cursor") {
     const parsedCursor = decodeTransactionsCursor(cursor)
@@ -901,6 +1139,34 @@ export async function listTransactionsPaginated({
       : null
 
     const finalFilter = cursorFilter ? { $and: [filter, cursorFilter] } : filter
+    const finalFilterWithoutSearch = cursorFilter
+      ? { $and: [filterWithoutSearch, cursorFilter] }
+      : filterWithoutSearch
+
+    if (atlasSearchStage) {
+      const rawItems = await runTransactionsAtlasSearchAggregate(collection, [
+        atlasSearchStage,
+        { $match: finalFilterWithoutSearch },
+        { $sort: { date: -1, _id: -1 } },
+        { $limit: safeLimit + 1 },
+        { $project: TRANSACTION_LIST_PROJECTION },
+      ])
+
+      if (rawItems) {
+        const hasMore = rawItems.length > safeLimit
+        const items = hasMore ? rawItems.slice(0, safeLimit) : rawItems
+        const lastItem = items.length > 0 ? items[items.length - 1] : null
+
+        return {
+          items,
+          limit: safeLimit,
+          hasMore,
+          nextCursor: hasMore && lastItem ? encodeTransactionsCursor(lastItem) : null,
+          paginationMode: "cursor",
+        }
+      }
+    }
+
     const rawItems = await collection
       .find(finalFilter, { projection: TRANSACTION_LIST_PROJECTION })
       .sort({ date: -1, _id: -1 })
@@ -917,6 +1183,35 @@ export async function listTransactionsPaginated({
       hasMore,
       nextCursor: hasMore && lastItem ? encodeTransactionsCursor(lastItem) : null,
       paginationMode: "cursor",
+    }
+  }
+
+  if (atlasSearchStage) {
+    const [items, totalResult] = await Promise.all([
+      runTransactionsAtlasSearchAggregate(collection, [
+        atlasSearchStage,
+        { $match: filterWithoutSearch },
+        { $sort: { date: -1, _id: -1 } },
+        { $skip: skip },
+        { $limit: safeLimit },
+        { $project: TRANSACTION_LIST_PROJECTION },
+      ]),
+      runTransactionsAtlasSearchAggregate(collection, [
+        atlasSearchStage,
+        { $match: filterWithoutSearch },
+        { $count: "total" },
+      ]),
+    ])
+
+    if (items && totalResult) {
+      const total = Number(totalResult?.[0]?.total || 0)
+      return {
+        items,
+        page: safePage,
+        limit: safeLimit,
+        total,
+        totalPages: Math.ceil(total / safeLimit),
+      }
     }
   }
 

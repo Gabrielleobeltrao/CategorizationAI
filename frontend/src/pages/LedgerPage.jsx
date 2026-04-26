@@ -329,6 +329,7 @@ function LedgerPage() {
     const loadingMoreRef = useRef(false)
     const transactionsQueryKeyRef = useRef("")
     const transactionsRequestIdRef = useRef(0)
+    const transactionsRequestAbortRef = useRef(null)
     const lastScrollTopRef = useRef(0)
     const handledCompletedJobIdsRef = useRef(new Set())
     const activeSection = location.pathname.endsWith("/ledger/accounts")
@@ -527,10 +528,14 @@ function LedgerPage() {
             }
         }
 
+        transactionsRequestAbortRef.current?.abort()
+        const abortController = new AbortController()
+        transactionsRequestAbortRef.current = abortController
         setIsLoadingTransactions(true)
 
         listTransactionsByClientId(clientId, {
             ...getTransactionsQueryOptions(),
+            signal: abortController.signal,
         })
             .then((payload) => {
                 if (!active || requestId !== transactionsRequestIdRef.current || transactionsQueryKeyRef.current !== currentQueryKey) return
@@ -545,6 +550,7 @@ function LedgerPage() {
                 lastScrollTopRef.current = 0
             })
             .catch((err) => {
+                if (err?.name === "AbortError") return
                 if (!active || requestId !== transactionsRequestIdRef.current || transactionsQueryKeyRef.current !== currentQueryKey) return
                 error(err.message || "Failed to load transactions")
                 setLedgerEntries([])
@@ -553,11 +559,18 @@ function LedgerPage() {
             })
             .finally(() => {
                 if (!active || requestId !== transactionsRequestIdRef.current || transactionsQueryKeyRef.current !== currentQueryKey) return
+                if (transactionsRequestAbortRef.current === abortController) {
+                    transactionsRequestAbortRef.current = null
+                }
                 setIsLoadingTransactions(false)
             })
 
         return () => {
             active = false
+            abortController.abort()
+            if (transactionsRequestAbortRef.current === abortController) {
+                transactionsRequestAbortRef.current = null
+            }
         }
     }, [
         buildTransactionsQueryKey,
@@ -1415,7 +1428,7 @@ function LedgerPage() {
                                         onCategorizeWithLlm={handleCategorizeWithLlmPreview}
                                         isCategorizingWithLlm={isCategorizingWithLlm}
                                         pendingLlmEntryIds={pendingLlmEntryIds}
-                                        isLoading={isLoadingTransactions}
+                                        isLoading={isLoadingTransactions || !isBaseDataLoaded}
                                         isLoadingMore={isLoadingMoreTransactions}
                                         showUploadModal={showUploadModal}
                                         onCloseUploadModal={() => setShowUploadModal(false)}
