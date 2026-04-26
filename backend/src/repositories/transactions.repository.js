@@ -19,6 +19,33 @@ function escapeRegex(value = "") {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
+function buildCategoryFilterValues(categoryIds = []) {
+  const stringValues = []
+  const objectIdValues = []
+  const seenStrings = new Set()
+  const seenObjectIds = new Set()
+
+  for (const rawValue of Array.isArray(categoryIds) ? categoryIds : []) {
+    const safeValue = String(rawValue || "").trim()
+    if (!safeValue) continue
+
+    if (!seenStrings.has(safeValue)) {
+      seenStrings.add(safeValue)
+      stringValues.push(safeValue)
+    }
+
+    if (ObjectId.isValid(safeValue) && !seenObjectIds.has(safeValue)) {
+      seenObjectIds.add(safeValue)
+      objectIdValues.push(new ObjectId(safeValue))
+    }
+  }
+
+  return {
+    stringValues,
+    objectIdValues,
+  }
+}
+
 function buildLegacySearchCondition(regex) {
   return {
     $or: [
@@ -295,7 +322,8 @@ function buildTransactionsAtlasFilterClauses({
     clauses.push({ range })
   }
 
-  const safeCategoryIds = Array.isArray(categoryIds) ? categoryIds.filter(Boolean) : []
+  const categoryFilterValues = buildCategoryFilterValues(categoryIds)
+  const safeCategoryIds = categoryFilterValues.stringValues
   if (safeCategoryIds.length > 0 || includeUncategorizedIncome || includeUncategorizedExpenses) {
     const should = []
 
@@ -855,33 +883,63 @@ export async function listLinkedAccountIds(accountIds = []) {
 
 export async function countTransactionsByCategoryId(categoryId) {
   const db = getDB()
+  const categoryFilterValues = buildCategoryFilterValues([categoryId])
+  const directConditions = []
+  const splitConditions = []
+
+  if (categoryFilterValues.stringValues.length > 0) {
+    directConditions.push({ categoryId: { $in: categoryFilterValues.stringValues } })
+    splitConditions.push({ "splits.categoryId": { $in: categoryFilterValues.stringValues } })
+  }
+
+  if (categoryFilterValues.objectIdValues.length > 0) {
+    directConditions.push({ categoryId: { $in: categoryFilterValues.objectIdValues } })
+    splitConditions.push({ "splits.categoryId": { $in: categoryFilterValues.objectIdValues } })
+  }
+
+  if (directConditions.length === 0 && splitConditions.length === 0) {
+    return 0
+  }
+
   return db.collection("transactions").countDocuments({
-    $or: [
-      { categoryId },
-      { "splits.categoryId": categoryId },
-    ],
+    $or: [...directConditions, ...splitConditions],
   })
 }
 
 export async function listLinkedCategoryIds(categoryIds = []) {
   const db = getDB()
   const collection = db.collection("transactions")
-  const safeCategoryIds = Array.isArray(categoryIds)
-    ? [...new Set(categoryIds.map((id) => String(id || "").trim()).filter(Boolean))]
-    : []
+  const categoryFilterValues = buildCategoryFilterValues(categoryIds)
+  const safeCategoryIds = categoryFilterValues.stringValues
 
   if (safeCategoryIds.length === 0) return []
 
   const [directCategoryIds, splitCategoryIds] = await Promise.all([
     collection.distinct("categoryId", {
-      categoryId: { $in: safeCategoryIds },
+      $or: [
+        { categoryId: { $in: categoryFilterValues.stringValues } },
+        ...(categoryFilterValues.objectIdValues.length > 0
+          ? [{ categoryId: { $in: categoryFilterValues.objectIdValues } }]
+          : []),
+      ],
     }),
     collection.distinct("splits.categoryId", {
-      "splits.categoryId": { $in: safeCategoryIds },
+      $or: [
+        { "splits.categoryId": { $in: categoryFilterValues.stringValues } },
+        ...(categoryFilterValues.objectIdValues.length > 0
+          ? [{ "splits.categoryId": { $in: categoryFilterValues.objectIdValues } }]
+          : []),
+      ],
     }),
   ])
 
-  return [...new Set([...directCategoryIds, ...splitCategoryIds].filter(Boolean))]
+  return [
+    ...new Set(
+      [...directCategoryIds, ...splitCategoryIds]
+        .map((id) => String(id || "").trim())
+        .filter(Boolean)
+    ),
+  ]
 }
 
 export async function listUsedCategoryIdsByClientId(clientId) {
@@ -892,14 +950,12 @@ export async function listUsedCategoryIdsByClientId(clientId) {
     collection.distinct("categoryId", {
       clientId,
       categoryId: {
-        $type: "string",
         $nin: ["", null],
       },
     }),
     collection.distinct("splits.categoryId", {
       clientId,
       "splits.categoryId": {
-        $type: "string",
         $nin: ["", null],
       },
     }),
@@ -1273,10 +1329,23 @@ function buildTransactionsFilter({
     }
 
     if (safeCategoryIds.length > 0) {
+      const directCategoryConditions = []
+      const splitCategoryConditions = []
+
+      if (categoryFilterValues.stringValues.length > 0) {
+        directCategoryConditions.push({ categoryId: { $in: categoryFilterValues.stringValues } })
+        splitCategoryConditions.push({ "splits.categoryId": { $in: categoryFilterValues.stringValues } })
+      }
+
+      if (categoryFilterValues.objectIdValues.length > 0) {
+        directCategoryConditions.push({ categoryId: { $in: categoryFilterValues.objectIdValues } })
+        splitCategoryConditions.push({ "splits.categoryId": { $in: categoryFilterValues.objectIdValues } })
+      }
+
       categoryConditions.push({
         $or: [
-          { categoryId: { $in: safeCategoryIds } },
-          { "splits.categoryId": { $in: safeCategoryIds } },
+          ...directCategoryConditions,
+          ...splitCategoryConditions,
         ],
       })
     }
