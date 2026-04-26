@@ -749,12 +749,8 @@ function buildTransactionsFilter({
       conditions.push({
         $or: [
           { searchTerms: { $all: tokens } },
-          {
-            $and: [
-              { searchTerms: { $exists: false } },
-              buildLegacySearchCondition(regex),
-            ],
-          },
+          { searchText: regex },
+          buildLegacySearchCondition(regex),
         ],
       })
     } else if (normalizedSearchText) {
@@ -762,12 +758,7 @@ function buildTransactionsFilter({
       conditions.push({
         $or: [
           { searchText: regex },
-          {
-            $and: [
-              { searchText: { $exists: false } },
-              buildLegacySearchCondition(regex),
-            ],
-          },
+          buildLegacySearchCondition(regex),
         ],
       })
     }
