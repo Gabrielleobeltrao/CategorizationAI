@@ -17,6 +17,13 @@ const DISMISSED_JOBS_STORAGE_KEY = "categorization_jobs_dismissed_ids"
 const PRIVATE_BETA_REVIEW_EVENT = "app:private-beta-review-required"
 const TRANSACTIONS_UPLOAD_CHUNK_SIZE = 400
 const TRANSACTIONS_IMPORT_DONE_EVENT = "app:transactions-import-job-done"
+const JOBS_IDLE_REFRESH_MS = 60000
+const JOBS_ACTIVE_REFRESH_MS = 2500
+
+function isDocumentVisible() {
+  if (typeof document === "undefined") return true
+  return document.visibilityState !== "hidden"
+}
 
 function getJobId(job = {}) {
   return String(job?._id || job?.id || job?.jobId || "")
@@ -182,8 +189,11 @@ export function CategorizationJobsProvider({ children }) {
   const notifiedIdsRef = useRef(new Set())
   const loadingClientIdsRef = useRef(new Set())
   const dismissedJobIdsRef = useRef(readDismissedJobIdsFromStorage())
+  const isRefreshingJobsRef = useRef(false)
 
   const refreshJobs = useCallback(async () => {
+    if (isRefreshingJobsRef.current || !isDocumentVisible()) return
+    isRefreshingJobsRef.current = true
     try {
       const list = await listCategorizationJobs({ limit: 20 })
       const safeList = (Array.isArray(list) ? list : []).filter(
@@ -192,6 +202,8 @@ export function CategorizationJobsProvider({ children }) {
       setJobs((current) => upsertJobs(current, safeList))
     } catch {
       // silent refresh
+    } finally {
+      isRefreshingJobsRef.current = false
     }
   }, [])
 
@@ -203,10 +215,19 @@ export function CategorizationJobsProvider({ children }) {
   }, [refreshJobs])
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      refreshJobs()
-    }, 5000)
-    return () => clearInterval(timer)
+    const refreshWhenVisible = () => {
+      if (isDocumentVisible()) refreshJobs()
+    }
+    const timer = setInterval(refreshWhenVisible, JOBS_IDLE_REFRESH_MS)
+
+    window.addEventListener("focus", refreshWhenVisible)
+    document.addEventListener("visibilitychange", refreshWhenVisible)
+
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener("focus", refreshWhenVisible)
+      document.removeEventListener("visibilitychange", refreshWhenVisible)
+    }
   }, [refreshJobs])
 
   useEffect(() => {
@@ -235,7 +256,7 @@ export function CategorizationJobsProvider({ children }) {
         (job) => job && !dismissedJobIdsRef.current.has(getJobId(job))
       )
       setJobs((current) => upsertJobs(current, safeResults))
-    }, 1500)
+    }, JOBS_ACTIVE_REFRESH_MS)
 
     return () => {
       cancelled = true
