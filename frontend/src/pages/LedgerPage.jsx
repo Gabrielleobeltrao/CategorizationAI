@@ -378,6 +378,7 @@ function LedgerPage() {
     const transactionsQueryKeyRef = useRef("")
     const transactionsRequestIdRef = useRef(0)
     const transactionsRequestAbortRef = useRef(null)
+    const loadMoreRequestAbortRef = useRef(null)
     const lastScrollTopRef = useRef(0)
     const handledCompletedJobIdsRef = useRef(new Set())
     const activeSection = location.pathname.endsWith("/ledger/accounts")
@@ -387,6 +388,7 @@ function LedgerPage() {
             : "ledger"
     const transactionsSearchTerm = transactionsQuery.searchTerm
     const transactionsFilters = transactionsQuery.filters
+    const hasActiveTransactionsQuery = !isDefaultLedgerQuery(transactionsSearchTerm, transactionsFilters)
 
     const buildTransactionsQueryKey = useCallback((search, nextFilters) => JSON.stringify({
         clientId,
@@ -585,6 +587,9 @@ function LedgerPage() {
         }
 
         transactionsRequestAbortRef.current?.abort()
+        loadMoreRequestAbortRef.current?.abort()
+        loadingMoreRef.current = false
+        setIsLoadingMoreTransactions(false)
         const abortController = new AbortController()
         transactionsRequestAbortRef.current = abortController
         setIsLoadingTransactions(true)
@@ -624,6 +629,7 @@ function LedgerPage() {
         return () => {
             active = false
             abortController.abort()
+            loadMoreRequestAbortRef.current?.abort()
             if (transactionsRequestAbortRef.current === abortController) {
                 transactionsRequestAbortRef.current = null
             }
@@ -756,13 +762,16 @@ function LedgerPage() {
         }
     }, [clientId, transactionsFilters.accountIds])
 
-    const loadMoreTransactions = async () => {
+    const loadMoreTransactions = useCallback(async () => {
         if (!clientId || !transactionsHasMore || isLoadingTransactions) return
         if (loadingMoreRef.current) return
 
         try {
             loadingMoreRef.current = true
             setIsLoadingMoreTransactions(true)
+            loadMoreRequestAbortRef.current?.abort()
+            const abortController = new AbortController()
+            loadMoreRequestAbortRef.current = abortController
             const currentQueryKey = transactionsQueryKeyRef.current
             const targetCursor = String(transactionsNextCursor || "").trim()
             if (!targetCursor) {
@@ -773,6 +782,7 @@ function LedgerPage() {
             const payload = await listTransactionsByClientId(clientId, {
                 ...getTransactionsQueryOptions(targetCursor),
                 silentLoading: true,
+                signal: abortController.signal,
             })
 
             if (transactionsQueryKeyRef.current !== currentQueryKey) {
@@ -793,12 +803,21 @@ function LedgerPage() {
             setTransactionsHasMore(Boolean(payload?.hasMore && nextCursor))
             setTransactionsNextCursor(nextCursor || null)
         } catch (err) {
+            if (err?.name === "AbortError") return
             error(err.message || "Failed to load more transactions")
         } finally {
             loadingMoreRef.current = false
             setIsLoadingMoreTransactions(false)
+            loadMoreRequestAbortRef.current = null
         }
-    }
+    }, [
+        clientId,
+        error,
+        getTransactionsQueryOptions,
+        isLoadingTransactions,
+        transactionsHasMore,
+        transactionsNextCursor,
+    ])
 
     const handlePageScroll = useCallback(() => {
         if (activeSection !== "ledger") return
@@ -833,6 +852,7 @@ function LedgerPage() {
         if (activeSection !== "ledger") return
         const container = pageScrollRef.current
         if (!container) return
+        if (hasActiveTransactionsQuery) return
         if (!transactionsHasMore || isLoadingTransactions || isLoadingMoreTransactions) return
         if (loadingMoreRef.current) return
 
@@ -842,6 +862,7 @@ function LedgerPage() {
         }
     }, [
         activeSection,
+        hasActiveTransactionsQuery,
         isLoadingMoreTransactions,
         isLoadingTransactions,
         ledgerEntries.length,
@@ -861,6 +882,7 @@ function LedgerPage() {
 
         transactionsQueryKeyRef.current = nextQueryKey
         loadingMoreRef.current = false
+        loadMoreRequestAbortRef.current?.abort()
         if (isDefaultLedgerQuery(nextQuery.searchTerm, nextQuery.filters)) {
             const cachedBootstrap = getCachedClientLedgerBootstrap(clientId)
             if (cachedBootstrap) {
@@ -900,6 +922,7 @@ function LedgerPage() {
 
         transactionsQueryKeyRef.current = nextQueryKey
         loadingMoreRef.current = false
+        loadMoreRequestAbortRef.current?.abort()
         setLedgerEntries([])
         setTransactionsHasMore(false)
         setTransactionsNextCursor(null)
