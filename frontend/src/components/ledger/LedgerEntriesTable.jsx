@@ -718,11 +718,6 @@ function LedgerEntriesTable({
     const applySearchInput = useCallback(() => {
         const nextValue = String(searchInput || "").trim()
         const currentValue = String(searchTerm || "").trim()
-        const isSearchUseful = nextValue.length === 0 || nextValue.length >= 2
-        if (!isSearchUseful) {
-            if (currentValue.length === 0) return
-            return
-        }
         if (nextValue === currentValue) return
         onSearchTermChange?.(nextValue)
     }, [onSearchTermChange, searchInput, searchTerm])
@@ -730,7 +725,7 @@ function LedgerEntriesTable({
     useEffect(() => {
         const timeoutId = setTimeout(() => {
             applySearchInput()
-        }, 420)
+        }, 350)
 
         return () => clearTimeout(timeoutId)
     }, [applySearchInput])

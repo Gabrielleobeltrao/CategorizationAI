@@ -10,9 +10,11 @@ import {
 const BATCH_SIZE = 1000
 const ATLAS_SEARCH_INDEX_NAME = String(process.env.MONGODB_ATLAS_SEARCH_INDEX_NAME || "transactions_autocomplete").trim()
 const ATLAS_SEARCH_ENABLED = String(process.env.MONGODB_ATLAS_SEARCH_ENABLED || "true").trim().toLowerCase() !== "false"
+const TRANSACTIONS_SEARCH_ENGINE = String(process.env.TRANSACTIONS_SEARCH_ENGINE || "mongo").trim().toLowerCase()
 const ATLAS_SEARCH_QUERY_TIMEOUT_MS = Math.max(0, Number(process.env.MONGODB_ATLAS_SEARCH_QUERY_TIMEOUT_MS || 2000))
 const ATLAS_SEARCH_COOLDOWN_MS = Math.max(0, Number(process.env.MONGODB_ATLAS_SEARCH_COOLDOWN_MS || 120000))
 const TRANSACTIONS_BACKFILL_BATCH_SIZE = Math.max(100, Number(process.env.TRANSACTIONS_BACKFILL_BATCH_SIZE || 500))
+const TRANSACTIONS_LEGACY_SEARCH_MAX_TIME_MS = Math.max(0, Number(process.env.TRANSACTIONS_LEGACY_SEARCH_MAX_TIME_MS || 1200))
 let atlasSearchDisabledUntil = 0
 
 function escapeRegex(value = "") {
@@ -56,6 +58,39 @@ function buildLegacySearchCondition(regex) {
       { date: regex },
     ],
   }
+}
+
+function buildMongoSearchCondition(search = "", mode = "fast") {
+  const safeMode = String(mode || "fast").trim().toLowerCase()
+  if (safeMode === "none") return null
+
+  const { normalizedSearchText, tokens, hasOnlyIndexableTokens } = buildTransactionSearchQuery(search)
+  if (!normalizedSearchText) return null
+
+  if (safeMode === "fast" && hasOnlyIndexableTokens) {
+    return { searchTerms: { $all: tokens } }
+  }
+
+  const regex = new RegExp(escapeRegex(normalizedSearchText), "i")
+  if (safeMode === "legacy") {
+    return buildLegacySearchCondition(regex)
+  }
+
+  if (safeMode === "full" && hasOnlyIndexableTokens) {
+    return {
+      $or: [
+        { searchTerms: { $all: tokens } },
+        { searchText: regex },
+        buildLegacySearchCondition(regex),
+      ],
+    }
+  }
+
+  return { searchText: regex }
+}
+
+function isLegacySearchTimeout(error) {
+  return Number(error?.code || error?.errorResponse?.code || 0) === 50
 }
 
 function encodeTransactionsCursor(item = {}) {
@@ -455,7 +490,13 @@ function buildTransactionsAtlasSearchStage({
 }) {
   const safeClientId = String(clientId || "").trim()
   const safeSearch = String(search || "").trim()
-  if (!ATLAS_SEARCH_ENABLED || !ATLAS_SEARCH_INDEX_NAME || !safeClientId || !safeSearch) {
+  if (
+    TRANSACTIONS_SEARCH_ENGINE !== "atlas" ||
+    !ATLAS_SEARCH_ENABLED ||
+    !ATLAS_SEARCH_INDEX_NAME ||
+    !safeClientId ||
+    !safeSearch
+  ) {
     return null
   }
 
@@ -533,7 +574,7 @@ function buildAtlasSearchTimeoutError(timeoutMs) {
 }
 
 async function ensureTransactionsSearchIndex() {
-  if (!ATLAS_SEARCH_ENABLED || !ATLAS_SEARCH_INDEX_NAME) return
+  if (TRANSACTIONS_SEARCH_ENGINE !== "atlas" || !ATLAS_SEARCH_ENABLED || !ATLAS_SEARCH_INDEX_NAME) return
 
   const db = getDB()
   const collection = db.collection("transactions")
@@ -598,6 +639,9 @@ export async function ensureTransactionsIndexes() {
   await Promise.all([
     collection.createIndex({ clientId: 1, date: -1, _id: -1 }),
     collection.createIndex({ clientId: 1, searchTerms: 1 }),
+    collection.createIndex({ clientId: 1, searchTerms: 1, date: -1, _id: -1 }),
+    collection.createIndex({ clientId: 1, accountId: 1, searchTerms: 1, date: -1, _id: -1 }),
+    collection.createIndex({ clientId: 1, year: 1, month: 1, searchTerms: 1, date: -1, _id: -1 }),
     collection.createIndex({ clientId: 1, dateValue: -1, _id: -1 }),
     collection.createIndex({ clientId: 1, year: 1, month: 1, date: -1, _id: -1 }),
     collection.createIndex({ clientId: 1, accountId: 1, date: -1, _id: -1 }),
@@ -1192,6 +1236,7 @@ export async function listTransactionPeriodOptions(clientId) {
 function buildTransactionsFilter({
   clientId,
   search = "",
+  searchMode = "fast",
   accountIds = [],
   categoryIds = [],
   includeUncategorizedIncome = false,
@@ -1208,29 +1253,10 @@ function buildTransactionsFilter({
   iconType = "all",
 }) {
   const conditions = [{ clientId }]
-  const safeSearch = String(search || "").trim()
 
-  if (safeSearch) {
-    const { normalizedSearchText, tokens, hasOnlyIndexableTokens } = buildTransactionSearchQuery(safeSearch)
-
-    if (hasOnlyIndexableTokens) {
-      const regex = new RegExp(escapeRegex(normalizedSearchText), "i")
-      conditions.push({
-        $or: [
-          { searchTerms: { $all: tokens } },
-          { searchText: regex },
-          buildLegacySearchCondition(regex),
-        ],
-      })
-    } else if (normalizedSearchText) {
-      const regex = new RegExp(escapeRegex(normalizedSearchText), "i")
-      conditions.push({
-        $or: [
-          { searchText: regex },
-          buildLegacySearchCondition(regex),
-        ],
-      })
-    }
+  const searchCondition = buildMongoSearchCondition(search, searchMode)
+  if (searchCondition) {
+    conditions.push(searchCondition)
   }
 
   const safeAccountIds = Array.isArray(accountIds) ? accountIds.filter(Boolean) : []
@@ -1260,7 +1286,8 @@ function buildTransactionsFilter({
     conditions.push({ amount: { $lt: 0 } })
   }
 
-  const safeCategoryIds = Array.isArray(categoryIds) ? categoryIds.filter(Boolean) : []
+  const categoryFilterValues = buildCategoryFilterValues(categoryIds)
+  const safeCategoryIds = categoryFilterValues.stringValues
   if (safeCategoryIds.length > 0 || includeUncategorizedIncome || includeUncategorizedExpenses) {
     const categoryConditions = []
     const uncategorizedIncomeCondition = {
@@ -1331,8 +1358,10 @@ function buildTransactionsFilter({
     if (safeCategoryIds.length > 0) {
       const directCategoryConditions = []
       const splitCategoryConditions = []
+      const derivedCategoryConditions = []
 
       if (categoryFilterValues.stringValues.length > 0) {
+        derivedCategoryConditions.push({ allCategoryIds: { $in: categoryFilterValues.stringValues } })
         directCategoryConditions.push({ categoryId: { $in: categoryFilterValues.stringValues } })
         splitCategoryConditions.push({ "splits.categoryId": { $in: categoryFilterValues.stringValues } })
       }
@@ -1344,6 +1373,7 @@ function buildTransactionsFilter({
 
       categoryConditions.push({
         $or: [
+          ...derivedCategoryConditions,
           ...directCategoryConditions,
           ...splitCategoryConditions,
         ],
@@ -1534,6 +1564,83 @@ function buildTransactionsFilter({
   return conditions.length === 1 ? conditions[0] : { $and: conditions }
 }
 
+function buildCursorFilterFromCursor(cursor = "") {
+  const parsedCursor = decodeTransactionsCursor(cursor)
+  if (!parsedCursor) return null
+
+  return {
+    $or: [
+      { date: { $lt: parsedCursor.date } },
+      { date: parsedCursor.date, _id: { $lt: new ObjectId(parsedCursor.id) } },
+    ],
+  }
+}
+
+function combineMongoFilters(...filters) {
+  const safeFilters = filters.filter(Boolean)
+  if (safeFilters.length === 0) return {}
+  if (safeFilters.length === 1) return safeFilters[0]
+  return { $and: safeFilters }
+}
+
+function buildCursorPagePayload(rawItems = [], safeLimit) {
+  const hasMore = rawItems.length > safeLimit
+  const items = hasMore ? rawItems.slice(0, safeLimit) : rawItems
+  const lastItem = items.length > 0 ? items[items.length - 1] : null
+
+  return {
+    items,
+    limit: safeLimit,
+    hasMore,
+    nextCursor: hasMore && lastItem ? encodeTransactionsCursor(lastItem) : null,
+    paginationMode: "cursor",
+  }
+}
+
+async function findTransactionsCursorPage(collection, filter, safeLimit, options = {}) {
+  let cursor = collection
+    .find(filter, { projection: TRANSACTION_LIST_PROJECTION })
+    .sort({ date: -1, _id: -1 })
+    .limit(safeLimit + 1)
+
+  const maxTimeMS = Math.max(0, Number(options?.maxTimeMS || 0))
+  if (maxTimeMS > 0) {
+    cursor = cursor.maxTimeMS(maxTimeMS)
+  }
+
+  const rawItems = await cursor.toArray()
+  return buildCursorPagePayload(rawItems, safeLimit)
+}
+
+async function findTransactionsPage(collection, filter, safePage, safeLimit, options = {}) {
+  const skip = (safePage - 1) * safeLimit
+  let itemsCursor = collection
+    .find(filter, { projection: TRANSACTION_LIST_PROJECTION })
+    .sort({ date: -1, _id: -1 })
+    .skip(skip)
+    .limit(safeLimit)
+
+  let countCursor = collection.countDocuments(filter)
+  const maxTimeMS = Math.max(0, Number(options?.maxTimeMS || 0))
+  if (maxTimeMS > 0) {
+    itemsCursor = itemsCursor.maxTimeMS(maxTimeMS)
+    countCursor = collection.countDocuments(filter, { maxTimeMS })
+  }
+
+  const [items, total] = await Promise.all([
+    itemsCursor.toArray(),
+    countCursor,
+  ])
+
+  return {
+    items,
+    page: safePage,
+    limit: safeLimit,
+    total,
+    totalPages: Math.ceil(total / safeLimit),
+  }
+}
+
 // busca paginada
 export async function listTransactionsPaginated({
   clientId,
@@ -1562,14 +1669,15 @@ export async function listTransactionsPaginated({
 
   const safePage = Math.max(1, Number(page) || 1)
   const safeLimit = Math.min(200, Math.max(1, Number(limit) || 50))
-  const skip = (safePage - 1) * safeLimit
   const safePaginationMode = String(paginationMode || "page").trim().toLowerCase() === "cursor"
     ? "cursor"
     : "page"
+  const safeSearch = String(search || "").trim()
 
   const filter = buildTransactionsFilter({
     clientId,
     search,
+    searchMode: "fast",
     accountIds,
     categoryIds,
     includeUncategorizedIncome,
@@ -1585,6 +1693,27 @@ export async function listTransactionsPaginated({
     llmProcessed,
     iconType,
   })
+  const legacySearchFilter = safeSearch
+    ? buildTransactionsFilter({
+        clientId,
+        search,
+        searchMode: "legacy",
+        accountIds,
+        categoryIds,
+        includeUncategorizedIncome,
+        includeUncategorizedExpenses,
+        splitMode,
+        amountSign,
+        years,
+        months,
+        fromDate,
+        toDate,
+        minAmount,
+        maxAmount,
+        llmProcessed,
+        iconType,
+      })
+    : null
   const atlasSearchStage = buildTransactionsAtlasSearchStage({
     clientId,
     search,
@@ -1604,17 +1733,9 @@ export async function listTransactionsPaginated({
     iconType,
   })
   if (safePaginationMode === "cursor") {
-    const parsedCursor = decodeTransactionsCursor(cursor)
-    const cursorFilter = parsedCursor
-      ? {
-          $or: [
-            { date: { $lt: parsedCursor.date } },
-            { date: parsedCursor.date, _id: { $lt: new ObjectId(parsedCursor.id) } },
-          ],
-        }
-      : null
+    const cursorFilter = buildCursorFilterFromCursor(cursor)
+    const finalFilter = combineMongoFilters(filter, cursorFilter)
 
-    const finalFilter = cursorFilter ? { $and: [filter, cursorFilter] } : filter
     if (atlasSearchStage) {
       const rawItems = await runTransactionsAtlasSearchAggregate(collection, [
         atlasSearchStage,
@@ -1639,22 +1760,23 @@ export async function listTransactionsPaginated({
       }
     }
 
-    const rawItems = await collection
-      .find(finalFilter, { projection: TRANSACTION_LIST_PROJECTION })
-      .sort({ date: -1, _id: -1 })
-      .limit(safeLimit + 1)
-      .toArray()
+    const fastResult = await findTransactionsCursorPage(collection, finalFilter, safeLimit)
+    if (!safeSearch || fastResult.items.length > 0 || !legacySearchFilter) {
+      return fastResult
+    }
 
-    const hasMore = rawItems.length > safeLimit
-    const items = hasMore ? rawItems.slice(0, safeLimit) : rawItems
-    const lastItem = items.length > 0 ? items[items.length - 1] : null
-
-    return {
-      items,
-      limit: safeLimit,
-      hasMore,
-      nextCursor: hasMore && lastItem ? encodeTransactionsCursor(lastItem) : null,
-      paginationMode: "cursor",
+    try {
+      return await findTransactionsCursorPage(
+        collection,
+        combineMongoFilters(legacySearchFilter, cursorFilter),
+        safeLimit,
+        { maxTimeMS: TRANSACTIONS_LEGACY_SEARCH_MAX_TIME_MS }
+      )
+    } catch (error) {
+      if (isLegacySearchTimeout(error)) {
+        return fastResult
+      }
+      throw error
     }
   }
 
@@ -1663,7 +1785,7 @@ export async function listTransactionsPaginated({
       runTransactionsAtlasSearchAggregate(collection, [
         atlasSearchStage,
         { $sort: { date: -1, _id: -1 } },
-        { $skip: skip },
+        { $skip: (safePage - 1) * safeLimit },
         { $limit: safeLimit },
         { $project: TRANSACTION_LIST_PROJECTION },
       ]),
@@ -1685,22 +1807,20 @@ export async function listTransactionsPaginated({
     }
   }
 
-  const [items, total] = await Promise.all([
-    collection
-      .find(filter, { projection: TRANSACTION_LIST_PROJECTION })
-      .sort({ date: -1, _id: -1 })
-      .skip(skip)
-      .limit(safeLimit)
-      .toArray(),
-    collection.countDocuments(filter),
-  ])
+  const fastResult = await findTransactionsPage(collection, filter, safePage, safeLimit)
+  if (!safeSearch || fastResult.items.length > 0 || !legacySearchFilter) {
+    return fastResult
+  }
 
-  return {
-    items,
-    page: safePage,
-    limit: safeLimit,
-    total,
-    totalPages: Math.ceil(total / safeLimit),
+  try {
+    return await findTransactionsPage(collection, legacySearchFilter, safePage, safeLimit, {
+      maxTimeMS: TRANSACTIONS_LEGACY_SEARCH_MAX_TIME_MS,
+    })
+  } catch (error) {
+    if (isLegacySearchTimeout(error)) {
+      return fastResult
+    }
+    throw error
   }
 }
 
