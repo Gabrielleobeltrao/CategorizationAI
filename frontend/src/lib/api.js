@@ -2,6 +2,8 @@ const API_BASE_URL = import.meta.env.DEV
   ? import.meta.env.VITE_API_URL || "http://localhost:3001"
   : ""
 let pendingRequests = 0
+let pendingBackgroundRequests = 0
+let lastBackgroundLoadingMessage = "Refreshing cached data..."
 
 function emitLoadingState() {
   if (typeof window === "undefined") return
@@ -24,13 +26,42 @@ function stopLoading() {
   emitLoadingState()
 }
 
+function emitBackgroundLoadingState() {
+  if (typeof window === "undefined") return
+
+  window.dispatchEvent(
+    new CustomEvent("app:background-loading-state", {
+      detail: {
+        isVisible: pendingBackgroundRequests > 0,
+        pendingRequests: pendingBackgroundRequests,
+        message: lastBackgroundLoadingMessage,
+      },
+    })
+  )
+}
+
+function startBackgroundLoading(message) {
+  lastBackgroundLoadingMessage = String(message || "").trim() || "Refreshing cached data..."
+  pendingBackgroundRequests += 1
+  emitBackgroundLoadingState()
+}
+
+function stopBackgroundLoading() {
+  pendingBackgroundRequests = Math.max(0, pendingBackgroundRequests - 1)
+  emitBackgroundLoadingState()
+}
+
 export async function api(path, options = {}) {
-  const { silentLoading = false, ...fetchOptions } = options
+  const { silentLoading = false, backgroundLoadingMessage = "", ...fetchOptions } = options
   const method = String(fetchOptions.method || "GET").toUpperCase()
   const useGlobalLoading = !silentLoading && method !== "GET"
+  const useBackgroundLoading = Boolean(String(backgroundLoadingMessage || "").trim())
 
   if (useGlobalLoading) {
     startLoading()
+  }
+  if (useBackgroundLoading) {
+    startBackgroundLoading(backgroundLoadingMessage)
   }
 
   try {
@@ -59,6 +90,9 @@ export async function api(path, options = {}) {
   } finally {
     if (useGlobalLoading) {
       stopLoading()
+    }
+    if (useBackgroundLoading) {
+      stopBackgroundLoading()
     }
   }
 }

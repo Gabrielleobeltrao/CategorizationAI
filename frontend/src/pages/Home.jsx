@@ -250,7 +250,10 @@ function Home() {
     }
 
     try {
-      const payload = await getOfficeHomeDashboard(safeOfficeId, { noCache: true })
+      const payload = await getOfficeHomeDashboard(safeOfficeId, {
+        noCache: true,
+        backgroundLoadingMessage: cachedDashboard ? "Updating cached dashboard data..." : "",
+      })
       setDashboard(normalizeDashboardPayload(payload))
     } catch (err) {
       if (!cachedDashboard) {
