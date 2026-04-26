@@ -356,7 +356,7 @@ function LedgerPage() {
     })
     const [showUploadModal, setShowUploadModal] = useState(false)
     const [isBaseDataLoaded, setIsBaseDataLoaded] = useState(false)
-    const skipNextTransactionsFetchRef = useRef(false)
+    const skipNextTransactionsFetchKeyRef = useRef("")
     const skipNextPeriodOptionsFetchRef = useRef(false)
     const skipNextSummaryFetchRef = useRef(false)
     const hasLoadedPeriodOptionsRef = useRef(false)
@@ -473,7 +473,7 @@ function LedgerPage() {
                 })
                 if (canHydrateTransactions) {
                     transactionsQueryKeyRef.current = bootstrapQueryKey
-                    skipNextTransactionsFetchRef.current = true
+                    skipNextTransactionsFetchKeyRef.current = bootstrapQueryKey
                     skipNextPeriodOptionsFetchRef.current = Boolean(payload?.periodOptions)
                     skipNextSummaryFetchRef.current = Boolean(payload?.summary)
                     hasLoadedPeriodOptionsRef.current = Boolean(payload?.periodOptions)
@@ -595,13 +595,14 @@ function LedgerPage() {
         const currentQueryKey = buildTransactionsQueryKey(transactionsSearchTerm, transactionsFilters)
         transactionsQueryKeyRef.current = currentQueryKey
 
-        if (skipNextTransactionsFetchRef.current) {
-            skipNextTransactionsFetchRef.current = false
+        if (skipNextTransactionsFetchKeyRef.current === currentQueryKey) {
+            skipNextTransactionsFetchKeyRef.current = ""
             setIsLoadingTransactions(false)
             return () => {
                 active = false
             }
         }
+        skipNextTransactionsFetchKeyRef.current = ""
 
         transactionsRequestAbortRef.current?.abort()
         loadMoreRequestAbortRef.current?.abort()
