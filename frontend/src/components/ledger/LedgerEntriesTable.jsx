@@ -393,6 +393,7 @@ function LedgerEntriesTable({
     searchTerm,
     filters,
     onApplyFilters,
+    onOpenFilters,
     onSearchTermChange,
     onUpdateEntry,
     onUpdateEntries,
@@ -1799,6 +1800,7 @@ function LedgerEntriesTable({
                                 }`}
                                 onClick={() => {
                                     setDraftFilters(appliedFilters)
+                                    onOpenFilters?.()
                                     setShowFilterModal(true)
                                 }}
                             >
