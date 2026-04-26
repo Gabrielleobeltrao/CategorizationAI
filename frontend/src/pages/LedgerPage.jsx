@@ -354,6 +354,7 @@ function LedgerPage() {
     const skipNextTransactionsFetchRef = useRef(false)
     const skipNextPeriodOptionsFetchRef = useRef(false)
     const skipNextSummaryFetchRef = useRef(false)
+    const hasLoadedPeriodOptionsRef = useRef(false)
     const [hasAppliedPreselectedCategory, setHasAppliedPreselectedCategory] = useState(false)
 
     const [showAccountForm, setShowAccountForm] = useState(false)
@@ -461,6 +462,7 @@ function LedgerPage() {
                 skipNextTransactionsFetchRef.current = true
                 skipNextPeriodOptionsFetchRef.current = Boolean(payload?.periodOptions)
                 skipNextSummaryFetchRef.current = Boolean(payload?.summary)
+                hasLoadedPeriodOptionsRef.current = Boolean(payload?.periodOptions)
                 setIsBaseDataLoaded(true)
             })
             .catch((err) => {
@@ -644,49 +646,29 @@ function LedgerPage() {
         transactionsSearchTerm,
     ])
 
-    useEffect(() => {
-        let active = true
-
-        if (!clientId) {
-            setTransactionsPeriodOptions({ years: [], months: [] })
-            return () => {
-                active = false
-            }
-        }
-
-        if (!isBaseDataLoaded) {
-            return () => {
-                active = false
-            }
-        }
-
+    const loadTransactionsPeriodOptions = useCallback(async () => {
+        if (!clientId || hasLoadedPeriodOptionsRef.current) return
         if (skipNextPeriodOptionsFetchRef.current) {
             skipNextPeriodOptionsFetchRef.current = false
-            return () => {
-                active = false
-            }
+            hasLoadedPeriodOptionsRef.current = true
+            return
         }
 
-        listTransactionPeriodOptions(clientId, { silentLoading: true })
-            .then((payload) => {
-                if (!active) return
-                setTransactionsPeriodOptions({
-                    years: Array.isArray(payload?.years) ? payload.years : [],
-                    months: Array.isArray(payload?.months) ? payload.months : [],
-                })
+        try {
+            const payload = await listTransactionPeriodOptions(clientId, { silentLoading: true })
+            setTransactionsPeriodOptions({
+                years: Array.isArray(payload?.years) ? payload.years : [],
+                months: Array.isArray(payload?.months) ? payload.months : [],
             })
-            .catch(() => {
-                if (!active) return
-                setTransactionsPeriodOptions({ years: [], months: [] })
-            })
-
-        return () => {
-            active = false
+            hasLoadedPeriodOptionsRef.current = true
+        } catch {
+            setTransactionsPeriodOptions({ years: [], months: [] })
         }
-    }, [clientId, isBaseDataLoaded])
+    }, [clientId])
 
     useEffect(() => {
         let active = true
+        let timer = null
 
         if (!clientId) {
             setTransactionsSummary({
@@ -695,12 +677,14 @@ function LedgerPage() {
             })
             return () => {
                 active = false
+                if (timer) clearTimeout(timer)
             }
         }
 
         if (!isBaseDataLoaded) {
             return () => {
                 active = false
+                if (timer) clearTimeout(timer)
             }
         }
 
@@ -708,30 +692,34 @@ function LedgerPage() {
             skipNextSummaryFetchRef.current = false
             return () => {
                 active = false
+                if (timer) clearTimeout(timer)
             }
         }
 
-        summarizeTransactionsByClientId(clientId, {
-            accountIds: transactionsFilters.accountIds,
-            silentLoading: true,
-        })
-            .then((payload) => {
-                if (!active) return
-                setTransactionsSummary({
-                    totalAmount: Number(payload?.totalAmount || 0),
-                    totalCount: Number(payload?.totalCount || 0),
-                })
+        timer = setTimeout(() => {
+            summarizeTransactionsByClientId(clientId, {
+                accountIds: transactionsFilters.accountIds,
+                silentLoading: true,
             })
-            .catch(() => {
-                if (!active) return
-                setTransactionsSummary({
-                    totalAmount: 0,
-                    totalCount: 0,
+                .then((payload) => {
+                    if (!active) return
+                    setTransactionsSummary({
+                        totalAmount: Number(payload?.totalAmount || 0),
+                        totalCount: Number(payload?.totalCount || 0),
+                    })
                 })
-            })
+                .catch(() => {
+                    if (!active) return
+                    setTransactionsSummary({
+                        totalAmount: 0,
+                        totalCount: 0,
+                    })
+                })
+        }, 1200)
 
         return () => {
             active = false
+            if (timer) clearTimeout(timer)
         }
     }, [clientId, isBaseDataLoaded, transactionsFilters.accountIds])
 
@@ -1527,6 +1515,7 @@ function LedgerPage() {
                                         searchTerm={transactionsSearchTerm}
                                         filters={transactionsFilters}
                                         onApplyFilters={handleApplyTransactionsFilters}
+                                        onOpenFilters={loadTransactionsPeriodOptions}
                                         onSearchTermChange={handleTransactionsSearchTermChange}
                                         onUpdateEntry={handleUpdateTransaction}
                                         onUpdateEntries={handleUpdateTransactionsBulk}
