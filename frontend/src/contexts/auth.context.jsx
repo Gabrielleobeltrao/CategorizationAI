@@ -1,7 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"
-import { api } from "../lib/api"
-import { getMyProfile } from "../services/auth.service"
+import { getAuthBootstrap } from "../services/auth.service"
 import { readSessionCache, removeSessionCache, writeSessionCache } from "../utils/sessionCache"
 
 const AuthContext = createContext(null)
@@ -11,22 +10,10 @@ let bootstrapPromise = null
 let bootstrapCache = readSessionCache(AUTH_SNAPSHOT_CACHE_KEY, null)
 
 async function loadAuthSnapshot() {
-  const [sessionData, profile] = await Promise.all([
-    api("/api/auth/get-session", { silentLoading: true }).catch(() => null),
-    getMyProfile().catch(() => null),
-  ])
-  const isAuthenticated = Boolean(sessionData?.session && sessionData?.user)
-
-  if (!isAuthenticated) {
-    return {
-      isAuthenticated: false,
-      profile: null,
-    }
-  }
-
+  const snapshot = await getAuthBootstrap().catch(() => null)
   return {
-    isAuthenticated: true,
-    profile,
+    isAuthenticated: Boolean(snapshot?.isAuthenticated),
+    profile: snapshot?.profile || null,
   }
 }
 
@@ -72,6 +59,11 @@ export function AuthProvider({ children }) {
     setIsBootstrapping(false)
   }, [])
 
+  const beginAuthenticatedSession = useCallback(() => {
+    setIsAuthenticated(true)
+    setIsBootstrapping(true)
+  }, [])
+
   const updateProfile = useCallback((nextProfile) => {
     const safeProfile = nextProfile || null
     bootstrapCache = {
@@ -113,9 +105,10 @@ export function AuthProvider({ children }) {
       profile,
       refreshAuth,
       clearAuth,
+      beginAuthenticatedSession,
       updateProfile,
     }),
-    [clearAuth, isAuthenticated, isBootstrapping, profile, refreshAuth, updateProfile]
+    [beginAuthenticatedSession, clearAuth, isAuthenticated, isBootstrapping, profile, refreshAuth, updateProfile]
   )
 
   return (

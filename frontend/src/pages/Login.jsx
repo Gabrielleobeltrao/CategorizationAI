@@ -10,25 +10,27 @@ function Login() {
     const [ password, setPassword] = useState("")
     const navigate = useNavigate()
     const { success, error } = useNotification()
-    const { refreshAuth } = useAuth()
+    const { beginAuthenticatedSession, clearAuth, refreshAuth } = useAuth()
 
     const handleSubmit = async (e) => {
         e.preventDefault()
             try {
                 await signIn(email, password)
-                const snapshot = await refreshAuth({ force: true })
                 success("Login successful")
+                beginAuthenticatedSession()
+                navigate("/home")
+                const snapshot = await refreshAuth({ force: true })
                 const profile = snapshot?.profile || null
                 if (profile?.mustChangePassword) {
-                    navigate("/update-password")
+                    navigate("/update-password", { replace: true })
                     return
                 }
                 if (!profile) {
-                    navigate("/complete-registration")
+                    navigate("/complete-registration", { replace: true })
                     return
                 }
-                navigate("/home")
             } catch (err) {
+                clearAuth()
                 error(err.message || "Failed to login")
             }
     }

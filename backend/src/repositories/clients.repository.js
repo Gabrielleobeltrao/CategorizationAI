@@ -3,6 +3,26 @@ import { getDB } from "../db.js"
 
 const ATLAS_SEARCH_ENABLED = String(process.env.MONGODB_ATLAS_SEARCH_ENABLED || "true").trim().toLowerCase() !== "false"
 const CLIENTS_SEARCH_INDEX_NAME = String(process.env.MONGODB_ATLAS_SEARCH_CLIENTS_INDEX_NAME || "clients_autocomplete").trim()
+const ATLAS_SEARCH_QUERY_TIMEOUT_MS = Math.max(0, Number(process.env.MONGODB_ATLAS_SEARCH_QUERY_TIMEOUT_MS || 2000))
+const ATLAS_SEARCH_COOLDOWN_MS = Math.max(0, Number(process.env.MONGODB_ATLAS_SEARCH_COOLDOWN_MS || 120000))
+let clientsAtlasSearchDisabledUntil = 0
+
+const CLIENTS_SEARCH_STORED_SOURCE_FIELDS = [
+    "_id",
+    "officeId",
+    "name",
+    "businessType",
+    "description",
+    "mainActivity",
+    "state",
+    "tagIds",
+    "owners",
+    "ownerEmail",
+    "ownerPhone",
+    "ownerSearch",
+    "createdAt",
+    "updatedAt",
+]
 
 function escapeRegex(value = "") {
     return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
@@ -50,6 +70,9 @@ function buildClientsSearchIndexDefinition() {
     const searchableField = buildSearchableStringFieldDefinition()
 
     return {
+        storedSource: {
+            include: CLIENTS_SEARCH_STORED_SOURCE_FIELDS,
+        },
         mappings: {
             dynamic: false,
             fields: {
@@ -82,7 +105,9 @@ function isAtlasSearchUnavailableError(error) {
         message.includes("fts indexes has been reached") ||
         message.includes("search index") ||
         message.includes("index not found for search") ||
-        message.includes("query requires a search index")
+        message.includes("query requires a search index") ||
+        message.includes("returnstoredsource") ||
+        message.includes("storedsource")
     )
 }
 
@@ -112,6 +137,7 @@ function buildClientsAtlasSearchStage({ officeId, search = "" }) {
     return {
         $search: {
             index: CLIENTS_SEARCH_INDEX_NAME,
+            returnStoredSource: true,
             compound: {
                 filter: [
                     {
@@ -173,6 +199,12 @@ function buildClientsAtlasSearchStage({ officeId, search = "" }) {
     }
 }
 
+function buildAtlasSearchTimeoutError(timeoutMs) {
+    const error = new Error(`Atlas Search timed out after ${timeoutMs}ms`)
+    error.code = "ATLAS_SEARCH_TIMEOUT"
+    return error
+}
+
 async function ensureClientsSearchIndex() {
     if (!ATLAS_SEARCH_ENABLED || !CLIENTS_SEARCH_INDEX_NAME) return
 
@@ -207,10 +239,24 @@ async function ensureClientsSearchIndex() {
 }
 
 async function runClientsAtlasSearchAggregate(collection, pipeline = []) {
+    if (clientsAtlasSearchDisabledUntil > Date.now()) {
+        return null
+    }
+
     try {
-        return await collection.aggregate(pipeline).toArray()
+        if (ATLAS_SEARCH_QUERY_TIMEOUT_MS <= 0) {
+            return await collection.aggregate(pipeline).toArray()
+        }
+
+        return await Promise.race([
+            collection.aggregate(pipeline).toArray(),
+            new Promise((_, reject) => {
+                setTimeout(() => reject(buildAtlasSearchTimeoutError(ATLAS_SEARCH_QUERY_TIMEOUT_MS)), ATLAS_SEARCH_QUERY_TIMEOUT_MS)
+            }),
+        ])
     } catch (error) {
-        if (isAtlasSearchUnavailableError(error)) {
+        if (error?.code === "ATLAS_SEARCH_TIMEOUT" || isAtlasSearchUnavailableError(error)) {
+            clientsAtlasSearchDisabledUntil = Date.now() + ATLAS_SEARCH_COOLDOWN_MS
             return null
         }
 

@@ -24,6 +24,12 @@ export function signOut() {
   })
 }
 
+export function getAuthBootstrap() {
+  return api("/api/app/bootstrap", {
+    silentLoading: true,
+  })
+}
+
 export function getMyProfile() {
   return api("/api/user-profiles/me")
 }
