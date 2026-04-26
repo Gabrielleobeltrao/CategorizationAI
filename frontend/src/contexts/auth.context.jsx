@@ -2,11 +2,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"
 import { api } from "../lib/api"
 import { getMyProfile } from "../services/auth.service"
+import { readSessionCache, removeSessionCache, writeSessionCache } from "../utils/sessionCache"
 
 const AuthContext = createContext(null)
+const AUTH_SNAPSHOT_CACHE_KEY = "auth:snapshot:v1"
 
 let bootstrapPromise = null
-let bootstrapCache = null
+let bootstrapCache = readSessionCache(AUTH_SNAPSHOT_CACHE_KEY, null)
 
 async function loadAuthSnapshot() {
   const [sessionData, profile] = await Promise.all([
@@ -35,6 +37,7 @@ async function bootstrapAuthSnapshot(force = false) {
   bootstrapPromise = loadAuthSnapshot()
     .then((result) => {
       bootstrapCache = result
+      writeSessionCache(AUTH_SNAPSHOT_CACHE_KEY, result)
       return result
     })
     .finally(() => {
@@ -45,9 +48,9 @@ async function bootstrapAuthSnapshot(force = false) {
 }
 
 export function AuthProvider({ children }) {
-  const [isBootstrapping, setIsBootstrapping] = useState(true)
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [profile, setProfile] = useState(null)
+  const [isBootstrapping, setIsBootstrapping] = useState(() => !bootstrapCache)
+  const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(bootstrapCache?.isAuthenticated))
+  const [profile, setProfile] = useState(() => bootstrapCache?.profile || null)
 
   const refreshAuth = useCallback(async (options = {}) => {
     const force = Boolean(options?.force)
@@ -63,6 +66,7 @@ export function AuthProvider({ children }) {
       isAuthenticated: false,
       profile: null,
     }
+    writeSessionCache(AUTH_SNAPSHOT_CACHE_KEY, bootstrapCache)
     setIsAuthenticated(false)
     setProfile(null)
     setIsBootstrapping(false)
@@ -73,6 +77,11 @@ export function AuthProvider({ children }) {
     bootstrapCache = {
       isAuthenticated: Boolean(safeProfile),
       profile: safeProfile,
+    }
+    if (safeProfile) {
+      writeSessionCache(AUTH_SNAPSHOT_CACHE_KEY, bootstrapCache)
+    } else {
+      removeSessionCache(AUTH_SNAPSHOT_CACHE_KEY)
     }
     setIsAuthenticated(Boolean(safeProfile))
     setProfile(safeProfile)
