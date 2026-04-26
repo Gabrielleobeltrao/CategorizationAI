@@ -404,6 +404,7 @@ function LedgerEntriesTable({
     onOpenCreateAccount,
     overlayBoundaryRef,
     isLoading = false,
+    isSearchDisabled = false,
     isLoadingMore,
     isCategorizingWithLlm = false,
     pendingLlmEntryIds = [],
@@ -717,11 +718,12 @@ function LedgerEntriesTable({
     }, [])
 
     const applySearchInput = useCallback(() => {
+        if (isSearchDisabled) return
         const nextValue = String(searchInput || "").trim()
         const currentValue = String(searchTerm || "").trim()
         if (nextValue === currentValue) return
         onSearchTermChange?.(nextValue)
-    }, [onSearchTermChange, searchInput, searchTerm])
+    }, [isSearchDisabled, onSearchTermChange, searchInput, searchTerm])
 
     useEffect(() => {
         const timeoutId = setTimeout(() => {
@@ -1773,6 +1775,7 @@ function LedgerEntriesTable({
                                     placeholder="Search"
                                     value={searchInput}
                                     onChange={(e) => setSearchInput(e.target.value)}
+                                    disabled={isSearchDisabled}
                                     className="w-full rounded-md border border-gray-300 py-2 pl-9 pr-3 text-sm outline-none focus:border-gray-500 bg-white"
                                 />
                                 <svg
