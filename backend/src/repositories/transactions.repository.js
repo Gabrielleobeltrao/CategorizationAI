@@ -9,6 +9,9 @@ import {
 const BATCH_SIZE = 1000
 const ATLAS_SEARCH_INDEX_NAME = String(process.env.MONGODB_ATLAS_SEARCH_INDEX_NAME || "transactions_autocomplete").trim()
 const ATLAS_SEARCH_ENABLED = String(process.env.MONGODB_ATLAS_SEARCH_ENABLED || "true").trim().toLowerCase() !== "false"
+const ATLAS_SEARCH_QUERY_TIMEOUT_MS = Math.max(0, Number(process.env.MONGODB_ATLAS_SEARCH_QUERY_TIMEOUT_MS || 2000))
+const ATLAS_SEARCH_COOLDOWN_MS = Math.max(0, Number(process.env.MONGODB_ATLAS_SEARCH_COOLDOWN_MS || 120000))
+let atlasSearchDisabledUntil = 0
 
 function escapeRegex(value = "") {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
@@ -75,6 +78,27 @@ const TRANSACTION_LIST_PROJECTION = {
   splits: 1,
 }
 
+const TRANSACTION_SEARCH_STORED_SOURCE_FIELDS = [
+  "_id",
+  "clientId",
+  "accountId",
+  "accountName",
+  "date",
+  "description",
+  "amount",
+  "categoryId",
+  "category",
+  "isSplit",
+  "llmProcessed",
+  "llmStatus",
+  "llmProcessedAt",
+  "categorizedSource",
+  "llmCategorySuggestionId",
+  "llmCategorySuggestionName",
+  "searchText",
+  "splits",
+]
+
 function buildTransactionsSearchIndexDefinition() {
   const searchableStringField = [
     { type: "token" },
@@ -89,6 +113,9 @@ function buildTransactionsSearchIndexDefinition() {
   ]
 
   return {
+    storedSource: {
+      include: TRANSACTION_SEARCH_STORED_SOURCE_FIELDS,
+    },
     mappings: {
       dynamic: false,
       fields: {
@@ -124,7 +151,9 @@ function isAtlasSearchUnavailableError(error) {
     message.includes("fts indexes has been reached") ||
     message.includes("search index") ||
     message.includes("index not found for search") ||
-    message.includes("query requires a search index")
+    message.includes("query requires a search index") ||
+    message.includes("returnstoredsource") ||
+    message.includes("storedsource")
   )
 }
 
@@ -191,6 +220,7 @@ function buildTransactionsAtlasSearchStage({ clientId, search = "" }) {
   return {
     $search: {
       index: ATLAS_SEARCH_INDEX_NAME,
+      returnStoredSource: true,
       compound: {
         filter: [
           {
@@ -205,6 +235,12 @@ function buildTransactionsAtlasSearchStage({ clientId, search = "" }) {
       },
     },
   }
+}
+
+function buildAtlasSearchTimeoutError(timeoutMs) {
+  const error = new Error(`Atlas Search timed out after ${timeoutMs}ms`)
+  error.code = "ATLAS_SEARCH_TIMEOUT"
+  return error
 }
 
 async function ensureTransactionsSearchIndex() {
@@ -241,10 +277,24 @@ async function ensureTransactionsSearchIndex() {
 }
 
 async function runTransactionsAtlasSearchAggregate(collection, pipeline = []) {
+  if (atlasSearchDisabledUntil > Date.now()) {
+    return null
+  }
+
   try {
-    return await collection.aggregate(pipeline).toArray()
+    if (ATLAS_SEARCH_QUERY_TIMEOUT_MS <= 0) {
+      return await collection.aggregate(pipeline).toArray()
+    }
+
+    return await Promise.race([
+      collection.aggregate(pipeline).toArray(),
+      new Promise((_, reject) => {
+        setTimeout(() => reject(buildAtlasSearchTimeoutError(ATLAS_SEARCH_QUERY_TIMEOUT_MS)), ATLAS_SEARCH_QUERY_TIMEOUT_MS)
+      }),
+    ])
   } catch (error) {
-    if (isAtlasSearchUnavailableError(error)) {
+    if (error?.code === "ATLAS_SEARCH_TIMEOUT" || isAtlasSearchUnavailableError(error)) {
+      atlasSearchDisabledUntil = Date.now() + ATLAS_SEARCH_COOLDOWN_MS
       return null
     }
 
