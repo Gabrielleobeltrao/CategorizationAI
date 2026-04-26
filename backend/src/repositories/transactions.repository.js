@@ -1,6 +1,7 @@
 import { ObjectId } from "mongodb"
 import { getDB } from "../db.js"
 import {
+  buildTransactionDerivedFields,
   buildTransactionSearchQuery,
   buildTransactionSearchTerms,
   buildTransactionSearchText,
@@ -11,6 +12,7 @@ const ATLAS_SEARCH_INDEX_NAME = String(process.env.MONGODB_ATLAS_SEARCH_INDEX_NA
 const ATLAS_SEARCH_ENABLED = String(process.env.MONGODB_ATLAS_SEARCH_ENABLED || "true").trim().toLowerCase() !== "false"
 const ATLAS_SEARCH_QUERY_TIMEOUT_MS = Math.max(0, Number(process.env.MONGODB_ATLAS_SEARCH_QUERY_TIMEOUT_MS || 2000))
 const ATLAS_SEARCH_COOLDOWN_MS = Math.max(0, Number(process.env.MONGODB_ATLAS_SEARCH_COOLDOWN_MS || 120000))
+const TRANSACTIONS_BACKFILL_BATCH_SIZE = Math.max(100, Number(process.env.TRANSACTIONS_BACKFILL_BATCH_SIZE || 500))
 let atlasSearchDisabledUntil = 0
 
 function escapeRegex(value = "") {
@@ -99,6 +101,18 @@ const TRANSACTION_SEARCH_STORED_SOURCE_FIELDS = [
   "splits",
 ]
 
+const TRANSACTION_DERIVED_FIELD_NAMES = [
+  "dateValue",
+  "year",
+  "month",
+  "hasSplit",
+  "allCategoryIds",
+  "hasUncategorizedIncome",
+  "hasUncategorizedExpense",
+  "llmProcessedState",
+  "iconType",
+]
+
 function buildTransactionsSearchIndexDefinition() {
   const searchableStringField = [
     { type: "token" },
@@ -122,12 +136,21 @@ function buildTransactionsSearchIndexDefinition() {
         clientId: { type: "token" },
         accountId: { type: "token" },
         categoryId: { type: "token" },
+        allCategoryIds: { type: "token" },
         categorizedSource: { type: "token" },
+        iconType: { type: "token" },
         llmStatus: { type: "token" },
+        llmProcessedState: { type: "token" },
         date: { type: "token" },
+        year: { type: "token" },
+        month: { type: "token" },
+        dateValue: { type: "date" },
         amount: { type: "number" },
         llmProcessed: { type: "boolean" },
         isSplit: { type: "boolean" },
+        hasSplit: { type: "boolean" },
+        hasUncategorizedIncome: { type: "boolean" },
+        hasUncategorizedExpense: { type: "boolean" },
         description: searchableStringField,
         accountName: searchableStringField,
         category: searchableStringField,
@@ -172,7 +195,236 @@ function buildAtlasAutocompleteClause(path, query, boost, fuzzy = null) {
   return { autocomplete }
 }
 
-function buildTransactionsAtlasSearchStage({ clientId, search = "" }) {
+function parseDateAtUtcStart(value = "") {
+  const safe = String(value || "").trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(safe)) return null
+  const [yearString, monthString, dayString] = safe.split("-")
+  const year = Number(yearString)
+  const month = Number(monthString)
+  const day = Number(dayString)
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return null
+  return new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0))
+}
+
+function parseDateAtUtcEnd(value = "") {
+  const start = parseDateAtUtcStart(value)
+  if (!start) return null
+  return new Date(Date.UTC(
+    start.getUTCFullYear(),
+    start.getUTCMonth(),
+    start.getUTCDate(),
+    23,
+    59,
+    59,
+    999
+  ))
+}
+
+function buildTransactionsAtlasFilterClauses({
+  clientId,
+  accountIds = [],
+  categoryIds = [],
+  includeUncategorizedIncome = false,
+  includeUncategorizedExpenses = false,
+  splitMode = "all",
+  amountSign = "all",
+  years = [],
+  months = [],
+  fromDate = "",
+  toDate = "",
+  minAmount = null,
+  maxAmount = null,
+  llmProcessed = "all",
+  iconType = "all",
+}) {
+  const clauses = [
+    {
+      equals: {
+        path: "clientId",
+        value: String(clientId || "").trim(),
+      },
+    },
+  ]
+
+  const safeAccountIds = Array.isArray(accountIds) ? accountIds.filter(Boolean) : []
+  if (safeAccountIds.length > 0) {
+    clauses.push({
+      in: {
+        path: "accountId",
+        value: safeAccountIds,
+      },
+    })
+  }
+
+  if (splitMode === "split") {
+    clauses.push({
+      equals: {
+        path: "hasSplit",
+        value: true,
+      },
+    })
+  } else if (splitMode === "regular") {
+    clauses.push({
+      equals: {
+        path: "hasSplit",
+        value: false,
+      },
+    })
+  }
+
+  if (amountSign === "positive") {
+    clauses.push({
+      range: {
+        path: "amount",
+        gt: 0,
+      },
+    })
+  } else if (amountSign === "negative") {
+    clauses.push({
+      range: {
+        path: "amount",
+        lt: 0,
+      },
+    })
+  }
+
+  if (typeof minAmount === "number" || typeof maxAmount === "number") {
+    const range = { path: "amount" }
+    if (typeof minAmount === "number") range.gte = minAmount
+    if (typeof maxAmount === "number") range.lte = maxAmount
+    clauses.push({ range })
+  }
+
+  const safeCategoryIds = Array.isArray(categoryIds) ? categoryIds.filter(Boolean) : []
+  if (safeCategoryIds.length > 0 || includeUncategorizedIncome || includeUncategorizedExpenses) {
+    const should = []
+
+    if (safeCategoryIds.length > 0) {
+      should.push({
+        in: {
+          path: "allCategoryIds",
+          value: safeCategoryIds,
+        },
+      })
+    }
+
+    if (includeUncategorizedIncome) {
+      should.push({
+        equals: {
+          path: "hasUncategorizedIncome",
+          value: true,
+        },
+      })
+    }
+
+    if (includeUncategorizedExpenses) {
+      should.push({
+        equals: {
+          path: "hasUncategorizedExpense",
+          value: true,
+        },
+      })
+    }
+
+    if (should.length > 0) {
+      clauses.push({
+        compound: {
+          should,
+          minimumShouldMatch: 1,
+        },
+      })
+    }
+  }
+
+  const fromDateValue = parseDateAtUtcStart(fromDate)
+  const toDateValue = parseDateAtUtcEnd(toDate)
+  if (fromDateValue || toDateValue) {
+    const range = { path: "dateValue" }
+    if (fromDateValue) range.gte = fromDateValue
+    if (toDateValue) range.lte = toDateValue
+    clauses.push({ range })
+  }
+
+  const safeYears = Array.isArray(years)
+    ? years.map((item) => String(item || "").trim()).filter((item) => /^\d{4}$/.test(item))
+    : []
+  const safeMonths = Array.isArray(months)
+    ? months.map((item) => String(item || "").trim()).filter((item) => /^(0[1-9]|1[0-2])$/.test(item))
+    : []
+
+  if (safeYears.length > 0 || safeMonths.length > 0) {
+    if (safeYears.length > 0 && safeMonths.length > 0) {
+      clauses.push({
+        compound: {
+          should: safeYears.flatMap((year) =>
+            safeMonths.map((month) => ({
+              compound: {
+                filter: [
+                  { equals: { path: "year", value: year } },
+                  { equals: { path: "month", value: month } },
+                ],
+              },
+            }))
+          ),
+          minimumShouldMatch: 1,
+        },
+      })
+    } else if (safeYears.length > 0) {
+      clauses.push({
+        in: {
+          path: "year",
+          value: safeYears,
+        },
+      })
+    } else if (safeMonths.length > 0) {
+      clauses.push({
+        in: {
+          path: "month",
+          value: safeMonths,
+        },
+      })
+    }
+  }
+
+  if (llmProcessed === "processed" || llmProcessed === "not_processed") {
+    clauses.push({
+      equals: {
+        path: "llmProcessedState",
+        value: llmProcessed,
+      },
+    })
+  }
+
+  if (iconType === "ai" || iconType === "memory" || iconType === "none") {
+    clauses.push({
+      equals: {
+        path: "iconType",
+        value: iconType,
+      },
+    })
+  }
+
+  return clauses
+}
+
+function buildTransactionsAtlasSearchStage({
+  clientId,
+  search = "",
+  accountIds = [],
+  categoryIds = [],
+  includeUncategorizedIncome = false,
+  includeUncategorizedExpenses = false,
+  splitMode = "all",
+  amountSign = "all",
+  years = [],
+  months = [],
+  fromDate = "",
+  toDate = "",
+  minAmount = null,
+  maxAmount = null,
+  llmProcessed = "all",
+  iconType = "all",
+}) {
   const safeClientId = String(clientId || "").trim()
   const safeSearch = String(search || "").trim()
   if (!ATLAS_SEARCH_ENABLED || !ATLAS_SEARCH_INDEX_NAME || !safeClientId || !safeSearch) {
@@ -222,14 +474,23 @@ function buildTransactionsAtlasSearchStage({ clientId, search = "" }) {
       index: ATLAS_SEARCH_INDEX_NAME,
       returnStoredSource: true,
       compound: {
-        filter: [
-          {
-            equals: {
-              path: "clientId",
-              value: safeClientId,
-            },
-          },
-        ],
+        filter: buildTransactionsAtlasFilterClauses({
+          clientId: safeClientId,
+          accountIds,
+          categoryIds,
+          includeUncategorizedIncome,
+          includeUncategorizedExpenses,
+          splitMode,
+          amountSign,
+          years,
+          months,
+          fromDate,
+          toDate,
+          minAmount,
+          maxAmount,
+          llmProcessed,
+          iconType,
+        }),
         should,
         minimumShouldMatch: 1,
       },
@@ -309,8 +570,14 @@ export async function ensureTransactionsIndexes() {
   await Promise.all([
     collection.createIndex({ clientId: 1, date: -1, _id: -1 }),
     collection.createIndex({ clientId: 1, searchTerms: 1 }),
+    collection.createIndex({ clientId: 1, dateValue: -1, _id: -1 }),
+    collection.createIndex({ clientId: 1, year: 1, month: 1, date: -1, _id: -1 }),
     collection.createIndex({ clientId: 1, accountId: 1, date: -1, _id: -1 }),
     collection.createIndex({ clientId: 1, categoryId: 1, date: -1, _id: -1 }),
+    collection.createIndex({ clientId: 1, allCategoryIds: 1, date: -1, _id: -1 }),
+    collection.createIndex({ clientId: 1, hasSplit: 1, date: -1, _id: -1 }),
+    collection.createIndex({ clientId: 1, llmProcessedState: 1, date: -1, _id: -1 }),
+    collection.createIndex({ clientId: 1, iconType: 1, date: -1, _id: -1 }),
     collection.createIndex({ clientId: 1, createdAt: -1 }),
     collection.createIndex({ clientId: 1, updatedAt: -1 }),
     collection.createIndex({ clientId: 1, llmProcessedAt: -1 }),
@@ -322,6 +589,61 @@ export async function ensureTransactionsIndexes() {
   ])
 
   await ensureTransactionsSearchIndex()
+}
+
+function buildTransactionsBackfillFilter() {
+  return {
+    $or: [
+      { searchTerms: { $exists: false } },
+      { searchText: { $exists: false } },
+      ...TRANSACTION_DERIVED_FIELD_NAMES.map((field) => ({ [field]: { $exists: false } })),
+    ],
+  }
+}
+
+export async function backfillTransactionsSearchAndDerivedFields() {
+  const db = getDB()
+  const collection = db.collection("transactions")
+
+  while (true) {
+    const transactions = await collection
+      .find(buildTransactionsBackfillFilter())
+      .project({
+        _id: 1,
+        date: 1,
+        description: 1,
+        accountName: 1,
+        amount: 1,
+        categoryId: 1,
+        category: 1,
+        splits: 1,
+        isSplit: 1,
+        llmProcessed: 1,
+        llmStatus: 1,
+        llmProcessedAt: 1,
+        categorizedSource: 1,
+      })
+      .limit(TRANSACTIONS_BACKFILL_BATCH_SIZE)
+      .toArray()
+
+    if (transactions.length === 0) return
+
+    const operations = transactions.map((transaction) => ({
+      updateOne: {
+        filter: { _id: transaction._id },
+        update: {
+          $set: {
+            searchTerms: buildTransactionSearchTerms(transaction),
+            searchText: buildTransactionSearchText(transaction),
+            ...buildTransactionDerivedFields(transaction),
+            updatedAt: new Date(),
+          },
+        },
+      },
+    }))
+
+    await collection.bulkWrite(operations, { ordered: false })
+  }
 }
 
 // salva transações em lote (batch)
@@ -355,6 +677,7 @@ export async function insertTransactionsInBatches(transactions) {
       categorizedSource: t.categorizedSource ?? null,
       searchTerms: buildTransactionSearchTerms(t),
       searchText: buildTransactionSearchText(t),
+      ...buildTransactionDerivedFields(t),
       createdAt: new Date(),
       updatedAt: new Date(),
     }))
@@ -391,6 +714,15 @@ export async function updateTransactionById(id, patch) {
       llmCategorySuggestionName: patch.llmCategorySuggestionName,
       searchTerms: patch.searchTerms,
       searchText: patch.searchText,
+      dateValue: patch.dateValue,
+      year: patch.year,
+      month: patch.month,
+      hasSplit: patch.hasSplit,
+      allCategoryIds: patch.allCategoryIds,
+      hasUncategorizedIncome: patch.hasUncategorizedIncome,
+      hasUncategorizedExpense: patch.hasUncategorizedExpense,
+      llmProcessedState: patch.llmProcessedState,
+      iconType: patch.iconType,
       categorizedAt: patch.categorizedAt,
       categorizedSource: patch.categorizedSource,
       updatedAt: new Date(),
@@ -428,6 +760,15 @@ export async function updateTransactionsByIds(updates = []) {
         category: patch.category,
         searchTerms: patch.searchTerms,
         searchText: patch.searchText,
+        dateValue: patch.dateValue,
+        year: patch.year,
+        month: patch.month,
+        hasSplit: patch.hasSplit,
+        allCategoryIds: patch.allCategoryIds,
+        hasUncategorizedIncome: patch.hasUncategorizedIncome,
+        hasUncategorizedExpense: patch.hasUncategorizedExpense,
+        llmProcessedState: patch.llmProcessedState,
+        iconType: patch.iconType,
         categorizedAt: patch.categorizedAt,
         categorizedSource: patch.categorizedSource,
         updatedAt: new Date(),
@@ -642,6 +983,17 @@ export async function applyLlmCategorizationUpdates(updates = []) {
           llmAmbiguous: item.llmAmbiguous ?? null,
           llmCategorySuggestionId: item.llmCategorySuggestionId ?? null,
           llmCategorySuggestionName: item.llmCategorySuggestionName ?? null,
+          searchTerms: item.searchTerms,
+          searchText: item.searchText,
+          dateValue: item.dateValue,
+          year: item.year,
+          month: item.month,
+          hasSplit: item.hasSplit,
+          allCategoryIds: item.allCategoryIds,
+          hasUncategorizedIncome: item.hasUncategorizedIncome,
+          hasUncategorizedExpense: item.hasUncategorizedExpense,
+          llmProcessedState: item.llmProcessedState,
+          iconType: item.iconType,
           categorizedAt: item.categorizedAt ?? null,
           categorizedSource: item.categorizedSource ?? null,
           updatedAt: new Date(),
@@ -720,6 +1072,17 @@ export async function applyCategoryUpdates(updates = []) {
         $set: {
           categoryId: item.categoryId ?? null,
           category: item.category ?? null,
+          searchTerms: item.searchTerms,
+          searchText: item.searchText,
+          dateValue: item.dateValue,
+          year: item.year,
+          month: item.month,
+          hasSplit: item.hasSplit,
+          allCategoryIds: item.allCategoryIds,
+          hasUncategorizedIncome: item.hasUncategorizedIncome,
+          hasUncategorizedExpense: item.hasUncategorizedExpense,
+          llmProcessedState: item.llmProcessedState,
+          iconType: item.iconType,
           categorizedAt: item.categorizedAt ?? null,
           categorizedSource: item.categorizedSource ?? null,
           updatedAt: new Date(),
@@ -1153,10 +1516,9 @@ export async function listTransactionsPaginated({
     llmProcessed,
     iconType,
   })
-  const atlasSearchStage = buildTransactionsAtlasSearchStage({ clientId, search })
-  const filterWithoutSearch = buildTransactionsFilter({
+  const atlasSearchStage = buildTransactionsAtlasSearchStage({
     clientId,
-    search: "",
+    search,
     accountIds,
     categoryIds,
     includeUncategorizedIncome,
@@ -1172,7 +1534,6 @@ export async function listTransactionsPaginated({
     llmProcessed,
     iconType,
   })
-
   if (safePaginationMode === "cursor") {
     const parsedCursor = decodeTransactionsCursor(cursor)
     const cursorFilter = parsedCursor
@@ -1185,14 +1546,10 @@ export async function listTransactionsPaginated({
       : null
 
     const finalFilter = cursorFilter ? { $and: [filter, cursorFilter] } : filter
-    const finalFilterWithoutSearch = cursorFilter
-      ? { $and: [filterWithoutSearch, cursorFilter] }
-      : filterWithoutSearch
-
     if (atlasSearchStage) {
       const rawItems = await runTransactionsAtlasSearchAggregate(collection, [
         atlasSearchStage,
-        { $match: finalFilterWithoutSearch },
+        ...(cursorFilter ? [{ $match: cursorFilter }] : []),
         { $sort: { date: -1, _id: -1 } },
         { $limit: safeLimit + 1 },
         { $project: TRANSACTION_LIST_PROJECTION },
@@ -1236,7 +1593,6 @@ export async function listTransactionsPaginated({
     const [items, totalResult] = await Promise.all([
       runTransactionsAtlasSearchAggregate(collection, [
         atlasSearchStage,
-        { $match: filterWithoutSearch },
         { $sort: { date: -1, _id: -1 } },
         { $skip: skip },
         { $limit: safeLimit },
@@ -1244,7 +1600,6 @@ export async function listTransactionsPaginated({
       ]),
       runTransactionsAtlasSearchAggregate(collection, [
         atlasSearchStage,
-        { $match: filterWithoutSearch },
         { $count: "total" },
       ]),
     ])
