@@ -11,7 +11,6 @@ import { listCategoriesByClientIdService } from "./category.service.js"
 import {
   listTransactionsPaginatedService,
   listTransactionPeriodOptionsService,
-  summarizeTransactionsService,
 } from "./transactions.service.js"
 import { deleteAccountsByClientIdService } from "./account.service.js"
 import { deleteCategoriesByClientIdService } from "./category.service.js"
@@ -249,16 +248,11 @@ export async function getClientLedgerBootstrapService(clientId, query = {}) {
 
   if (!client) throw new Error("Client not found")
 
-  const [periodOptionsResult, summaryResult] = await Promise.allSettled([
+  const [periodOptionsResult] = await Promise.allSettled([
     withOptionalTimeout(listTransactionPeriodOptionsService({ clientId })),
-    withOptionalTimeout(summarizeTransactionsService({
-      clientId,
-      accountIds: query?.accountIds,
-    })),
   ])
 
   const periodOptions = periodOptionsResult.status === "fulfilled" ? periodOptionsResult.value : null
-  const summary = summaryResult.status === "fulfilled" ? summaryResult.value : null
 
   return {
     client,
@@ -266,7 +260,6 @@ export async function getClientLedgerBootstrapService(clientId, query = {}) {
     categories,
     transactions,
     ...(periodOptions ? { periodOptions } : {}),
-    ...(summary ? { summary } : {}),
   }
 }
 

@@ -17,7 +17,6 @@ const DISMISSED_JOBS_STORAGE_KEY = "categorization_jobs_dismissed_ids"
 const PRIVATE_BETA_REVIEW_EVENT = "app:private-beta-review-required"
 const TRANSACTIONS_UPLOAD_CHUNK_SIZE = 400
 const TRANSACTIONS_IMPORT_DONE_EVENT = "app:transactions-import-job-done"
-const JOBS_IDLE_REFRESH_MS = 60000
 const JOBS_ACTIVE_REFRESH_MS = 2500
 
 function isDocumentVisible() {
@@ -206,29 +205,6 @@ export function CategorizationJobsProvider({ children }) {
       isRefreshingJobsRef.current = false
     }
   }, [])
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      refreshJobs()
-    }, 0)
-    return () => clearTimeout(timer)
-  }, [refreshJobs])
-
-  useEffect(() => {
-    const refreshWhenVisible = () => {
-      if (isDocumentVisible()) refreshJobs()
-    }
-    const timer = setInterval(refreshWhenVisible, JOBS_IDLE_REFRESH_MS)
-
-    window.addEventListener("focus", refreshWhenVisible)
-    document.addEventListener("visibilitychange", refreshWhenVisible)
-
-    return () => {
-      clearInterval(timer)
-      window.removeEventListener("focus", refreshWhenVisible)
-      document.removeEventListener("visibilitychange", refreshWhenVisible)
-    }
-  }, [refreshJobs])
 
   useEffect(() => {
     const active = jobs.filter((job) => {
