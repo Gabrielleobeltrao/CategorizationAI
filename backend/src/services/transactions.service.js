@@ -27,6 +27,7 @@ import { ObjectId } from "mongodb"
 import categorizeTransaction from "../lib/ai/categorizeTransaction.js"
 import categorizeZelle from "../lib/ai/categorizeZelle.js"
 import {
+  buildTransactionDerivedFields,
   buildTransactionSearchTerms,
   buildTransactionSearchText,
 } from "../utils/transactionSearch.js"
@@ -204,6 +205,7 @@ function buildTransactionSearchPatch(transaction = {}) {
   return {
     searchTerms: buildTransactionSearchTerms(transaction),
     searchText: buildTransactionSearchText(transaction),
+    ...buildTransactionDerivedFields(transaction),
   }
 }
 
@@ -556,6 +558,30 @@ function mergeTransactionWithPatch(transaction = {}, patch = {}) {
     merged.category = patch.category ?? null
   }
 
+  if (patch.splits !== undefined) {
+    merged.splits = Array.isArray(patch.splits) ? patch.splits : []
+  }
+
+  if (patch.isSplit !== undefined) {
+    merged.isSplit = Boolean(patch.isSplit)
+  }
+
+  if (patch.llmProcessed !== undefined) {
+    merged.llmProcessed = Boolean(patch.llmProcessed)
+  }
+
+  if (patch.llmStatus !== undefined) {
+    merged.llmStatus = patch.llmStatus ?? null
+  }
+
+  if (patch.llmProcessedAt !== undefined) {
+    merged.llmProcessedAt = patch.llmProcessedAt ?? null
+  }
+
+  if (patch.categorizedSource !== undefined) {
+    merged.categorizedSource = patch.categorizedSource ?? null
+  }
+
   return merged
 }
 
@@ -573,6 +599,27 @@ function buildCategorizationUpdate(transactionId, categoryId, categoryName, now,
     ...buildCategorizedFields(isCategorized, extra.categorizedSource || "ai", now),
     ...extra,
   }
+}
+
+function attachSearchAndDerivedFieldsToUpdates(updates = [], transactionsById = new Map()) {
+  return (Array.isArray(updates) ? updates : []).map((update) => {
+    const currentTransaction = transactionsById.get(String(update?.id || ""))
+    if (!currentTransaction) return update
+
+    const mergedTransaction = mergeTransactionWithPatch(currentTransaction, {
+      categoryId: update?.categoryId,
+      category: update?.category,
+      llmProcessed: true,
+      llmStatus: update?.llmStatus,
+      llmProcessedAt: update?.llmProcessedAt,
+      categorizedSource: update?.categorizedSource,
+    })
+
+    return {
+      ...update,
+      ...buildTransactionSearchPatch(mergedTransaction),
+    }
+  })
 }
 
 async function resolveCategoryDocsByIds(categoryIds = []) {
@@ -1768,10 +1815,15 @@ export async function categorizeTransactionsWithLlmService(input) {
     }
   }
 
-  const writeResult = await applyLlmCategorizationUpdates(updates)
+  const eligibleTransactionById = new Map(
+    eligibleTransactions.map((transaction) => [String(transaction._id), transaction])
+  )
+  const preparedUpdates = attachSearchAndDerivedFieldsToUpdates(updates, eligibleTransactionById)
 
-  const categorizedCount = updates.filter((item) => item.llmStatus === "suggested").length
-  const emptyCount = updates.filter((item) => item.llmStatus === "empty").length
+  const writeResult = await applyLlmCategorizationUpdates(preparedUpdates)
+
+  const categorizedCount = preparedUpdates.filter((item) => item.llmStatus === "suggested").length
+  const emptyCount = preparedUpdates.filter((item) => item.llmStatus === "empty").length
 
   return {
     mode,
@@ -1952,8 +2004,13 @@ export async function categorizeZelleTransactionsService(input) {
     }
   }
 
-  const result = await applyLlmCategorizationUpdates(updates)
-  const categorizedNames = updates.map((item) => String(item.category || "").trim()).filter(Boolean)
+  const eligibleTransactionById = new Map(
+    eligibleTransactions.map((transaction) => [String(transaction._id), transaction])
+  )
+  const preparedUpdates = attachSearchAndDerivedFieldsToUpdates(updates, eligibleTransactionById)
+
+  const result = await applyLlmCategorizationUpdates(preparedUpdates)
+  const categorizedNames = preparedUpdates.map((item) => String(item.category || "").trim()).filter(Boolean)
   const ownerIncomeCount = categorizedNames.filter((name) =>
     String(name || "").toLowerCase().startsWith("no service income -")
   ).length

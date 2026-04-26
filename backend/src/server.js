@@ -3,7 +3,10 @@ import { webcrypto } from "node:crypto"
 import { connectDB, getDB } from "./db.js"
 import app from "./app.js"
 import { createAuth } from "./lib/auth.js"
-import { ensureTransactionsIndexes } from "./repositories/transactions.repository.js"
+import {
+  backfillTransactionsSearchAndDerivedFields,
+  ensureTransactionsIndexes,
+} from "./repositories/transactions.repository.js"
 import { ensureCategorizationJobsIndexes } from "./repositories/categorizationJob.repository.js"
 import { ensureTransactionMemoryIndexes } from "./repositories/transactionMemory.repository.js"
 import { ensureUserProfileIndexes } from "./repositories/userProfile.repository.js"
@@ -38,5 +41,9 @@ await ensureOpenTestAccessCodeIndexes()
 app.locals.auth = createAuth(getDB())
 await startCategorizationWorker()
 await startCategorySyncWorker()
+
+backfillTransactionsSearchAndDerivedFields().catch((error) => {
+  console.error("[server] transactions backfill failed", error)
+})
 
 app.listen(PORT, () => console.log(`API running on ${PORT}`))
