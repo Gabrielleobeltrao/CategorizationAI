@@ -1148,7 +1148,7 @@ export async function listTransactionsPaginated({
         { $project: TRANSACTION_LIST_PROJECTION },
       ])
 
-      if (rawItems) {
+      if (rawItems && rawItems.length > 0) {
         const hasMore = rawItems.length > safeLimit
         const items = hasMore ? rawItems.slice(0, safeLimit) : rawItems
         const lastItem = items.length > 0 ? items[items.length - 1] : null
@@ -1199,7 +1199,7 @@ export async function listTransactionsPaginated({
       ]),
     ])
 
-    if (items && totalResult) {
+    if (items && totalResult && items.length > 0) {
       const total = Number(totalResult?.[0]?.total || 0)
       return {
         items,
