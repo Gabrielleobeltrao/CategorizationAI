@@ -41,11 +41,13 @@ export function clearOfficeByIdCache(officeId = "") {
   removeSessionCache(`${OFFICE_CACHE_PREFIX}${key}`)
 }
 
-export async function getOfficeById(officeId) {
+export async function getOfficeById(officeId, options = {}) {
   const id = String(officeId || "").trim()
   if (!id) throw new Error("officeId is required")
 
-  const payload = await api(`/api/offices/${id}`)
+  const payload = await api(`/api/offices/${id}`, {
+    backgroundLoadingMessage: options?.backgroundLoadingMessage,
+  })
   officeByIdCache.set(id, payload)
   writeSessionCache(`${OFFICE_CACHE_PREFIX}${id}`, payload)
   return payload

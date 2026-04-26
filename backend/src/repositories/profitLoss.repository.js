@@ -114,8 +114,15 @@ export async function getProfitLossByClientAndRange({ clientId, startDate, endDa
 
   const transactions = await db
     .collection("transactions")
-    .find(baseFilter)
-    .sort({ date: 1 })
+    .find(baseFilter, {
+      projection: {
+        date: 1,
+        amount: 1,
+        categoryId: 1,
+        category: 1,
+        splits: 1,
+      },
+    })
     .toArray()
 
   const categoryIds = Array.from(

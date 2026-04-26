@@ -69,7 +69,10 @@ export async function getOfficeHomeDashboard(officeId, options = {}) {
     ? `/api/offices/${safeOfficeId}/dashboard?${queryString}`
     : `/api/offices/${safeOfficeId}/dashboard`
 
-  const payload = await api(path, { silentLoading: true })
+  const payload = await api(path, {
+    silentLoading: true,
+    backgroundLoadingMessage: options?.backgroundLoadingMessage,
+  })
   const cacheKey = getOfficeHomeDashboardCacheKey(safeOfficeId, options)
   officeHomeDashboardCache.set(cacheKey, payload)
   writeSessionCache(getPersistedOfficeHomeDashboardCacheKey(safeOfficeId, options), payload)

@@ -110,30 +110,36 @@ export async function createEmployeeAccount(input) {
   })
 }
 
-export async function listEmployeesByOfficeId(officeId) {
+export async function listEmployeesByOfficeId(officeId, options = {}) {
   const cleanOfficeId = officeId?.trim()
   if (!cleanOfficeId) throw new Error("officeId is required")
 
-  const payload = await api(`/api/offices/${cleanOfficeId}/user-profiles`)
+  const payload = await api(`/api/offices/${cleanOfficeId}/user-profiles`, {
+    backgroundLoadingMessage: options?.backgroundLoadingMessage,
+  })
   employeesByOfficeCache.set(cleanOfficeId, payload)
   writeSessionCache(`${EMPLOYEES_CACHE_PREFIX}${cleanOfficeId}`, payload)
   return payload
 }
 
-export async function listAvailableRoles(officeId) {
+export async function listAvailableRoles(officeId, options = {}) {
   const safeOfficeId = String(officeId || "").trim()
   const query = new URLSearchParams()
   if (safeOfficeId) query.set("officeId", safeOfficeId)
 
   const path = query.toString() ? `/api/roles?${query.toString()}` : "/api/roles"
-  const payload = await api(path)
+  const payload = await api(path, {
+    backgroundLoadingMessage: options?.backgroundLoadingMessage,
+  })
   availableRolesCache.set(getOfficeScopedCacheKey(safeOfficeId), payload)
   writeSessionCache(`${ROLES_CACHE_PREFIX}${getOfficeScopedCacheKey(safeOfficeId)}`, payload)
   return payload
 }
 
-export async function listRolePermissions() {
-  const payload = await api("/api/roles/permissions")
+export async function listRolePermissions(options = {}) {
+  const payload = await api("/api/roles/permissions", {
+    backgroundLoadingMessage: options?.backgroundLoadingMessage,
+  })
   rolePermissionsCache = payload
   writeSessionCache(ROLE_PERMISSIONS_CACHE_KEY, payload)
   return payload

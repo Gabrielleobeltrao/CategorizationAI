@@ -233,7 +233,10 @@ function ClientsPage() {
             setIsLoading(true)
         }
 
-        listClientsByOfficeId(officeId, requestOptions)
+        listClientsByOfficeId(officeId, {
+            ...requestOptions,
+            backgroundLoadingMessage: cachedPayload ? "Updating cached clients..." : "",
+        })
             .then((payload) => {
                 if (!active) return
                 const mapped = Array.isArray(payload?.items)

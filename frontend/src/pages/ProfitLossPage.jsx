@@ -3,6 +3,8 @@ import { useNavigate, useParams } from "react-router-dom"
 import { getClientById } from "../services/clients.service"
 import { useOpenTest } from "../contexts/openTest.context"
 import {
+  getCachedProfitLossByClientId,
+  getCachedProfitLossPeriodOptionsByClientId,
   getProfitLossByClientId,
   getProfitLossPeriodOptionsByClientId,
 } from "../services/profitLoss.service"
@@ -70,7 +72,8 @@ function ProfitLossPage() {
   const [fromDate, setFromDate] = useState("2026-03-01")
   const [toDate, setToDate] = useState("2026-03-31")
   const [month, setMonth] = useState("")
-  const [year, setYear] = useState("")
+  const [year, setYear] = useState(() => readStoredProfitLossYear(clientId))
+  const [yearClientId, setYearClientId] = useState(clientId)
   const [periodOptions, setPeriodOptions] = useState({ months: [], years: [] })
   const [client, setClient] = useState(null)
   const [profitLoss, setProfitLoss] = useState(null)
@@ -89,6 +92,13 @@ function ProfitLossPage() {
     () => (Array.isArray(periodOptions.years) ? periodOptions.years : []),
     [periodOptions.years]
   )
+
+  useEffect(() => {
+    setYear(readStoredProfitLossYear(clientId))
+    setYearClientId(clientId)
+    setMonth("")
+    setProfitLoss(null)
+  }, [clientId])
 
   useEffect(() => {
     let active = true
@@ -134,7 +144,18 @@ function ProfitLossPage() {
       }
     }
 
-    getProfitLossPeriodOptionsByClientId(clientId, { silentLoading: true })
+    const cachedOptions = getCachedProfitLossPeriodOptionsByClientId(clientId)
+    if (cachedOptions) {
+      setPeriodOptions({
+        months: Array.isArray(cachedOptions?.months) ? cachedOptions.months : [],
+        years: Array.isArray(cachedOptions?.years) ? cachedOptions.years : [],
+      })
+    }
+
+    getProfitLossPeriodOptionsByClientId(clientId, {
+      silentLoading: true,
+      backgroundLoadingMessage: cachedOptions ? "Updating cached profit and loss periods..." : "",
+    })
       .then((payload) => {
         if (!active) return
         const nextMonths = Array.isArray(payload?.months) ? payload.months : []
@@ -175,11 +196,13 @@ function ProfitLossPage() {
     const storedYear = readStoredProfitLossYear(clientId)
     if (storedYear && yearOptions.includes(storedYear) && year !== storedYear) {
       setYear(storedYear)
+      setYearClientId(clientId)
       return
     }
 
     if (!yearOptions.includes(year)) {
       setYear(yearOptions[0])
+      setYearClientId(clientId)
     }
   }, [clientId, yearOptions, year])
 
@@ -208,22 +231,38 @@ function ProfitLossPage() {
         return
       }
 
+      if (!isManual && period === "YEAR" && yearClientId !== clientId) {
+        setProfitLoss(null)
+        return
+      }
+
       setIsLoadingProfitLoss(true)
+      const requestOptions = {
+        period: isManual ? "RANGE" : period,
+        month,
+        year,
+        fromDate,
+        toDate,
+      }
+      const cachedProfitLoss = getCachedProfitLossByClientId(clientId, requestOptions)
+      if (cachedProfitLoss) {
+        setProfitLoss(cachedProfitLoss)
+        setIsLoadingProfitLoss(false)
+      }
 
       try {
         const payload = await getProfitLossByClientId(clientId, {
-          period: isManual ? "RANGE" : period,
-          month,
-          year,
-          fromDate,
-          toDate,
+          ...requestOptions,
+          backgroundLoadingMessage: cachedProfitLoss ? "Updating cached profit and loss..." : "",
         })
         if (!active) return
         setProfitLoss(payload || null)
       } catch (err) {
         if (!active) return
-        setProfitLoss(null)
-        error(err.message || "Failed to load profit and loss")
+        if (!cachedProfitLoss) {
+          setProfitLoss(null)
+          error(err.message || "Failed to load profit and loss")
+        }
       } finally {
         if (active) {
           setIsLoadingProfitLoss(false)
@@ -236,7 +275,7 @@ function ProfitLossPage() {
     return () => {
       active = false
     }
-  }, [clientId, period, month, year, fromDate, toDate, isManual, error])
+  }, [clientId, period, month, year, yearClientId, fromDate, toDate, isManual, error])
 
   const revenueBase = useMemo(() => {
     const revenueLine = profitLoss?.statement.find((line) => line.id === "revenue")
@@ -442,7 +481,10 @@ function ProfitLossPage() {
                             ? "bg-gray-900 text-white"
                             : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-100"
                         }`}
-                        onClick={() => setYear(option)}
+                        onClick={() => {
+                          setYear(option)
+                          setYearClientId(clientId)
+                        }}
                       >
                         {option}
                       </button>

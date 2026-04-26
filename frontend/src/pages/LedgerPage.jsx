@@ -186,7 +186,6 @@ function mapTransaction(item = {}) {
 function hydrateLedgerBootstrapPayload(payload = {}, setters = {}, options = {}) {
     const hydrateTransactions = options.hydrateTransactions !== false
     const hydratePeriodOptions = options.hydratePeriodOptions !== false
-    const hydrateSummary = options.hydrateSummary !== false
     const transactionsPayload = payload?.transactions || {}
     const items = Array.isArray(transactionsPayload?.items) ? transactionsPayload.items : []
     const nextCursor = String(transactionsPayload?.nextCursor || "").trim()
@@ -206,13 +205,25 @@ function hydrateLedgerBootstrapPayload(payload = {}, setters = {}, options = {})
             months: Array.isArray(payload?.periodOptions?.months) ? payload.periodOptions.months : [],
         })
     }
+}
 
-    if (hydrateSummary && payload?.summary) {
-        setters.setTransactionsSummary?.({
-            totalAmount: Number(payload?.summary?.totalAmount || 0),
-            totalCount: Number(payload?.summary?.totalCount || 0),
-        })
+function buildTransactionsSummaryOptions(searchTerm = "", filters = {}) {
+    return {
+        search: String(searchTerm || "").trim(),
+        ...normalizeTransactionsFilters(filters),
     }
+}
+
+function getAccountFilterKey(filters = {}) {
+    return (Array.isArray(filters?.accountIds) ? filters.accountIds : [])
+        .map((accountId) => String(accountId || "").trim())
+        .filter(Boolean)
+        .sort()
+        .join("|")
+}
+
+function hasAccountFilterChanged(currentFilters = {}, nextFilters = {}) {
+    return getAccountFilterKey(currentFilters) !== getAccountFilterKey(nextFilters)
 }
 
 function getDefaultUncategorizedLabelByAmount(amount = 0) {
@@ -358,7 +369,6 @@ function LedgerPage() {
     const [isBaseDataLoaded, setIsBaseDataLoaded] = useState(false)
     const skipNextTransactionsFetchKeyRef = useRef("")
     const skipNextPeriodOptionsFetchRef = useRef(false)
-    const skipNextSummaryFetchRef = useRef(false)
     const hasLoadedPeriodOptionsRef = useRef(false)
     const [hasAppliedPreselectedCategory, setHasAppliedPreselectedCategory] = useState(false)
 
@@ -384,6 +394,7 @@ function LedgerPage() {
     const transactionsQueryKeyRef = useRef("")
     const transactionsRequestIdRef = useRef(0)
     const transactionsRequestAbortRef = useRef(null)
+    const summaryRequestIdRef = useRef(0)
     const loadMoreRequestAbortRef = useRef(null)
     const lastScrollTopRef = useRef(0)
     const handledCompletedJobIdsRef = useRef(new Set())
@@ -409,6 +420,36 @@ function LedgerPage() {
         search: transactionsSearchTerm,
         ...transactionsFilters,
     }), [transactionsFilters, transactionsSearchTerm])
+
+    const refreshTransactionsSummary = useCallback(async (searchTerm = "", filters = {}) => {
+        const requestId = ++summaryRequestIdRef.current
+        if (!clientId) {
+            setTransactionsSummary({
+                totalAmount: 0,
+                totalCount: 0,
+            })
+            return
+        }
+
+        try {
+            const payload = await summarizeTransactionsByClientId(clientId, {
+                ...buildTransactionsSummaryOptions(searchTerm, filters),
+                silentLoading: true,
+            })
+
+            if (requestId !== summaryRequestIdRef.current) return
+            setTransactionsSummary({
+                totalAmount: Number(payload?.totalAmount || 0),
+                totalCount: Number(payload?.totalCount || 0),
+            })
+        } catch {
+            if (requestId !== summaryRequestIdRef.current) return
+            setTransactionsSummary({
+                totalAmount: 0,
+                totalCount: 0,
+            })
+        }
+    }, [clientId])
 
     useEffect(() => {
         let active = true
@@ -447,12 +488,15 @@ function LedgerPage() {
             transactionsQueryKeyRef.current = bootstrapQueryKey
         }
 
+        refreshTransactionsSummary(persisted.searchTerm, persisted.filters).catch(() => {})
+
         getClientLedgerBootstrap(clientId, {
             ...persisted.filters,
             search: persisted.searchTerm,
             paginationMode: "cursor",
             limit: TRANSACTIONS_PAGE_SIZE,
             silentLoading: true,
+            backgroundLoadingMessage: cachedBootstrap ? "Updating cached ledger data..." : "",
         })
             .then((payload) => {
                 if (!active) return
@@ -469,13 +513,11 @@ function LedgerPage() {
                 }, {
                     hydrateTransactions: canHydrateTransactions,
                     hydratePeriodOptions: canHydrateTransactions,
-                    hydrateSummary: canHydrateTransactions,
                 })
                 if (canHydrateTransactions) {
                     transactionsQueryKeyRef.current = bootstrapQueryKey
                     skipNextTransactionsFetchKeyRef.current = bootstrapQueryKey
                     skipNextPeriodOptionsFetchRef.current = Boolean(payload?.periodOptions)
-                    skipNextSummaryFetchRef.current = Boolean(payload?.summary)
                     hasLoadedPeriodOptionsRef.current = Boolean(payload?.periodOptions)
                 }
                 setIsBaseDataLoaded(true)
@@ -500,7 +542,7 @@ function LedgerPage() {
         return () => {
             active = false
         }
-    }, [buildTransactionsQueryKey, clientId, error])
+    }, [buildTransactionsQueryKey, clientId, error, refreshTransactionsSummary])
 
     useEffect(() => {
         if (!clientId || !client?.name) return
@@ -682,90 +724,6 @@ function LedgerPage() {
         }
     }, [clientId])
 
-    useEffect(() => {
-        let active = true
-        let timer = null
-
-        if (!clientId) {
-            setTransactionsSummary({
-                totalAmount: 0,
-                totalCount: 0,
-            })
-            return () => {
-                active = false
-                if (timer) clearTimeout(timer)
-            }
-        }
-
-        if (!isBaseDataLoaded) {
-            return () => {
-                active = false
-                if (timer) clearTimeout(timer)
-            }
-        }
-
-        if (skipNextSummaryFetchRef.current) {
-            skipNextSummaryFetchRef.current = false
-            return () => {
-                active = false
-                if (timer) clearTimeout(timer)
-            }
-        }
-
-        timer = setTimeout(() => {
-            summarizeTransactionsByClientId(clientId, {
-                accountIds: transactionsFilters.accountIds,
-                silentLoading: true,
-            })
-                .then((payload) => {
-                    if (!active) return
-                    setTransactionsSummary({
-                        totalAmount: Number(payload?.totalAmount || 0),
-                        totalCount: Number(payload?.totalCount || 0),
-                    })
-                })
-                .catch(() => {
-                    if (!active) return
-                    setTransactionsSummary({
-                        totalAmount: 0,
-                        totalCount: 0,
-                    })
-                })
-        }, 1200)
-
-        return () => {
-            active = false
-            if (timer) clearTimeout(timer)
-        }
-    }, [clientId, isBaseDataLoaded, transactionsFilters.accountIds])
-
-    const refreshTransactionsSummary = useCallback(async () => {
-        if (!clientId) {
-            setTransactionsSummary({
-                totalAmount: 0,
-                totalCount: 0,
-            })
-            return
-        }
-
-        try {
-            const payload = await summarizeTransactionsByClientId(clientId, {
-                accountIds: transactionsFilters.accountIds,
-                silentLoading: true,
-            })
-
-            setTransactionsSummary({
-                totalAmount: Number(payload?.totalAmount || 0),
-                totalCount: Number(payload?.totalCount || 0),
-            })
-        } catch {
-            setTransactionsSummary({
-                totalAmount: 0,
-                totalCount: 0,
-            })
-        }
-    }, [clientId, transactionsFilters.accountIds])
-
     const loadMoreTransactions = useCallback(async () => {
         if (!clientId || !transactionsHasMore || isLoadingTransactions) return
         if (loadingMoreRef.current) return
@@ -919,6 +877,9 @@ function LedgerPage() {
         lastScrollTopRef.current = 0
         pageScrollRef.current?.scrollTo({ top: 0 })
         setTransactionsQuery(nextQuery)
+        if (hasAccountFilterChanged(transactionsFilters, nextQuery.filters)) {
+            refreshTransactionsSummary(nextQuery.searchTerm, nextQuery.filters).catch(() => {})
+        }
     }
 
     const handleTransactionsSearchTermChange = useCallback((nextSearchTerm = "") => {
@@ -962,7 +923,6 @@ function LedgerPage() {
             setLedgerEntries((current) =>
                 current.map((item) => (item.id === id ? normalized : item))
             )
-            refreshTransactionsSummary().catch(() => {})
             if (patch?.date !== undefined) {
                 listTransactionPeriodOptions(clientId, { silentLoading: true })
                     .then((periodOptions) => {
@@ -1012,7 +972,6 @@ function LedgerPage() {
             )
 
             await updateTransactionsByIds(safeUpdates)
-            refreshTransactionsSummary().catch(() => {})
 
             const touchedDate = safeUpdates.some((item) => Object.prototype.hasOwnProperty.call(item.patch, "date"))
             if (touchedDate) {
@@ -1047,7 +1006,6 @@ function LedgerPage() {
         try {
             await deleteTransactionById(id)
             setLedgerEntries((current) => current.filter((item) => item.id !== id))
-            refreshTransactionsSummary().catch(() => {})
             listTransactionPeriodOptions(clientId, { silentLoading: true })
                 .then((periodOptions) => {
                     setTransactionsPeriodOptions({
@@ -1076,7 +1034,6 @@ function LedgerPage() {
             }
             const targetSet = new Set(targetIds)
             setLedgerEntries((current) => current.filter((item) => !targetSet.has(item.id)))
-            refreshTransactionsSummary().catch(() => {})
             listTransactionPeriodOptions(clientId, { silentLoading: true })
                 .then((periodOptions) => {
                     setTransactionsPeriodOptions({
@@ -1140,7 +1097,6 @@ function LedgerPage() {
                 silentLoading: true,
             }),
             listTransactionPeriodOptions(clientId, { silentLoading: true }),
-            refreshTransactionsSummary(),
         ])
 
         const items = Array.isArray(payload?.items) ? payload.items : []

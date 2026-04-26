@@ -66,7 +66,9 @@ export async function listClientsByOfficeId(officeId, options = {}) {
     params.set("search", search)
   }
 
-  const payload = await api(`/api/offices/${cleanOfficeId}/clients?${params.toString()}`)
+  const payload = await api(`/api/offices/${cleanOfficeId}/clients?${params.toString()}`, {
+    backgroundLoadingMessage: options?.backgroundLoadingMessage,
+  })
   const cacheKey = getClientsListCacheKey(cleanOfficeId, options)
   clientsListCache.set(cacheKey, payload)
   writeSessionCache(`${CLIENTS_LIST_CACHE_PREFIX}${cacheKey}`, payload)
@@ -217,6 +219,7 @@ export async function getClientLedgerBootstrap(clientId, options = {}) {
 
   const payload = await api(`/api/clients/${id}/ledger-bootstrap?${params.toString()}`, {
     silentLoading: Boolean(options.silentLoading),
+    backgroundLoadingMessage: options?.backgroundLoadingMessage,
   })
 
   if (isDefaultLedgerBootstrapOptions(options)) {

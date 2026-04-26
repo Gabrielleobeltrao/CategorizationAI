@@ -249,7 +249,9 @@ function EmployeesPage() {
             setIsLoadingRoles(true)
         }
 
-        listAvailableRoles(officeId)
+        listAvailableRoles(officeId, {
+            backgroundLoadingMessage: cachedRoles ? "Updating cached employee roles..." : "",
+        })
             .then((items) => {
                 if (!active) return
                 const safeItems = Array.isArray(items) ? items : []
@@ -280,7 +282,11 @@ function EmployeesPage() {
             setPermissionCatalog(cachedPermissions)
         }
 
-        listRolePermissions()
+        listRolePermissions({
+            backgroundLoadingMessage: Array.isArray(cachedPermissions) && cachedPermissions.length > 0
+                ? "Updating cached role permissions..."
+                : "",
+        })
             .then((items) => {
                 if (!active) return
                 const safeItems = Array.isArray(items) ? items : []
@@ -324,7 +330,9 @@ function EmployeesPage() {
             setIsLoadingEmployees(true)
         }
 
-        listEmployeesByOfficeId(officeId)
+        listEmployeesByOfficeId(officeId, {
+            backgroundLoadingMessage: cachedEmployees ? "Updating cached employees..." : "",
+        })
             .then((profiles) => {
                 if (!active) return
 
