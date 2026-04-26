@@ -25,6 +25,22 @@ import {
 } from "./tagCatalog.service.js"
 import { enqueueClientCategorySync } from "../workers/categorySync.worker.js"
 
+const LEDGER_BOOTSTRAP_OPTIONAL_TIMEOUT_MS = Math.max(
+  0,
+  Number(process.env.LEDGER_BOOTSTRAP_OPTIONAL_TIMEOUT_MS || 1200)
+)
+
+function withOptionalTimeout(promise, timeoutMs = LEDGER_BOOTSTRAP_OPTIONAL_TIMEOUT_MS) {
+  if (!timeoutMs || timeoutMs <= 0) return promise
+
+  return Promise.race([
+    promise,
+    new Promise((resolve) => {
+      setTimeout(() => resolve(null), timeoutMs)
+    }),
+  ])
+}
+
 function normalizeOwners(value) {
   if (!Array.isArray(value)) return []
 
@@ -221,7 +237,7 @@ export async function getClientByIdService(id) {
 export async function getClientLedgerBootstrapService(clientId, query = {}) {
   if (!clientId) throw new Error("clientId is required")
 
-  const [client, accounts, categories, transactions, periodOptions, summary] = await Promise.all([
+  const [client, accounts, categories, transactions] = await Promise.all([
     getClientByIdService(clientId),
     listAccountsByClientIdService(clientId),
     listCategoriesByClientIdService(clientId),
@@ -229,22 +245,28 @@ export async function getClientLedgerBootstrapService(clientId, query = {}) {
       ...query,
       clientId,
     }),
-    listTransactionPeriodOptionsService({ clientId }),
-    summarizeTransactionsService({
-      clientId,
-      accountIds: query?.accountIds,
-    }),
   ])
 
   if (!client) throw new Error("Client not found")
+
+  const [periodOptionsResult, summaryResult] = await Promise.allSettled([
+    withOptionalTimeout(listTransactionPeriodOptionsService({ clientId })),
+    withOptionalTimeout(summarizeTransactionsService({
+      clientId,
+      accountIds: query?.accountIds,
+    })),
+  ])
+
+  const periodOptions = periodOptionsResult.status === "fulfilled" ? periodOptionsResult.value : null
+  const summary = summaryResult.status === "fulfilled" ? summaryResult.value : null
 
   return {
     client,
     accounts,
     categories,
     transactions,
-    periodOptions,
-    summary,
+    ...(periodOptions ? { periodOptions } : {}),
+    ...(summary ? { summary } : {}),
   }
 }
 

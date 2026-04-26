@@ -3,6 +3,8 @@ import { readSessionCache, removeSessionCache, writeSessionCache } from "../util
 
 const clientsListCache = new Map()
 const CLIENTS_LIST_CACHE_PREFIX = "cache:clients-list:"
+const clientLedgerBootstrapCache = new Map()
+const CLIENT_LEDGER_BOOTSTRAP_CACHE_PREFIX = "cache:client-ledger-bootstrap:"
 
 function getClientsListCacheKey(officeId, options = {}) {
   return JSON.stringify({
@@ -132,6 +134,49 @@ export async function getClientById(clientId) {
   return api(`/api/clients/${id}`)
 }
 
+function getClientLedgerBootstrapCacheKey(clientId) {
+  return String(clientId || "").trim()
+}
+
+function isDefaultLedgerBootstrapOptions(options = {}) {
+  return (
+    !String(options.search || "").trim() &&
+    (!Array.isArray(options.accountIds) || options.accountIds.length === 0) &&
+    (!Array.isArray(options.categoryIds) || options.categoryIds.length === 0) &&
+    !Boolean(options.includeUncategorizedIncome) &&
+    !Boolean(options.includeUncategorizedExpenses) &&
+    String(options.splitMode || "all").trim().toLowerCase() === "all" &&
+    String(options.amountSign || "all").trim().toLowerCase() === "all" &&
+    String(options.llmProcessed || "all").trim().toLowerCase() === "all" &&
+    String(options.iconType || "all").trim().toLowerCase() === "all" &&
+    !String(options.fromDate || "").trim() &&
+    !String(options.toDate || "").trim() &&
+    (!Array.isArray(options.years) || options.years.length === 0) &&
+    (!Array.isArray(options.months) || options.months.length === 0) &&
+    (options.minAmount === undefined || String(options.minAmount).trim() === "") &&
+    (options.maxAmount === undefined || String(options.maxAmount).trim() === "") &&
+    !String(options.cursor || "").trim() &&
+    String(options.paginationMode || "page").trim().toLowerCase() === "cursor"
+  )
+}
+
+export function getCachedClientLedgerBootstrap(clientId) {
+  const key = getClientLedgerBootstrapCacheKey(clientId)
+  if (!key) return null
+
+  if (clientLedgerBootstrapCache.has(key)) {
+    return clientLedgerBootstrapCache.get(key) || null
+  }
+
+  const persisted = readSessionCache(`${CLIENT_LEDGER_BOOTSTRAP_CACHE_PREFIX}${key}`, null)
+  if (persisted) {
+    clientLedgerBootstrapCache.set(key, persisted)
+    return persisted
+  }
+
+  return null
+}
+
 export async function getClientLedgerBootstrap(clientId, options = {}) {
   const id = String(clientId || "").trim()
   if (!id) throw new Error("clientId is required")
@@ -170,9 +215,17 @@ export async function getClientLedgerBootstrap(clientId, options = {}) {
   if (options.minAmount !== undefined && String(options.minAmount).trim() !== "") params.set("minAmount", String(options.minAmount).trim())
   if (options.maxAmount !== undefined && String(options.maxAmount).trim() !== "") params.set("maxAmount", String(options.maxAmount).trim())
 
-  return api(`/api/clients/${id}/ledger-bootstrap?${params.toString()}`, {
+  const payload = await api(`/api/clients/${id}/ledger-bootstrap?${params.toString()}`, {
     silentLoading: Boolean(options.silentLoading),
   })
+
+  if (isDefaultLedgerBootstrapOptions(options)) {
+    const cacheKey = getClientLedgerBootstrapCacheKey(id)
+    clientLedgerBootstrapCache.set(cacheKey, payload)
+    writeSessionCache(`${CLIENT_LEDGER_BOOTSTRAP_CACHE_PREFIX}${cacheKey}`, payload)
+  }
+
+  return payload
 }
 
 export async function updateClientById(clientId, patch) {
