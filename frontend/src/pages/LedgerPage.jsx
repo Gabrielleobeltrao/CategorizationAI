@@ -183,7 +183,10 @@ function mapTransaction(item = {}) {
     }
 }
 
-function hydrateLedgerBootstrapPayload(payload = {}, setters = {}) {
+function hydrateLedgerBootstrapPayload(payload = {}, setters = {}, options = {}) {
+    const hydrateTransactions = options.hydrateTransactions !== false
+    const hydratePeriodOptions = options.hydratePeriodOptions !== false
+    const hydrateSummary = options.hydrateSummary !== false
     const transactionsPayload = payload?.transactions || {}
     const items = Array.isArray(transactionsPayload?.items) ? transactionsPayload.items : []
     const nextCursor = String(transactionsPayload?.nextCursor || "").trim()
@@ -191,18 +194,20 @@ function hydrateLedgerBootstrapPayload(payload = {}, setters = {}) {
     setters.setClient?.(payload?.client || null)
     setters.setAccounts?.(Array.isArray(payload?.accounts) ? payload.accounts.map(mapAccount) : [])
     setters.setCategoryList?.(Array.isArray(payload?.categories) ? payload.categories.map(mapCategory) : [])
-    setters.setLedgerEntries?.(items.map(mapTransaction))
-    setters.setTransactionsHasMore?.(Boolean(transactionsPayload?.hasMore && nextCursor))
-    setters.setTransactionsNextCursor?.(nextCursor || null)
+    if (hydrateTransactions) {
+        setters.setLedgerEntries?.(items.map(mapTransaction))
+        setters.setTransactionsHasMore?.(Boolean(transactionsPayload?.hasMore && nextCursor))
+        setters.setTransactionsNextCursor?.(nextCursor || null)
+    }
 
-    if (payload?.periodOptions) {
+    if (hydratePeriodOptions && payload?.periodOptions) {
         setters.setTransactionsPeriodOptions?.({
             years: Array.isArray(payload?.periodOptions?.years) ? payload.periodOptions.years : [],
             months: Array.isArray(payload?.periodOptions?.months) ? payload.periodOptions.months : [],
         })
     }
 
-    if (payload?.summary) {
+    if (hydrateSummary && payload?.summary) {
         setters.setTransactionsSummary?.({
             totalAmount: Number(payload?.summary?.totalAmount || 0),
             totalCount: Number(payload?.summary?.totalCount || 0),
@@ -421,6 +426,7 @@ function LedgerPage() {
         }
 
         const persisted = readPersistedLedgerState(clientId)
+        const bootstrapQueryKey = buildTransactionsQueryKey(persisted.searchTerm, persisted.filters)
         const shouldUseDefaultLedgerCache = isDefaultLedgerQuery(persisted.searchTerm, persisted.filters)
         const cachedBootstrap = shouldUseDefaultLedgerCache ? getCachedClientLedgerBootstrap(clientId) : null
 
@@ -435,8 +441,10 @@ function LedgerPage() {
                 setTransactionsPeriodOptions,
                 setTransactionsSummary,
             })
-            transactionsQueryKeyRef.current = buildTransactionsQueryKey(persisted.searchTerm, persisted.filters)
+            transactionsQueryKeyRef.current = bootstrapQueryKey
             setIsBaseDataLoaded(true)
+        } else if (!transactionsQueryKeyRef.current) {
+            transactionsQueryKeyRef.current = bootstrapQueryKey
         }
 
         getClientLedgerBootstrap(clientId, {
@@ -448,6 +456,7 @@ function LedgerPage() {
         })
             .then((payload) => {
                 if (!active) return
+                const canHydrateTransactions = transactionsQueryKeyRef.current === bootstrapQueryKey
                 hydrateLedgerBootstrapPayload(payload, {
                     setClient,
                     setAccounts,
@@ -457,12 +466,18 @@ function LedgerPage() {
                     setTransactionsNextCursor,
                     setTransactionsPeriodOptions,
                     setTransactionsSummary,
+                }, {
+                    hydrateTransactions: canHydrateTransactions,
+                    hydratePeriodOptions: canHydrateTransactions,
+                    hydrateSummary: canHydrateTransactions,
                 })
-                transactionsQueryKeyRef.current = buildTransactionsQueryKey(persisted.searchTerm, persisted.filters)
-                skipNextTransactionsFetchRef.current = true
-                skipNextPeriodOptionsFetchRef.current = Boolean(payload?.periodOptions)
-                skipNextSummaryFetchRef.current = Boolean(payload?.summary)
-                hasLoadedPeriodOptionsRef.current = Boolean(payload?.periodOptions)
+                if (canHydrateTransactions) {
+                    transactionsQueryKeyRef.current = bootstrapQueryKey
+                    skipNextTransactionsFetchRef.current = true
+                    skipNextPeriodOptionsFetchRef.current = Boolean(payload?.periodOptions)
+                    skipNextSummaryFetchRef.current = Boolean(payload?.summary)
+                    hasLoadedPeriodOptionsRef.current = Boolean(payload?.periodOptions)
+                }
                 setIsBaseDataLoaded(true)
             })
             .catch((err) => {
@@ -868,8 +883,11 @@ function LedgerPage() {
             return
         }
 
+        transactionsRequestIdRef.current += 1
         transactionsQueryKeyRef.current = nextQueryKey
         loadingMoreRef.current = false
+        transactionsRequestAbortRef.current?.abort()
+        transactionsRequestAbortRef.current = null
         loadMoreRequestAbortRef.current?.abort()
         if (isDefaultLedgerQuery(nextQuery.searchTerm, nextQuery.filters)) {
             const cachedBootstrap = getCachedClientLedgerBootstrap(clientId)
@@ -885,11 +903,13 @@ function LedgerPage() {
                     setTransactionsSummary,
                 })
             } else {
+                setIsLoadingTransactions(true)
                 setLedgerEntries([])
                 setTransactionsHasMore(false)
                 setTransactionsNextCursor(null)
             }
         } else {
+            setIsLoadingTransactions(true)
             setLedgerEntries([])
             setTransactionsHasMore(false)
             setTransactionsNextCursor(null)
@@ -908,9 +928,13 @@ function LedgerPage() {
             return
         }
 
+        transactionsRequestIdRef.current += 1
         transactionsQueryKeyRef.current = nextQueryKey
         loadingMoreRef.current = false
+        transactionsRequestAbortRef.current?.abort()
+        transactionsRequestAbortRef.current = null
         loadMoreRequestAbortRef.current?.abort()
+        setIsLoadingTransactions(true)
         setLedgerEntries([])
         setTransactionsHasMore(false)
         setTransactionsNextCursor(null)
@@ -1529,6 +1553,7 @@ function LedgerPage() {
                                         isCategorizingWithLlm={isCategorizingWithLlm}
                                         pendingLlmEntryIds={pendingLlmEntryIds}
                                         isLoading={isLoadingTransactions || !isBaseDataLoaded}
+                                        isSearchDisabled={!isBaseDataLoaded}
                                         isLoadingMore={isLoadingMoreTransactions}
                                         showUploadModal={showUploadModal}
                                         onCloseUploadModal={() => setShowUploadModal(false)}

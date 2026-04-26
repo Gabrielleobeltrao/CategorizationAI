@@ -7,7 +7,7 @@ function getBackendBaseUrl() {
   return value.endsWith("/") ? value.slice(0, -1) : value
 }
 
-const API_PROXY_TIMEOUT_MS = Math.max(1000, Number(process.env.API_PROXY_TIMEOUT_MS || 10000))
+const API_PROXY_TIMEOUT_MS = Math.max(1000, Number(process.env.API_PROXY_TIMEOUT_MS || 25000))
 const API_PROXY_DEBUG = String(process.env.API_PROXY_DEBUG || "false").trim().toLowerCase() === "true"
 const API_PROXY_SLOW_MS = Math.max(0, Number(process.env.API_PROXY_SLOW_MS || 1000))
 
