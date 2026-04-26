@@ -7,6 +7,37 @@ function getBackendBaseUrl() {
   return value.endsWith("/") ? value.slice(0, -1) : value
 }
 
+const API_PROXY_TIMEOUT_MS = Math.max(1000, Number(process.env.API_PROXY_TIMEOUT_MS || 10000))
+const API_PROXY_DEBUG = String(process.env.API_PROXY_DEBUG || "false").trim().toLowerCase() === "true"
+const API_PROXY_SLOW_MS = Math.max(0, Number(process.env.API_PROXY_SLOW_MS || 1000))
+
+function nowMs() {
+  return Number(process.hrtime.bigint()) / 1e6
+}
+
+function roundMs(value) {
+  return Math.round(Number(value || 0))
+}
+
+function shouldLogProxyMetric(totalMs) {
+  return API_PROXY_DEBUG || (API_PROXY_SLOW_MS > 0 && totalMs >= API_PROXY_SLOW_MS)
+}
+
+function logProxyMetric(metric = {}) {
+  const totalMs = roundMs(metric.totalMs)
+  if (!shouldLogProxyMetric(totalMs)) return
+
+  console.info("[api.proxy]", JSON.stringify({
+    totalMs,
+    upstreamMs: roundMs(metric.upstreamMs),
+    readMs: roundMs(metric.readMs),
+    method: metric.method,
+    path: metric.path,
+    status: metric.status,
+    timedOut: Boolean(metric.timedOut),
+  }))
+}
+
 async function readRequestBody(req) {
   if (req.method === "GET" || req.method === "HEAD") {
     return undefined
@@ -79,9 +110,18 @@ function normalizeApiPath(rawPath) {
 }
 
 export default async function handler(req, res) {
+  const requestStartMs = nowMs()
+  const metric = {
+    method: req.method,
+    path: normalizeApiPath(req.query?.path),
+    status: 500,
+    timedOut: false,
+  }
+  let timeoutId = null
+
   try {
     const backendBaseUrl = getBackendBaseUrl()
-    const upstreamPath = normalizeApiPath(req.query?.path)
+    const upstreamPath = metric.path
     const targetUrl = new URL(`${backendBaseUrl}/api/${upstreamPath}`)
 
     for (const [key, value] of Object.entries(req.query || {})) {
@@ -96,24 +136,42 @@ export default async function handler(req, res) {
     }
 
     const body = await readRequestBody(req)
+    const abortController = new AbortController()
+    timeoutId = setTimeout(() => {
+      metric.timedOut = true
+      abortController.abort()
+    }, API_PROXY_TIMEOUT_MS)
 
+    const upstreamStartMs = nowMs()
     const upstream = await fetch(targetUrl, {
       method: req.method,
       headers: buildUpstreamHeaders(req),
       body,
       redirect: "manual",
+      signal: abortController.signal,
     })
+    metric.upstreamMs = nowMs() - upstreamStartMs
 
+    const readStartMs = nowMs()
     const payload = Buffer.from(await upstream.arrayBuffer())
+    metric.readMs = nowMs() - readStartMs
 
     res.statusCode = upstream.status
+    metric.status = upstream.status
     applyResponseHeaders(res, upstream)
+    res.setHeader("Server-Timing", `proxy;dur=${roundMs(nowMs() - requestStartMs)}, upstream;dur=${roundMs(metric.upstreamMs)}, read;dur=${roundMs(metric.readMs)}`)
     res.end(payload)
   } catch (error) {
-    res.statusCode = 500
+    const isTimeout = metric.timedOut || error?.name === "AbortError"
+    res.statusCode = isTimeout ? 504 : 500
+    metric.status = res.statusCode
     res.setHeader("Content-Type", "application/json")
     res.end(JSON.stringify({
-      message: error?.message || "API proxy failed",
+      message: isTimeout ? "API proxy timed out" : error?.message || "API proxy failed",
     }))
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId)
+    metric.totalMs = nowMs() - requestStartMs
+    logProxyMetric(metric)
   }
 }
