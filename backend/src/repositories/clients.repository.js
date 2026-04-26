@@ -69,12 +69,17 @@ function buildClientsSearchIndexDefinition() {
 
 function isAtlasSearchUnavailableError(error) {
     const message = String(error?.message || "").toLowerCase()
+    const errorCode = Number(error?.code || error?.errorResponse?.code || 0)
 
     return (
+        errorCode === 20 ||
         message.includes("unrecognized pipeline stage name: '$search'") ||
         message.includes("search index commands are only supported with atlas") ||
         message.includes("command not found") ||
         message.includes("mongot") ||
+        message.includes("maximum number of fts indexes") ||
+        message.includes("maximum number of search indexes") ||
+        message.includes("fts indexes has been reached") ||
         message.includes("search index") ||
         message.includes("index not found for search") ||
         message.includes("query requires a search index")
