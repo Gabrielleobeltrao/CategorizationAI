@@ -715,6 +715,7 @@ export async function ensureTransactionsIndexes() {
   const collection = db.collection("transactions")
   await Promise.all([
     collection.createIndex({ clientId: 1, date: -1, _id: -1 }),
+    collection.createIndex({ clientId: 1, date: 1 }),
     collection.createIndex({ clientId: 1, searchTerms: 1 }),
     collection.createIndex({ clientId: 1, searchTerms: 1, date: -1, _id: -1 }),
     collection.createIndex({ clientId: 1, accountId: 1, searchTerms: 1, date: -1, _id: -1 }),
