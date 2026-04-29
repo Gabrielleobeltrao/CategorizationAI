@@ -41,6 +41,14 @@ export function clearOfficeByIdCache(officeId = "") {
   removeSessionCache(`${OFFICE_CACHE_PREFIX}${key}`)
 }
 
+export function hydrateOfficeCache(office) {
+  const id = String(office?._id || office?.id || "").trim()
+  if (!id) return null
+  officeByIdCache.set(id, office)
+  writeSessionCache(`${OFFICE_CACHE_PREFIX}${id}`, office)
+  return office
+}
+
 export async function getOfficeById(officeId, options = {}) {
   const id = String(officeId || "").trim()
   if (!id) throw new Error("officeId is required")
@@ -48,9 +56,7 @@ export async function getOfficeById(officeId, options = {}) {
   const payload = await api(`/api/offices/${id}`, {
     backgroundLoadingMessage: options?.backgroundLoadingMessage,
   })
-  officeByIdCache.set(id, payload)
-  writeSessionCache(`${OFFICE_CACHE_PREFIX}${id}`, payload)
-  return payload
+  return hydrateOfficeCache(payload)
 }
 
 export async function updateOfficeById(officeId, patch) {
@@ -61,9 +67,7 @@ export async function updateOfficeById(officeId, patch) {
     method: "PATCH",
     body: JSON.stringify(patch),
   }).then((payload) => {
-    officeByIdCache.set(id, payload)
-    writeSessionCache(`${OFFICE_CACHE_PREFIX}${id}`, payload)
-    return payload
+    return hydrateOfficeCache(payload)
   })
 }
 

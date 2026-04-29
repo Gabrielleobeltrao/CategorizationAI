@@ -245,6 +245,9 @@ function EmployeesPage() {
             const defaultRole = safeCachedRoles.find((item) => item.key === "staff")?.key || safeCachedRoles[0]?.key || "staff"
             setNewEmployeeRole(defaultRole)
             setIsLoadingRoles(false)
+            return () => {
+                active = false
+            }
         } else {
             setIsLoadingRoles(true)
         }
@@ -280,13 +283,12 @@ function EmployeesPage() {
         const cachedPermissions = getCachedRolePermissions()
         if (Array.isArray(cachedPermissions) && cachedPermissions.length > 0) {
             setPermissionCatalog(cachedPermissions)
+            return () => {
+                active = false
+            }
         }
 
-        listRolePermissions({
-            backgroundLoadingMessage: Array.isArray(cachedPermissions) && cachedPermissions.length > 0
-                ? "Updating cached role permissions..."
-                : "",
-        })
+        listRolePermissions()
             .then((items) => {
                 if (!active) return
                 const safeItems = Array.isArray(items) ? items : []

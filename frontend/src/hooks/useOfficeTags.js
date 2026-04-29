@@ -35,6 +35,13 @@ async function loadOfficeTagsOnce(officeId, options = {}) {
   return request
 }
 
+export function hydrateOfficeTagsCache(officeId, tags) {
+  const safeOfficeId = normalizeOfficeId(officeId)
+  if (!safeOfficeId || !Array.isArray(tags)) return []
+  officeTagsCache.set(safeOfficeId, tags)
+  return tags
+}
+
 export function useOfficeTags(officeId, options = {}) {
   const [tags, setTags] = useState(() => {
     const safeOfficeId = normalizeOfficeId(officeId)
