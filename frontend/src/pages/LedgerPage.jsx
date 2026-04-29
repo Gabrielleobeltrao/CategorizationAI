@@ -365,6 +365,7 @@ function LedgerPage() {
         totalAmount: 0,
         totalCount: 0,
     })
+    const [isLoadingTransactionsSummary, setIsLoadingTransactionsSummary] = useState(false)
     const [showUploadModal, setShowUploadModal] = useState(false)
     const [isBaseDataLoaded, setIsBaseDataLoaded] = useState(false)
     const skipNextTransactionsFetchKeyRef = useRef("")
@@ -424,12 +425,15 @@ function LedgerPage() {
     const refreshTransactionsSummary = useCallback(async (searchTerm = "", filters = {}) => {
         const requestId = ++summaryRequestIdRef.current
         if (!clientId) {
+            setIsLoadingTransactionsSummary(false)
             setTransactionsSummary({
                 totalAmount: 0,
                 totalCount: 0,
             })
             return
         }
+
+        setIsLoadingTransactionsSummary(true)
 
         try {
             const payload = await summarizeTransactionsByClientId(clientId, {
@@ -448,6 +452,10 @@ function LedgerPage() {
                 totalAmount: 0,
                 totalCount: 0,
             })
+        } finally {
+            if (requestId === summaryRequestIdRef.current) {
+                setIsLoadingTransactionsSummary(false)
+            }
         }
     }, [clientId])
 
@@ -1468,7 +1476,16 @@ function LedgerPage() {
                                 <div>
                                     <h3 className="text-base font-bold">Transactions</h3>
                                     <p className="mt-1 text-sm text-gray-600">
-                                        {formatAccountSummaryLabel(accounts, transactionsFilters.accountIds)} · {formatCurrency(transactionsSummary.totalAmount)} · {transactionsSummary.totalCount.toLocaleString("en-US")} transaction(s)
+                                        {isLoadingTransactionsSummary ? (
+                                            <span className="inline-flex items-center gap-1.5">
+                                                <span className="h-3 w-3 animate-spin rounded-full border-2 border-gray-300 border-t-gray-700" aria-hidden="true" />
+                                                Loading summary...
+                                            </span>
+                                        ) : (
+                                            <>
+                                                {formatAccountSummaryLabel(accounts, transactionsFilters.accountIds)} · {formatCurrency(transactionsSummary.totalAmount)} · {transactionsSummary.totalCount.toLocaleString("en-US")} transaction(s)
+                                            </>
+                                        )}
                                     </p>
                                 </div>
                                 <button
