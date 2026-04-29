@@ -1112,6 +1112,7 @@ function LedgerEntriesTable({
                 editingTargetIds.includes(id)
             const targetIds = shouldApplyToSelection ? editingTargetIds : [id]
 
+            const sourceEntry = ledgerEntries.find((entry) => entry.id === id)
             const basePatch = shouldApplyToSelection
                 ? (() => {
                     const nextPatch = {}
@@ -1132,15 +1133,34 @@ function LedgerEntriesTable({
 
                     return nextPatch
                 })()
-                : {
-                    date: editingDraft.date,
-                    description: editingDraft.description,
-                    accountId: editingDraft.accountId || null,
-                    accountName: selectedAccount?.name || null,
-                    category: editingDraft.category || null,
-                    categoryId: editingDraft.category ? selectedCategory?.id || null : null,
-                    amount: Number(editingDraft.amount || 0),
-                }
+                : (() => {
+                    const nextPatch = {}
+                    const nextAmount = Number(editingDraft.amount || 0)
+
+                    if (editingTouched.date && editingDraft.date !== (sourceEntry?.date || "")) {
+                        nextPatch.date = editingDraft.date || null
+                    }
+
+                    if (editingTouched.description && editingDraft.description !== (sourceEntry?.description || "")) {
+                        nextPatch.description = editingDraft.description || ""
+                    }
+
+                    if (editingTouched.accountId && (editingDraft.accountId || "") !== (sourceEntry?.accountId || "")) {
+                        nextPatch.accountId = editingDraft.accountId || null
+                        nextPatch.accountName = selectedAccount?.name || null
+                    }
+
+                    if (editingTouched.category && (editingDraft.category || "") !== (sourceEntry?.category || "")) {
+                        nextPatch.category = editingDraft.category || null
+                        nextPatch.categoryId = editingDraft.category ? selectedCategory?.id || null : null
+                    }
+
+                    if (editingTouched.amount && nextAmount !== Number(sourceEntry?.amount || 0)) {
+                        nextPatch.amount = nextAmount
+                    }
+
+                    return nextPatch
+                })()
 
             const patchByTarget = targetIds
                 .map((targetId) => {
