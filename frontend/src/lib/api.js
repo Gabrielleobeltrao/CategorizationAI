@@ -1,5 +1,5 @@
 const configuredApiUrl = String(import.meta.env.VITE_API_URL || "").trim().replace(/\/+$/, "")
-const API_BASE_URL = configuredApiUrl || (import.meta.env.DEV ? "http://localhost:3001" : "")
+const API_BASE_URL = import.meta.env.DEV ? configuredApiUrl || "http://localhost:3001" : ""
 let pendingRequests = 0
 
 function emitLoadingState() {
