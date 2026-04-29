@@ -632,8 +632,7 @@ function LedgerEntriesTable({
         const safeAccounts = Array.isArray(accounts) ? accounts : []
         return [...safeAccounts].sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")))
     }, [accounts])
-    const normalizedSearchInput = useMemo(() => String(searchInput || "").trim(), [searchInput])
-    const normalizedAppliedSearch = useMemo(() => String(searchTerm || "").trim(), [searchTerm])
+    const isRefreshingTransactions = isLoading && ledgerEntries.length > 0
     const hasDuplicateMappingInAnyFile = useMemo(
         () =>
             uploadedCsvFiles.some((uploadedFile) => {
@@ -1796,7 +1795,7 @@ function LedgerEntriesTable({
                                     value={searchInput}
                                     onChange={(e) => setSearchInput(e.target.value)}
                                     disabled={isSearchDisabled}
-                                    className="w-full rounded-md border border-gray-300 py-2 pl-9 pr-3 text-sm outline-none focus:border-gray-500 bg-white"
+                                    className="w-full rounded-md border border-gray-300 bg-white py-2 pl-9 pr-10 text-sm outline-none focus:border-gray-500"
                                 />
                                 <svg
                                     className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
@@ -1812,6 +1811,12 @@ function LedgerEntriesTable({
                                         strokeLinejoin="round"
                                     />
                                 </svg>
+                                {isRefreshingTransactions && (
+                                    <span
+                                        className="absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin rounded-full border-2 border-gray-300 border-t-gray-700"
+                                        aria-label="Loading transactions"
+                                    />
+                                )}
                             </div>
 
                             <button

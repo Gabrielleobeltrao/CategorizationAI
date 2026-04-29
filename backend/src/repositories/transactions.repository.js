@@ -14,7 +14,6 @@ const TRANSACTIONS_SEARCH_ENGINE = String(process.env.TRANSACTIONS_SEARCH_ENGINE
 const ATLAS_SEARCH_QUERY_TIMEOUT_MS = Math.max(0, Number(process.env.MONGODB_ATLAS_SEARCH_QUERY_TIMEOUT_MS || 2000))
 const ATLAS_SEARCH_COOLDOWN_MS = Math.max(0, Number(process.env.MONGODB_ATLAS_SEARCH_COOLDOWN_MS || 120000))
 const TRANSACTIONS_BACKFILL_BATCH_SIZE = Math.max(100, Number(process.env.TRANSACTIONS_BACKFILL_BATCH_SIZE || 500))
-const TRANSACTIONS_LEGACY_SEARCH_MAX_TIME_MS = Math.max(0, Number(process.env.TRANSACTIONS_LEGACY_SEARCH_MAX_TIME_MS || 1200))
 const TRANSACTIONS_QUERY_DEBUG = String(process.env.TRANSACTIONS_QUERY_DEBUG || "false").trim().toLowerCase() === "true"
 const TRANSACTIONS_QUERY_SLOW_MS = Math.max(0, Number(process.env.TRANSACTIONS_QUERY_SLOW_MS || 750))
 let atlasSearchDisabledUntil = 0
@@ -164,10 +163,6 @@ function buildMongoSearchCondition(search = "", mode = "fast") {
   }
 
   return { searchText: regex }
-}
-
-function isLegacySearchTimeout(error) {
-  return Number(error?.code || error?.errorResponse?.code || 0) === 50
 }
 
 function encodeTransactionsCursor(item = {}) {
@@ -1784,8 +1779,6 @@ export async function listTransactionsPaginated({
   const safePaginationMode = String(paginationMode || "page").trim().toLowerCase() === "cursor"
     ? "cursor"
     : "page"
-  const safeSearch = String(search || "").trim()
-
   const filter = buildTransactionsFilter({
     clientId,
     search,
@@ -1805,27 +1798,6 @@ export async function listTransactionsPaginated({
     llmProcessed,
     iconType,
   })
-  const legacySearchFilter = safeSearch
-    ? buildTransactionsFilter({
-        clientId,
-        search,
-        searchMode: "legacy",
-        accountIds,
-        categoryIds,
-        includeUncategorizedIncome,
-        includeUncategorizedExpenses,
-        splitMode,
-        amountSign,
-        years,
-        months,
-        fromDate,
-        toDate,
-        minAmount,
-        maxAmount,
-        llmProcessed,
-        iconType,
-      })
-    : null
   const atlasSearchStage = buildTransactionsAtlasSearchStage({
     clientId,
     search,
@@ -1885,45 +1857,12 @@ export async function listTransactionsPaginated({
     const fastStartMs = nowMs()
     const fastResult = await findTransactionsCursorPage(collection, finalFilter, safeLimit)
     metric.fastMs = roundMs(nowMs() - fastStartMs)
-    if (!safeSearch || fastResult.items.length > 0 || !legacySearchFilter) {
-      metric.path = "mongo-fast"
-      metric.returnedCount = fastResult.items.length
-      metric.hasMore = Boolean(fastResult.hasMore)
-      metric.totalMs = nowMs() - queryStartMs
-      logTransactionsQueryMetric(metric)
-      return fastResult
-    }
-
-    try {
-      metric.legacyAttempted = true
-      const legacyStartMs = nowMs()
-      const legacyResult = await findTransactionsCursorPage(
-        collection,
-        combineMongoFilters(legacySearchFilter, cursorFilter),
-        safeLimit,
-        { maxTimeMS: TRANSACTIONS_LEGACY_SEARCH_MAX_TIME_MS }
-      )
-      metric.path = "mongo-legacy"
-      metric.legacyMs = roundMs(nowMs() - legacyStartMs)
-      metric.returnedCount = legacyResult.items.length
-      metric.hasMore = Boolean(legacyResult.hasMore)
-      metric.totalMs = nowMs() - queryStartMs
-      logTransactionsQueryMetric(metric)
-      return legacyResult
-    } catch (error) {
-      if (isLegacySearchTimeout(error)) {
-        metric.path = "mongo-fast-legacy-timeout"
-        metric.legacyAttempted = true
-        metric.legacyTimedOut = true
-        metric.legacyMs = TRANSACTIONS_LEGACY_SEARCH_MAX_TIME_MS
-        metric.returnedCount = fastResult.items.length
-        metric.hasMore = Boolean(fastResult.hasMore)
-        metric.totalMs = nowMs() - queryStartMs
-        logTransactionsQueryMetric(metric)
-        return fastResult
-      }
-      throw error
-    }
+    metric.path = "mongo-fast"
+    metric.returnedCount = fastResult.items.length
+    metric.hasMore = Boolean(fastResult.hasMore)
+    metric.totalMs = nowMs() - queryStartMs
+    logTransactionsQueryMetric(metric)
+    return fastResult
   }
 
   if (atlasSearchStage) {
@@ -1966,42 +1905,12 @@ export async function listTransactionsPaginated({
   const fastStartMs = nowMs()
   const fastResult = await findTransactionsPage(collection, filter, safePage, safeLimit)
   metric.fastMs = roundMs(nowMs() - fastStartMs)
-  if (!safeSearch || fastResult.items.length > 0 || !legacySearchFilter) {
-    metric.path = "mongo-fast"
-    metric.returnedCount = fastResult.items.length
-    metric.hasMore = safePage < fastResult.totalPages
-    metric.totalMs = nowMs() - queryStartMs
-    logTransactionsQueryMetric(metric)
-    return fastResult
-  }
-
-  try {
-    metric.legacyAttempted = true
-    const legacyStartMs = nowMs()
-    const legacyResult = await findTransactionsPage(collection, legacySearchFilter, safePage, safeLimit, {
-      maxTimeMS: TRANSACTIONS_LEGACY_SEARCH_MAX_TIME_MS,
-    })
-    metric.path = "mongo-legacy"
-    metric.legacyMs = roundMs(nowMs() - legacyStartMs)
-    metric.returnedCount = legacyResult.items.length
-    metric.hasMore = safePage < legacyResult.totalPages
-    metric.totalMs = nowMs() - queryStartMs
-    logTransactionsQueryMetric(metric)
-    return legacyResult
-  } catch (error) {
-    if (isLegacySearchTimeout(error)) {
-      metric.path = "mongo-fast-legacy-timeout"
-      metric.legacyAttempted = true
-      metric.legacyTimedOut = true
-      metric.legacyMs = TRANSACTIONS_LEGACY_SEARCH_MAX_TIME_MS
-      metric.returnedCount = fastResult.items.length
-      metric.hasMore = safePage < fastResult.totalPages
-      metric.totalMs = nowMs() - queryStartMs
-      logTransactionsQueryMetric(metric)
-      return fastResult
-    }
-    throw error
-  }
+  metric.path = "mongo-fast"
+  metric.returnedCount = fastResult.items.length
+  metric.hasMore = safePage < fastResult.totalPages
+  metric.totalMs = nowMs() - queryStartMs
+  logTransactionsQueryMetric(metric)
+  return fastResult
 }
 
 export async function summarizeTransactions({
