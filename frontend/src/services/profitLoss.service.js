@@ -61,7 +61,8 @@ export async function getProfitLossByClientId(clientId, options = {}) {
   if (options.toDate) params.set("toDate", String(options.toDate))
 
   const payload = await api(`/api/clients/${cleanClientId}/profit-loss?${params.toString()}`, {
-    backgroundLoadingMessage: options?.backgroundLoadingMessage,
+    silentLoading: Boolean(options?.silentLoading),
+    signal: options?.signal,
   })
   const cacheKey = getProfitLossCacheKey(cleanClientId, options)
   profitLossCache.set(cacheKey, payload)
@@ -76,7 +77,7 @@ export async function getProfitLossPeriodOptionsByClientId(clientId, options = {
 
   const payload = await api(`/api/clients/${cleanClientId}/profit-loss/period-options`, {
     silentLoading,
-    backgroundLoadingMessage: options?.backgroundLoadingMessage,
+    signal: options?.signal,
   })
   const cacheKey = getPeriodOptionsCacheKey(cleanClientId)
   profitLossPeriodOptionsCache.set(cacheKey, payload)

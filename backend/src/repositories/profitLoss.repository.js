@@ -106,60 +106,81 @@ export async function listProfitLossPeriodOptionsByClientId(clientId) {
 
 export async function getProfitLossByClientAndRange({ clientId, startDate, endDate, periodLabel }) {
   const db = getDB()
+  const collection = db.collection("transactions")
 
-  const baseFilter = { clientId }
+  const baseFilter = {
+    clientId,
+    date: { $regex: /^\d{4}-\d{2}-\d{2}$/ },
+  }
   if (startDate && endDate) {
-    baseFilter.date = { $gte: startDate, $lte: endDate }
+    baseFilter.date = {
+      $gte: startDate,
+      $lte: endDate,
+      $regex: /^\d{4}-\d{2}-\d{2}$/,
+    }
   }
 
-  const transactions = await db
-    .collection("transactions")
-    .find(baseFilter, {
-      projection: {
-        date: 1,
-        amount: 1,
-        categoryId: 1,
-        category: 1,
-        splits: 1,
-      },
-    })
-    .toArray()
-
-  const categoryIds = Array.from(
-    new Set(
-      transactions.flatMap((tx) => {
-        const ids = []
-        if (typeof tx?.categoryId === "string" && ObjectId.isValid(tx.categoryId)) {
-          ids.push(tx.categoryId)
-        }
-        if (Array.isArray(tx?.splits)) {
-          tx.splits.forEach((split) => {
-            if (typeof split?.categoryId === "string" && ObjectId.isValid(split.categoryId)) {
-              ids.push(split.categoryId)
-            }
-          })
-        }
-        return ids
-      })
-    )
-  ).map((id) => new ObjectId(id))
-
-  const categories = categoryIds.length
-    ? await db
-        .collection("categories")
-        .find({ _id: { $in: categoryIds } })
-        .toArray()
-    : []
-
-  const categoryMap = new Map(
-    categories.map((item) => [
-      String(item._id),
+  const transactionLines = await collection
+    .aggregate(
+      [
+        { $match: baseFilter },
+        {
+          $project: {
+            date: 1,
+            splitItems: {
+              $cond: [
+                { $gt: [{ $size: { $ifNull: ["$splits", []] } }, 0] },
+                "$splits",
+                [
+                  {
+                    amount: "$amount",
+                    categoryId: "$categoryId",
+                    category: "$category",
+                  },
+                ],
+              ],
+            },
+          },
+        },
+        { $unwind: "$splitItems" },
+        {
+          $set: {
+            categoryObjectId: {
+              $convert: {
+                input: "$splitItems.categoryId",
+                to: "objectId",
+                onError: null,
+                onNull: null,
+              },
+            },
+          },
+        },
+        {
+          $lookup: {
+            from: "categories",
+            localField: "categoryObjectId",
+            foreignField: "_id",
+            as: "categoryDoc",
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            date: 1,
+            amount: "$splitItems.amount",
+            categoryId: "$splitItems.categoryId",
+            category: "$splitItems.category",
+            categoryName: { $first: "$categoryDoc.name" },
+            categoryType: { $first: "$categoryDoc.type" },
+          },
+        },
+      ],
       {
-        name: item.name || "Uncategorized",
-        type: item.type || "",
+        allowDiskUse: false,
+        hint: { clientId: 1, date: -1, _id: -1 },
       },
-    ])
-  )
+    )
+    .toArray()
 
   let revenue = 0
   let cogs = 0
@@ -170,58 +191,45 @@ export async function getProfitLossByClientAndRange({ clientId, startDate, endDa
   const operatingByCategory = new Map()
   const netByMonth = new Map()
 
-  for (const tx of transactions) {
-    const keyMonth = monthLabel(tx.date)
-    const splitItems = Array.isArray(tx?.splits) && tx.splits.length > 0
-      ? tx.splits
-      : [
-          {
-            amount: tx.amount,
-            categoryId: tx.categoryId ?? null,
-            category: tx.category ?? null,
-          },
-        ]
+  for (const line of transactionLines) {
+    const keyMonth = monthLabel(line.date)
+    const amount = Number(line?.amount) || 0
+    const normalizedCategoryId = normalizeCategoryId(line?.categoryId)
+    const categoryName = line?.category || line?.categoryName || "Uncategorized"
+    const categoryType = line?.categoryType || ""
+    const isUncategorized =
+      !normalizedCategoryId &&
+      !String(line?.category || "").trim() &&
+      !String(line?.categoryName || "").trim()
 
-    for (const splitItem of splitItems) {
-      const amount = Number(splitItem?.amount) || 0
-      const normalizedCategoryId = normalizeCategoryId(splitItem?.categoryId)
-      const categoryRef = normalizedCategoryId ? categoryMap.get(normalizedCategoryId) : null
-      const categoryName = splitItem?.category || categoryRef?.name || "Uncategorized"
-      const categoryType = categoryRef?.type || ""
-      const isUncategorized =
-        !normalizedCategoryId &&
-        !String(splitItem?.category || "").trim() &&
-        !String(categoryRef?.name || "").trim()
+    const bucket = getCategoryBucket({
+      categoryType,
+      categoryName,
+      amount,
+      isUncategorized,
+    })
 
-      const bucket = getCategoryBucket({
-        categoryType,
-        categoryName,
-        amount,
-        isUncategorized,
-      })
-
-      if (bucket === "income") {
-        const incomeCategoryLabel = isUncategorized ? UNCATEGORIZED_INCOME_LABEL : categoryName
-        revenue += amount
-        revenueByCategory.set(incomeCategoryLabel, (revenueByCategory.get(incomeCategoryLabel) || 0) + amount)
-        netByMonth.set(keyMonth, (netByMonth.get(keyMonth) || 0) + amount)
-        continue
-      }
-
-      const expenseImpact = -amount
-      if (bucket === "cost_of_goods_sold") {
-        cogs += expenseImpact
-        cogsByCategory.set(categoryName, (cogsByCategory.get(categoryName) || 0) + expenseImpact)
-      } else {
-        const expenseCategoryLabel = isUncategorized ? UNCATEGORIZED_EXPENSES_LABEL : categoryName
-        operatingExpenses += expenseImpact
-        operatingByCategory.set(
-          expenseCategoryLabel,
-          (operatingByCategory.get(expenseCategoryLabel) || 0) + expenseImpact
-        )
-      }
+    if (bucket === "income") {
+      const incomeCategoryLabel = isUncategorized ? UNCATEGORIZED_INCOME_LABEL : categoryName
+      revenue += amount
+      revenueByCategory.set(incomeCategoryLabel, (revenueByCategory.get(incomeCategoryLabel) || 0) + amount)
       netByMonth.set(keyMonth, (netByMonth.get(keyMonth) || 0) + amount)
+      continue
     }
+
+    const expenseImpact = -amount
+    if (bucket === "cost_of_goods_sold") {
+      cogs += expenseImpact
+      cogsByCategory.set(categoryName, (cogsByCategory.get(categoryName) || 0) + expenseImpact)
+    } else {
+      const expenseCategoryLabel = isUncategorized ? UNCATEGORIZED_EXPENSES_LABEL : categoryName
+      operatingExpenses += expenseImpact
+      operatingByCategory.set(
+        expenseCategoryLabel,
+        (operatingByCategory.get(expenseCategoryLabel) || 0) + expenseImpact
+      )
+    }
+    netByMonth.set(keyMonth, (netByMonth.get(keyMonth) || 0) + amount)
   }
 
   const grossProfit = revenue - cogs

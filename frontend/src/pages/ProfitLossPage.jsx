@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { getClientById } from "../services/clients.service"
 import { useOpenTest } from "../contexts/openTest.context"
@@ -46,6 +46,122 @@ function writeStoredProfitLossYear(clientId = "", year = "") {
   }
 }
 
+function getDefaultDateRange() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = now.getMonth()
+  const start = new Date(Date.UTC(year, month, 1))
+  const end = new Date(Date.UTC(year, month + 1, 0))
+  return {
+    fromDate: start.toISOString().slice(0, 10),
+    toDate: end.toISOString().slice(0, 10),
+  }
+}
+
+function getInitialFilter(clientId = "") {
+  const { fromDate, toDate } = getDefaultDateRange()
+  return {
+    mode: "YEAR",
+    year: readStoredProfitLossYear(clientId),
+    month: "",
+    fromDate,
+    toDate,
+  }
+}
+
+function normalizePeriodOptions(payload) {
+  const years = Array.isArray(payload?.years)
+    ? [...new Set(payload.years.map((item) => String(item || "").trim()).filter((item) => /^\d{4}$/.test(item)))]
+        .sort((a, b) => b.localeCompare(a))
+    : []
+  const months = Array.isArray(payload?.months)
+    ? [...new Set(payload.months.map((item) => String(item || "").trim()).filter((item) => /^\d{4}-\d{2}$/.test(item)))]
+        .sort((a, b) => b.localeCompare(a))
+    : []
+  return { years, months }
+}
+
+function arePeriodOptionsEqual(a = {}, b = {}) {
+  const aYears = Array.isArray(a?.years) ? a.years : []
+  const bYears = Array.isArray(b?.years) ? b.years : []
+  const aMonths = Array.isArray(a?.months) ? a.months : []
+  const bMonths = Array.isArray(b?.months) ? b.months : []
+
+  return (
+    aYears.length === bYears.length &&
+    aMonths.length === bMonths.length &&
+    aYears.every((value, index) => value === bYears[index]) &&
+    aMonths.every((value, index) => value === bMonths[index])
+  )
+}
+
+function resolveFilterForOptions(filter, periodOptions, clientId = "") {
+  const next = {
+    ...getInitialFilter(clientId),
+    ...(filter || {}),
+  }
+  const years = Array.isArray(periodOptions?.years) ? periodOptions.years : []
+  const months = Array.isArray(periodOptions?.months) ? periodOptions.months : []
+  const storedYear = readStoredProfitLossYear(clientId)
+
+  if (!['ALL', 'MONTH', 'YEAR', 'RANGE'].includes(next.mode)) {
+    next.mode = 'YEAR'
+  }
+
+  if (next.mode === "YEAR") {
+    if (!years.includes(next.year)) {
+      next.year = storedYear && years.includes(storedYear) ? storedYear : years[0] || ""
+    }
+  }
+
+  if (next.mode === "MONTH" && !months.includes(next.month)) {
+    next.month = months[0] || ""
+  }
+
+  return next
+}
+
+function areFiltersEqual(a = {}, b = {}) {
+  return (
+    a.mode === b.mode &&
+    a.year === b.year &&
+    a.month === b.month &&
+    a.fromDate === b.fromDate &&
+    a.toDate === b.toDate
+  )
+}
+
+function isValidDate(value = "") {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""))
+}
+
+function isFilterReady(filter) {
+  if (!filter?.mode) return false
+  if (filter.mode === "ALL") return true
+  if (filter.mode === "YEAR") return /^\d{4}$/.test(String(filter.year || ""))
+  if (filter.mode === "MONTH") return /^\d{4}-\d{2}$/.test(String(filter.month || ""))
+  if (filter.mode === "RANGE") {
+    return isValidDate(filter.fromDate) && isValidDate(filter.toDate) && filter.fromDate <= filter.toDate
+  }
+  return false
+}
+
+function getProfitLossRequestOptions(filter) {
+  if (filter.mode === "ALL") return { period: "ALL" }
+  if (filter.mode === "YEAR") return { period: "YEAR", year: filter.year }
+  if (filter.mode === "MONTH") return { period: "MONTH", month: filter.month }
+  return {
+    period: "RANGE",
+    fromDate: filter.fromDate,
+    toDate: filter.toDate,
+  }
+}
+
+function getProfitLossRequestKey(clientId, filter) {
+  if (!clientId || !isFilterReady(filter)) return ""
+  return JSON.stringify({ clientId, ...getProfitLossRequestOptions(filter) })
+}
+
 function formatPeriodLabel(value) {
   const [prefix, raw] = String(value || "").split(":")
   if (String(value || "").toUpperCase() === "ALL") return "All time"
@@ -66,45 +182,40 @@ function ProfitLossPage() {
   const { clientId } = useParams()
   const navigate = useNavigate()
   const { error } = useNotification()
-  const [period, setPeriod] = useState("YEAR")
-  const [isManual, setIsManual] = useState(false)
-  const [showPercentView, setShowPercentView] = useState(false)
-  const [fromDate, setFromDate] = useState("2026-03-01")
-  const [toDate, setToDate] = useState("2026-03-31")
-  const [month, setMonth] = useState("")
-  const [year, setYear] = useState(() => readStoredProfitLossYear(clientId))
-  const [yearClientId, setYearClientId] = useState(clientId)
+  const [filter, setFilter] = useState(() => getInitialFilter(clientId))
   const [periodOptions, setPeriodOptions] = useState({ months: [], years: [] })
+  const [periodOptionsLoaded, setPeriodOptionsLoaded] = useState(false)
+  const [showPercentView, setShowPercentView] = useState(false)
   const [client, setClient] = useState(null)
   const [profitLoss, setProfitLoss] = useState(null)
-  const [isLoadingProfitLoss, setIsLoadingProfitLoss] = useState(false)
+  const [isFetchingProfitLoss, setIsFetchingProfitLoss] = useState(false)
+  const profitLossRef = useRef(null)
+  const requestKey = useMemo(() => getProfitLossRequestKey(clientId, filter), [clientId, filter])
   const { config: openTestConfig } = useOpenTest()
 
   const monthOptions = useMemo(
-    () =>
-      (Array.isArray(periodOptions.months) ? periodOptions.months : []).map((value) => ({
-        value,
-        label: formatMonthLabel(value),
-      })),
+    () => periodOptions.months.map((value) => ({ value, label: formatMonthLabel(value) })),
     [periodOptions.months]
   )
-  const yearOptions = useMemo(
-    () => (Array.isArray(periodOptions.years) ? periodOptions.years : []),
-    [periodOptions.years]
-  )
+  const yearOptions = periodOptions.years
 
   useEffect(() => {
-    setYear(readStoredProfitLossYear(clientId))
-    setYearClientId(clientId)
-    setMonth("")
+    profitLossRef.current = profitLoss
+  }, [profitLoss])
+
+  useEffect(() => {
+    setFilter(getInitialFilter(clientId))
+    setPeriodOptions({ months: [], years: [] })
+    setPeriodOptionsLoaded(false)
     setProfitLoss(null)
+    setIsFetchingProfitLoss(false)
   }, [clientId])
 
   useEffect(() => {
     let active = true
 
     if (!clientId) {
-      setPeriodOptions({ months: [], years: [] })
+      setClient(null)
       return () => {
         active = false
       }
@@ -136,146 +247,101 @@ function ProfitLossPage() {
 
   useEffect(() => {
     let active = true
+    const controller = new AbortController()
 
     if (!clientId) {
-      setPeriodOptions({ months: [], years: [] })
+      setPeriodOptionsLoaded(true)
       return () => {
         active = false
+        controller.abort()
       }
+    }
+
+    const applyOptions = (payload) => {
+      const normalized = normalizePeriodOptions(payload)
+      setPeriodOptions((current) => (arePeriodOptionsEqual(current, normalized) ? current : normalized))
+      setFilter((current) => {
+        const resolved = resolveFilterForOptions(current, normalized, clientId)
+        return areFiltersEqual(current, resolved) ? current : resolved
+      })
     }
 
     const cachedOptions = getCachedProfitLossPeriodOptionsByClientId(clientId)
     if (cachedOptions) {
-      setPeriodOptions({
-        months: Array.isArray(cachedOptions?.months) ? cachedOptions.months : [],
-        years: Array.isArray(cachedOptions?.years) ? cachedOptions.years : [],
-      })
+      applyOptions(cachedOptions)
+      setPeriodOptionsLoaded(true)
     }
 
     getProfitLossPeriodOptionsByClientId(clientId, {
       silentLoading: true,
-      backgroundLoadingMessage: cachedOptions ? "Updating cached profit and loss periods..." : "",
+      signal: controller.signal,
     })
       .then((payload) => {
         if (!active) return
-        const nextMonths = Array.isArray(payload?.months) ? payload.months : []
-        const nextYears = Array.isArray(payload?.years) ? payload.years : []
-        setPeriodOptions({
-          months: nextMonths,
-          years: nextYears,
-        })
+        applyOptions(payload)
+        setPeriodOptionsLoaded(true)
       })
-      .catch(() => {
-        if (!active) return
-        setPeriodOptions({ months: [], years: [] })
+      .catch((err) => {
+        if (!active || err?.name === "AbortError") return
+        if (!cachedOptions) {
+          setPeriodOptions({ months: [], years: [] })
+          setPeriodOptionsLoaded(true)
+        }
       })
 
     return () => {
       active = false
+      controller.abort()
     }
   }, [clientId])
 
   useEffect(() => {
-    if (monthOptions.length === 0) {
-      setMonth("")
-      return
-    }
-
-    const monthExists = monthOptions.some((option) => option.value === month)
-    if (!monthExists) {
-      setMonth(monthOptions[0].value)
-    }
-  }, [monthOptions, month])
+    if (filter.mode !== "YEAR" || !clientId || !filter.year) return
+    writeStoredProfitLossYear(clientId, filter.year)
+  }, [clientId, filter.mode, filter.year])
 
   useEffect(() => {
-    if (yearOptions.length === 0) {
-      setYear("")
-      return
+    if (!clientId || !requestKey) {
+      setIsFetchingProfitLoss(false)
+      return undefined
     }
 
-    const storedYear = readStoredProfitLossYear(clientId)
-    if (storedYear && yearOptions.includes(storedYear) && year !== storedYear) {
-      setYear(storedYear)
-      setYearClientId(clientId)
-      return
-    }
-
-    if (!yearOptions.includes(year)) {
-      setYear(yearOptions[0])
-      setYearClientId(clientId)
-    }
-  }, [clientId, yearOptions, year])
-
-  useEffect(() => {
-    if (!clientId || !year) return
-    writeStoredProfitLossYear(clientId, year)
-  }, [clientId, year])
-
-  useEffect(() => {
     let active = true
+    const controller = new AbortController()
+    const requestOptions = getProfitLossRequestOptions(filter)
+    const cachedProfitLoss = getCachedProfitLossByClientId(clientId, requestOptions)
 
-    if (!clientId) {
-      return () => {
-        active = false
-      }
+    if (cachedProfitLoss) {
+      setProfitLoss(cachedProfitLoss)
+      setIsFetchingProfitLoss(false)
+    } else {
+      setIsFetchingProfitLoss(true)
     }
 
-    const run = async () => {
-      if (!isManual && period === "MONTH" && !month) {
-        setProfitLoss(null)
-        return
-      }
-
-      if (!isManual && period === "YEAR" && !year) {
-        setProfitLoss(null)
-        return
-      }
-
-      if (!isManual && period === "YEAR" && yearClientId !== clientId) {
-        setProfitLoss(null)
-        return
-      }
-
-      setIsLoadingProfitLoss(true)
-      const requestOptions = {
-        period: isManual ? "RANGE" : period,
-        month,
-        year,
-        fromDate,
-        toDate,
-      }
-      const cachedProfitLoss = getCachedProfitLossByClientId(clientId, requestOptions)
-      if (cachedProfitLoss) {
-        setProfitLoss(cachedProfitLoss)
-        setIsLoadingProfitLoss(false)
-      }
-
-      try {
-        const payload = await getProfitLossByClientId(clientId, {
-          ...requestOptions,
-          backgroundLoadingMessage: cachedProfitLoss ? "Updating cached profit and loss..." : "",
-        })
+    getProfitLossByClientId(clientId, {
+      ...requestOptions,
+      silentLoading: true,
+      signal: controller.signal,
+    })
+      .then((payload) => {
         if (!active) return
         setProfitLoss(payload || null)
-      } catch (err) {
+      })
+      .catch((err) => {
+        if (!active || err?.name === "AbortError") return
+        if (!cachedProfitLoss && !profitLossRef.current) setProfitLoss(null)
+        error(err.message || "Failed to load profit and loss")
+      })
+      .finally(() => {
         if (!active) return
-        if (!cachedProfitLoss) {
-          setProfitLoss(null)
-          error(err.message || "Failed to load profit and loss")
-        }
-      } finally {
-        if (active) {
-          setIsLoadingProfitLoss(false)
-        }
-      }
-    }
-
-    run()
+        setIsFetchingProfitLoss(false)
+      })
 
     return () => {
       active = false
+      controller.abort()
     }
-  }, [clientId, period, month, year, yearClientId, fromDate, toDate, isManual, error])
+  }, [clientId, requestKey, filter, error])
 
   const revenueBase = useMemo(() => {
     const revenueLine = profitLoss?.statement.find((line) => line.id === "revenue")
@@ -301,6 +367,37 @@ function ProfitLossPage() {
     if (formula.netIncome > 0) return "text-emerald-700"
     return "text-gray-900"
   }, [formula.netIncome])
+
+  const isBlockingLoading = isFetchingProfitLoss && !profitLoss
+  const hasNoReport = periodOptionsLoaded && !profitLoss && !isBlockingLoading
+
+  const setMode = (mode) => {
+    setFilter((current) => {
+      const resolved = resolveFilterForOptions({ ...current, mode }, periodOptions, clientId)
+      return areFiltersEqual(current, resolved) ? current : resolved
+    })
+  }
+
+  const setYearFilter = (year) => {
+    setFilter((current) => {
+      const next = { ...current, mode: "YEAR", year }
+      return areFiltersEqual(current, next) ? current : next
+    })
+  }
+
+  const setMonthFilter = (month) => {
+    setFilter((current) => {
+      const next = { ...current, mode: "MONTH", month }
+      return areFiltersEqual(current, next) ? current : next
+    })
+  }
+
+  const setRangeField = (field, value) => {
+    setFilter((current) => {
+      const next = { ...current, mode: "RANGE", [field]: value }
+      return areFiltersEqual(current, next) ? current : next
+    })
+  }
 
   const getLineWeightClass = (lineType) => {
     if (lineType === "total") return "font-bold"
@@ -389,7 +486,7 @@ function ProfitLossPage() {
                 {client ? client.name : "Unknown client"}
               </p>
               <p className="text-sm text-gray-500 mt-1">
-                Period: {profitLoss ? formatPeriodLabel(profitLoss.period) : (isLoadingProfitLoss ? "Loading..." : "-")}
+                Period: {profitLoss ? formatPeriodLabel(profitLoss.period) : (isBlockingLoading ? "Loading..." : "-")}
               </p>
               <button
                 type="button"
@@ -408,56 +505,45 @@ function ProfitLossPage() {
 
               <div className="flex flex-col gap-2">
                 <div className="grid grid-cols-4 gap-1 rounded-lg border border-gray-200 bg-white p-1">
-                    {[
-                      { value: "ALL", label: "All" },
-                      { value: "MONTH", label: "Month" },
-                      { value: "YEAR", label: "Year" },
-                    ].map((item) => (
-                      <button
-                        key={item.value}
-                        type="button"
-                        className={`rounded-md px-2 py-1.5 text-xs font-semibold ${
-                          !isManual && period === item.value
-                            ? "bg-gray-900 text-white"
-                            : "text-gray-600 hover:bg-gray-100"
-                        }`}
-                        onClick={() => {
-                          setPeriod(item.value)
-                          setIsManual(false)
-                        }}
-                      >
-                        {item.label}
-                      </button>
-                    ))}
+                  {[
+                    { value: "ALL", label: "All" },
+                    { value: "MONTH", label: "Month" },
+                    { value: "YEAR", label: "Year" },
+                    { value: "RANGE", label: "Manual" },
+                  ].map((item) => (
                     <button
+                      key={item.value}
                       type="button"
                       className={`rounded-md px-2 py-1.5 text-xs font-semibold ${
-                        isManual
+                        filter.mode === item.value
                           ? "bg-gray-900 text-white"
                           : "text-gray-600 hover:bg-gray-100"
                       }`}
-                      onClick={() => setIsManual((value) => !value)}
+                      onClick={() => setMode(item.value)}
                     >
-                      Manual
+                      {item.label}
                     </button>
+                  ))}
                 </div>
 
-                {period === "MONTH" && !isManual && (
+                {filter.mode === "MONTH" && (
                   <div className="w-full overflow-x-auto">
                     <div className="flex h-8 min-w-max items-center gap-1.5">
                       {monthOptions.length === 0 && (
-                        <span className="text-xs text-gray-500">No months available</span>
+                        <span className="text-xs text-gray-500">
+                          {periodOptionsLoaded ? "No months available" : "Loading months..."}
+                        </span>
                       )}
                       {monthOptions.map((option) => (
                         <button
                           key={option.value}
                           type="button"
                           className={`rounded-md px-2 py-1.5 text-xs ${
-                            month === option.value
+                            filter.month === option.value
                               ? "bg-gray-900 text-white"
                               : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-100"
                           }`}
-                          onClick={() => setMonth(option.value)}
+                          onClick={() => setMonthFilter(option.value)}
                         >
                           {option.label}
                         </button>
@@ -466,57 +552,56 @@ function ProfitLossPage() {
                   </div>
                 )}
 
-                {period === "YEAR" && !isManual && (
+                {filter.mode === "YEAR" && (
                   <div className="w-full overflow-x-auto">
                     <div className="flex h-8 min-w-max items-center gap-1.5">
-                    {yearOptions.length === 0 && (
-                      <span className="text-xs text-gray-500">No years available</span>
-                    )}
-                    {yearOptions.map((option) => (
-                      <button
-                        key={option}
-                        type="button"
-                        className={`rounded-md px-2 py-1.5 text-xs ${
-                          year === option
-                            ? "bg-gray-900 text-white"
-                            : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-100"
-                        }`}
-                        onClick={() => {
-                          setYear(option)
-                          setYearClientId(clientId)
-                        }}
-                      >
-                        {option}
-                      </button>
-                    ))}
+                      {yearOptions.length === 0 && (
+                        <span className="text-xs text-gray-500">
+                          {periodOptionsLoaded ? "No years available" : "Loading years..."}
+                        </span>
+                      )}
+                      {yearOptions.map((option) => (
+                        <button
+                          key={option}
+                          type="button"
+                          className={`rounded-md px-2 py-1.5 text-xs ${
+                            filter.year === option
+                              ? "bg-gray-900 text-white"
+                              : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-100"
+                          }`}
+                          onClick={() => setYearFilter(option)}
+                        >
+                          {option}
+                        </button>
+                      ))}
                     </div>
                   </div>
                 )}
 
-                {isManual && (
+                {filter.mode === "RANGE" && (
                   <div className="w-full overflow-x-auto">
                     <div className="flex h-8 min-w-max items-center gap-2">
-                    <span className="text-xs text-gray-500">From</span>
-                    <input
-                      type="date"
-                      aria-label="From date"
-                      className="h-8 rounded-md border border-gray-200 bg-white px-2 text-sm"
-                      value={fromDate}
-                      onChange={(e) => setFromDate(e.target.value)}
-                    />
+                      <span className="text-xs text-gray-500">From</span>
+                      <input
+                        type="date"
+                        aria-label="From date"
+                        className="h-8 rounded-md border border-gray-200 bg-white px-2 text-sm"
+                        value={filter.fromDate}
+                        onChange={(e) => setRangeField("fromDate", e.target.value)}
+                      />
 
-                    <span className="text-xs text-gray-500">To</span>
-                    <input
-                      type="date"
-                      aria-label="To date"
-                      className="h-8 rounded-md border border-gray-200 bg-white px-2 text-sm"
-                      value={toDate}
-                      onChange={(e) => setToDate(e.target.value)}
-                    />
+                      <span className="text-xs text-gray-500">To</span>
+                      <input
+                        type="date"
+                        aria-label="To date"
+                        className="h-8 rounded-md border border-gray-200 bg-white px-2 text-sm"
+                        value={filter.toDate}
+                        onChange={(e) => setRangeField("toDate", e.target.value)}
+                      />
                     </div>
                   </div>
                 )}
-                </div>
+              </div>
             </div>
           </div>
         </header>
@@ -530,9 +615,15 @@ function ProfitLossPage() {
           </div>
         )}
 
-        {!profitLoss && !isLoadingProfitLoss && (
+        {hasNoReport && (
           <div className="rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-600">
             Profit & Loss data not found for this client.
+          </div>
+        )}
+
+        {isBlockingLoading && (
+          <div className="rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-600">
+            Loading Profit & Loss...
           </div>
         )}
 
@@ -589,37 +680,35 @@ function ProfitLossPage() {
                 <div className="mt-4 rounded-lg border border-gray-100 overflow-hidden">
                   {!showPercentView && (
                     <div>
-                      {profitLoss.statement.map((line, index) => (
-                        (() => {
-                          const amountPresentation = getProfitLossAmountPresentation({ amount: line.amount })
+                      {profitLoss.statement.map((line, index) => {
+                        const amountPresentation = getProfitLossAmountPresentation({ amount: line.amount })
 
-                          return (
-                        <div
-                          key={line.id}
-                          className={`grid grid-cols-[minmax(0,1fr)_180px] items-center px-3 py-2 text-sm ${index % 2 === 0 ? "bg-gray-100" : "bg-white"}`}
-                        >
-                          {line.type === "item" && line.id !== "service_income" ? (
-                            <button
-                              type="button"
-                              className={`w-fit text-left hover:underline ${line.level === 1 ? "pl-4" : ""} ${getLineWeightClass(line.type)} text-gray-700`}
-                              onClick={() => goToLedgerWithCategory(line)}
-                              title={`Open transactions filtered by ${line.label}`}
-                              aria-label={`Open transactions filtered by ${line.label}`}
-                            >
-                              {line.label}
-                            </button>
-                          ) : (
-                            <span className={`${line.level === 1 ? "pl-4" : ""} ${getLineWeightClass(line.type)} ${line.type === "item" ? "text-gray-700" : ""}`}>
-                              {line.label}
+                        return (
+                          <div
+                            key={line.id}
+                            className={`grid grid-cols-[minmax(0,1fr)_180px] items-center px-3 py-2 text-sm ${index % 2 === 0 ? "bg-gray-100" : "bg-white"}`}
+                          >
+                            {line.type === "item" && line.id !== "service_income" ? (
+                              <button
+                                type="button"
+                                className={`w-fit text-left hover:underline ${line.level === 1 ? "pl-4" : ""} ${getLineWeightClass(line.type)} text-gray-700`}
+                                onClick={() => goToLedgerWithCategory(line)}
+                                title={`Open transactions filtered by ${line.label}`}
+                                aria-label={`Open transactions filtered by ${line.label}`}
+                              >
+                                {line.label}
+                              </button>
+                            ) : (
+                              <span className={`${line.level === 1 ? "pl-4" : ""} ${getLineWeightClass(line.type)} ${line.type === "item" ? "text-gray-700" : ""}`}>
+                                {line.label}
+                              </span>
+                            )}
+                            <span className={`text-right ${getLineWeightClass(line.type)} ${amountPresentation.className}`}>
+                              {amountPresentation.text}
                             </span>
-                          )}
-                          <span className={`text-right ${getLineWeightClass(line.type)} ${amountPresentation.className}`}>
-                            {amountPresentation.text}
-                          </span>
-                        </div>
-                          )
-                        })()
-                      ))}
+                          </div>
+                        )
+                      })}
                     </div>
                   )}
 
@@ -650,14 +739,6 @@ function ProfitLossPage() {
                 </div>
               </article>
             </section>
-
-            {isLoadingProfitLoss && (
-              <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-white/55 backdrop-blur-[1px]">
-                <div className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 shadow-sm">
-                  Updating report...
-                </div>
-              </div>
-            )}
           </div>
         )}
       </div>
