@@ -3,7 +3,6 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import NotificationCenter from "../components/ui/NotificationCenter"
 
 const NotificationContext = createContext(null)
-const BACKGROUND_LOADING_NOTIFICATION_ID = "background-refresh"
 
 export function NotificationProvider({ children }) {
   const [notification, setNotification] = useState(null)
@@ -36,28 +35,6 @@ export function NotificationProvider({ children }) {
 
     return () => clearTimeout(timeout)
   }, [notification])
-
-  useEffect(() => {
-    if (typeof window === "undefined") return undefined
-
-    const handleBackgroundLoadingState = (event) => {
-      const detail = event?.detail || {}
-      if (detail.isVisible) {
-        notify(
-          detail.message || "Refreshing cached data...",
-          "loading",
-          { id: BACKGROUND_LOADING_NOTIFICATION_ID, persist: true }
-        )
-        return
-      }
-      hide(BACKGROUND_LOADING_NOTIFICATION_ID)
-    }
-
-    window.addEventListener("app:background-loading-state", handleBackgroundLoadingState)
-    return () => {
-      window.removeEventListener("app:background-loading-state", handleBackgroundLoadingState)
-    }
-  }, [hide, notify])
 
   const value = useMemo(
     () => ({
