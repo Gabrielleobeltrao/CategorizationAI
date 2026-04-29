@@ -610,7 +610,7 @@ function ProfitLossPage() {
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             <p className="font-semibold">Private beta notice</p>
             <p className="mt-1">
-              Profit & loss totals can still change while AI categorization is being validated in private beta. Review uncategorized lines, recent AI results and final totals before using this statement in real work.
+              Profit & loss totals can still change while AI categorization is being validated in private beta. Review uncategorized lines, recent AI results and final totals before using this statement in real work. Some reports may take longer to load while the final infrastructure is not in place.
             </p>
           </div>
         )}

@@ -7,9 +7,10 @@ SaaS de contabilidade para escritórios contábeis com:
 - multi-office com funcionários, roles e permissões
 - gestão de clients, accounts, categories e transactions
 - upload de CSV com preview e mapeamento de colunas
-- categorização por IA em background
+- importação de transactions e categorização por IA em background
 - tratamento específico para transações Zelle
 - Profit & Loss por client e período
+- cache/bootstrap para reduzir carregamentos de páginas
 - dashboard operacional do office
 
 ## Stack
@@ -85,7 +86,14 @@ LLM_BACKOFF_MS=1200
 
 # OPEN TEST: acesso temporário por código para escritórios convidados
 OPEN_TEST_ENABLED=true
-OPEN_TEST_ACCESS_CODES=office_alpha:ABC123,office_beta:XYZ789
+OPEN_TEST_ACCESS_CODE_RESERVATION_MINUTES=10
+
+# observabilidade opcional
+TRANSACTIONS_QUERY_DEBUG=false
+TRANSACTIONS_QUERY_SLOW_MS=750
+
+# CORS/proxy local
+FRONTEND_URL=http://localhost:5173
 ```
 
 ### `frontend/.env`
@@ -134,6 +142,28 @@ npm run dev
 
 App em `http://localhost:5173`
 
+### Produção
+
+Arquitetura atual:
+- frontend na Vercel
+- backend na Render
+- MongoDB Atlas
+- Vercel proxy em `/api/*` apontando para o backend
+
+Variável obrigatória na Vercel:
+
+```env
+BACKEND_API_URL=https://categorizationai.onrender.com
+```
+
+Regras:
+- não incluir `/api` no final de `BACKEND_API_URL`
+- configurar em `Production`
+- configurar também em `Preview` se testar deploys da branch `development`
+- depois de alterar env na Vercel, fazer redeploy
+
+Na Render, manter as variáveis do backend, incluindo `MONGODB_URI`, `MONGODB_DB_NAME`, `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `OPENAI_API_KEY` e `OPEN_TEST_ENABLED`.
+
 ## Autenticação
 
 - Better Auth usa sessão por cookie
@@ -159,14 +189,20 @@ Enquanto a private beta estiver ativa:
 - o usuário precisa informar um `access code` no `Register`
 - o frontend valida o código antes de finalizar o cadastro
 - o backend valida novamente ao criar o office
+- cada código é válido para uso único
+- o código é reservado temporariamente durante o cadastro para evitar uso simultâneo
 - o office criado recebe marcações temporárias:
   - `isOpenTestOffice`
   - `openTestAccessCodeLabel`
   - `openTestCreatedAt`
+- os avisos da private beta deixam claro que:
+  - resultados de IA e relatórios financeiros precisam de revisão humana/profissional
+  - alguns carregamentos podem demorar porque a infraestrutura final ainda não está em uso
 
 Endpoints públicos da private beta:
 - `GET /api/open-test/config`
 - `POST /api/open-test/validate-access-code`
+- `POST /api/open-test/release-access-reservation`
 
 Comportamento no frontend:
 - `Register` exibe o campo de access code quando `OPEN_TEST_ENABLED=true`
@@ -175,23 +211,41 @@ Comportamento no frontend:
   - banner dismissable no topo
   - modal informativo ao entrar no app
 
-Exemplo exato de `backend/.env` para private beta:
+Exemplo de `backend/.env` para private beta:
 
 ```env
 OPEN_TEST_ENABLED=true
-OPEN_TEST_ACCESS_CODES=office_alpha:ABC123,office_beta:XYZ789
+OPEN_TEST_ACCESS_CODE_RESERVATION_MINUTES=10
 ```
 
-Formato de `OPEN_TEST_ACCESS_CODES`:
-- separado por vírgula
-- cada item pode ser:
-  - `label:code`
-  - ou somente `code`
+Os códigos de acesso não ficam mais no `.env`. Eles ficam na coleção MongoDB:
+- `open_test_access_codes`
 
-Exemplos válidos:
-- `office_alpha:ABC123`
-- `office_beta:XYZ789`
-- `ONLYCODE123`
+Formato recomendado do documento:
+
+```json
+{
+  "code": "ABC123",
+  "label": "office_alpha",
+  "isActive": true,
+  "createdAt": "2026-04-28T00:00:00.000Z",
+  "updatedAt": "2026-04-28T00:00:00.000Z"
+}
+```
+
+Campos de controle preenchidos pelo sistema:
+- `reservationToken`
+- `reservedAt`
+- `reservationExpiresAt`
+- `usedAt`
+- `usedByOfficeId`
+
+Índices criados no startup:
+- `code` único
+- `label`
+- `usedAt`
+- `reservationExpiresAt`
+- `reservationToken` único parcial
 
 ### Fluxo de senha temporária
 
@@ -230,6 +284,8 @@ Principais áreas protegidas:
 - `transactions`
 - `categorization_jobs`
 - `transaction_memory`
+- `open_test_access_codes`
+- `office_tags`
 
 ## API
 
@@ -237,6 +293,9 @@ Base: `/api`
 
 ### Health
 - `GET /health`
+
+### App bootstrap
+- `GET /app/bootstrap`
 
 ### Offices
 - `POST /offices`
@@ -270,6 +329,7 @@ Base: `/api`
 - `POST /clients`
 - `GET /offices/:officeId/clients`
 - `GET /clients/:id`
+- `GET /clients/:id/ledger-bootstrap`
 - `PATCH /clients/:id`
 - `DELETE /clients/:id`
 
@@ -348,9 +408,13 @@ A página `Ledger` concentra:
 - delete individual e em lote
 - split de transaction
 - filtros avançados
-- busca com paginação no backend
-- upload de CSV com preview e mapeamento
-- categorização por IA
+- busca com cursor pagination no backend
+- request único para lista de transactions ao buscar/filtrar
+- `AbortController` para cancelar buscas antigas
+- summary independente e atrasado para não bloquear a tabela
+- filter-options carregado sob demanda ao abrir filtros
+- upload de CSV com preview, mapeamento e importação em background no frontend
+- categorização por IA em job de background
 - accounts e categories do client no mesmo fluxo da página
 
 ### Profit & Loss
@@ -599,12 +663,21 @@ CLIENT_ID=<clientId> LIMIT=6 npm run seed:llm-processed
 ## Índices criados no startup
 
 - `transactions`
-  - `{ clientId: 1, date: -1 }`
+  - `{ clientId: 1, date: -1, _id: -1 }`
+  - `{ clientId: 1, date: 1 }`
+  - `{ clientId: 1, searchTerms: 1 }`
+  - `{ clientId: 1, searchTerms: 1, date: -1, _id: -1 }`
+  - `{ clientId: 1, accountId: 1, searchTerms: 1, date: -1, _id: -1 }`
+  - `{ clientId: 1, year: 1, month: 1, searchTerms: 1, date: -1, _id: -1 }`
+  - índices por `accountId`, `categoryId`, `allCategoryIds`, `hasSplit`, `llmProcessedState`, `iconType` e datas operacionais
 - `categorization_jobs`
   - índices por fluxo do worker
 - `transaction_memory`
   - `{ clientId: 1, memoryType: 1, fingerprint: 1 }` único
   - `{ clientId: 1, memoryType: 1, updatedAt: -1 }`
+- `open_test_access_codes`
+  - `code` único
+  - `reservationToken` único parcial
 
 ## Troubleshooting
 

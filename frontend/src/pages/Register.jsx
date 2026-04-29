@@ -225,7 +225,7 @@ function Register() {
                                     </p>
                                     <p className="mt-1 text-sm text-gray-700">
                                         {isOpenTestEnabled
-                                            ? "If your office is in private beta, you will be asked for the access code at the final step. AI-generated results are still under validation and should always be reviewed."
+                                            ? "If your office is in private beta, you will be asked for the access code at the final step. AI-generated results are still under validation and should always be reviewed. Some loads may be slower while the final infrastructure is not in place."
                                             : "You can keep only the office name now and complete the rest later."}
                                     </p>
                                 </div>
@@ -368,7 +368,7 @@ function Register() {
                     <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                         <p className="font-semibold">Private beta</p>
                         <p className="mt-1">
-                            {openTestConfig?.notices?.auth || "This workspace is currently in private beta and access is limited to invited offices."}
+                            {openTestConfig?.notices?.auth || "This workspace is currently in private beta and access is limited to invited offices. Some screens may load more slowly while the final infrastructure is not in place."}
                         </p>
                     </div>
 
@@ -377,7 +377,7 @@ function Register() {
                             Enter your private beta access code to finish creating the account.
                         </p>
                         <p className="text-sm text-gray-500">
-                            This is the final validation step for invited offices. After the account is created, review AI-generated categories and financial outputs carefully before using them in real work.
+                            This is the final validation step for invited offices. After the account is created, review AI-generated categories and financial outputs carefully before using them in real work. Some loading delays can happen during private beta because the infrastructure is still temporary.
                         </p>
                     </div>
 
