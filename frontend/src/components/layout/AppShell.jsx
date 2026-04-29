@@ -44,7 +44,7 @@ function AppShell() {
                 <div>
                   <p className="font-semibold">Private beta</p>
                   <p className="mt-1">
-                    {openTestConfig?.notices?.banner || "AI categorization and generated financial outputs are still being validated, so every result must be reviewed before real use."}
+                    {openTestConfig?.notices?.banner || "AI categorization and generated financial outputs are still being validated, and some loads can take longer while the final infrastructure is not in place. Review every result before real use."}
                   </p>
                 </div>
                 <button
@@ -95,10 +95,10 @@ function AppShell() {
         >
           <div className="space-y-4">
             <p className="text-sm leading-6 text-gray-700">
-              {openTestConfig?.notices?.modalMessage || "AI categorization, transaction grouping and profit & loss outputs can still contain mistakes, so review every result carefully before relying on it in real work."}
+              {openTestConfig?.notices?.modalMessage || "AI categorization, transaction grouping and profit & loss outputs can still contain mistakes, so review every result carefully before relying on it in real work. Some loading delays can happen because the production infrastructure is still temporary."}
             </p>
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              Review categories, splits, uncategorized transactions and profit & loss totals before using them in real work.
+              Review categories, splits, uncategorized transactions and profit & loss totals before using them in real work. If a screen takes longer to load, wait for the current operation to finish before making business decisions from the data.
             </div>
             <div className="flex justify-end">
               <button

@@ -124,18 +124,23 @@ function CompleteRegistration() {
           </div>
 
           {isOpenTestEnabled && (
-            <label className="flex flex-col gap-1.5">
-              <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Private beta access code
-              </span>
-              <input
-                className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-gray-400 focus:bg-white"
-                type="text"
-                placeholder="Access code"
-                value={openTestAccessCode}
-                onChange={(e) => setOpenTestAccessCode(e.target.value)}
-              />
-            </label>
+            <div className="space-y-3">
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                Private beta access is limited to invited offices. AI-generated categories and financial outputs must be reviewed before real use, and some screens may load more slowly while the final infrastructure is not in place.
+              </div>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Private beta access code
+                </span>
+                <input
+                  className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-gray-400 focus:bg-white"
+                  type="text"
+                  placeholder="Access code"
+                  value={openTestAccessCode}
+                  onChange={(e) => setOpenTestAccessCode(e.target.value)}
+                />
+              </label>
+            </div>
           )}
 
           <div className="flex justify-end">
