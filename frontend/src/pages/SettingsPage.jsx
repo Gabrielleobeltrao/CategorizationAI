@@ -101,11 +101,10 @@ function SettingsPage() {
           setOffice(cachedOffice || null)
           setForm(normalizeOfficeForm(cachedOffice))
           setIsLoading(false)
+          return
         }
 
-        const officeData = await getOfficeById(officeId, {
-          backgroundLoadingMessage: cachedOffice ? "Updating cached office settings..." : "",
-        })
+        const officeData = await getOfficeById(officeId)
         if (!active) return
 
         setOffice(officeData || null)

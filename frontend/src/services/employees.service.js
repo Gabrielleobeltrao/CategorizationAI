@@ -74,6 +74,14 @@ export function clearAvailableRolesCache(officeId = "") {
   removeSessionCache(`${ROLES_CACHE_PREFIX}${key}`)
 }
 
+export function hydrateAvailableRolesCache(officeId, roles) {
+  const key = getOfficeScopedCacheKey(officeId)
+  if (!key || !Array.isArray(roles)) return []
+  availableRolesCache.set(key, roles)
+  writeSessionCache(`${ROLES_CACHE_PREFIX}${key}`, roles)
+  return roles
+}
+
 export function getCachedRolePermissions() {
   if (rolePermissionsCache) return rolePermissionsCache
   rolePermissionsCache = readSessionCache(ROLE_PERMISSIONS_CACHE_KEY, null)
@@ -83,6 +91,13 @@ export function getCachedRolePermissions() {
 export function clearRolePermissionsCache() {
   rolePermissionsCache = null
   removeSessionCache(ROLE_PERMISSIONS_CACHE_KEY)
+}
+
+export function hydrateRolePermissionsCache(permissions) {
+  if (!Array.isArray(permissions)) return []
+  rolePermissionsCache = permissions
+  writeSessionCache(ROLE_PERMISSIONS_CACHE_KEY, permissions)
+  return permissions
 }
 
 export async function createEmployeeAccount(input) {
@@ -131,18 +146,14 @@ export async function listAvailableRoles(officeId, options = {}) {
   const payload = await api(path, {
     backgroundLoadingMessage: options?.backgroundLoadingMessage,
   })
-  availableRolesCache.set(getOfficeScopedCacheKey(safeOfficeId), payload)
-  writeSessionCache(`${ROLES_CACHE_PREFIX}${getOfficeScopedCacheKey(safeOfficeId)}`, payload)
-  return payload
+  return hydrateAvailableRolesCache(safeOfficeId, payload)
 }
 
 export async function listRolePermissions(options = {}) {
   const payload = await api("/api/roles/permissions", {
     backgroundLoadingMessage: options?.backgroundLoadingMessage,
   })
-  rolePermissionsCache = payload
-  writeSessionCache(ROLE_PERMISSIONS_CACHE_KEY, payload)
-  return payload
+  return hydrateRolePermissionsCache(payload)
 }
 
 export async function createCustomRole(input) {
