@@ -478,6 +478,8 @@ function LedgerEntriesTable({
         ...(filters || {}),
     }), [filters])
     const [draftFilters, setDraftFilters] = useState(appliedFilters)
+    const [filterModalAccountSearch, setFilterModalAccountSearch] = useState("")
+    const [filterModalCategorySearch, setFilterModalCategorySearch] = useState("")
     const filterPanelRef = useRef(null)
     const scrollContainerRef = useRef(null)
     const selectAllRef = useRef(null)
@@ -626,6 +628,8 @@ function LedgerEntriesTable({
     useEffect(() => {
         if (showFilterModal) return
         setDraftFilters(appliedFilters)
+        setFilterModalAccountSearch("")
+        setFilterModalCategorySearch("")
     }, [appliedFilters, showFilterModal])
 
     const accountOptions = useMemo(() => {
@@ -2148,259 +2152,268 @@ function LedgerEntriesTable({
                     </div>
 
                     {showFilterModal && (
-                        <div className="fixed inset-0 z-[300]">
+                        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
                             <button
                                 type="button"
                                 aria-label="Close filters"
-                                className="absolute inset-0 bg-slate-900/20"
+                                className="absolute inset-0 bg-slate-900/40"
                                 onClick={() => setShowFilterModal(false)}
                             />
-                            <aside ref={filterPanelRef} className="fixed bottom-0 right-0 top-0 flex w-[380px] max-w-[100vw] flex-col overflow-hidden border-l border-gray-200 bg-white shadow-2xl">
-                                <header className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-                                    <h2 className="text-base font-semibold">Transaction Filters</h2>
-                                    <button type="button" className="rounded-md px-2 py-1 text-sm text-gray-500 hover:bg-gray-100" onClick={() => setShowFilterModal(false)}>
-                                        Close
+                            <div ref={filterPanelRef} className="relative flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+                                <header className="flex items-center justify-between border-b border-gray-100 px-5 py-3.5">
+                                    <div className="flex items-center gap-2.5">
+                                        <h2 className="text-base font-semibold text-gray-900">Filters</h2>
+                                        {activeFiltersCount > 0 && (
+                                            <span className="rounded-full bg-gray-900 px-2 py-0.5 text-xs font-medium text-white">
+                                                {activeFiltersCount} active
+                                            </span>
+                                        )}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                                        aria-label="Close"
+                                        onClick={() => setShowFilterModal(false)}
+                                    >
+                                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M18 6 6 18" />
+                                            <path d="m6 6 12 12" />
+                                        </svg>
                                     </button>
                                 </header>
 
-                                <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-                                    <div className="space-y-4">
-                                        <section className="space-y-2">
-                                            <p className="text-sm font-medium text-gray-700">
-                                                Account {Array.isArray(draftFilters.accountIds) && draftFilters.accountIds.length > 0 ? `(${draftFilters.accountIds.length})` : ""}
+                                <div className="grid min-h-0 flex-1 grid-cols-1 gap-x-4 gap-y-4 overflow-y-auto bg-gray-50/60 px-5 py-4 md:grid-cols-2">
+                                    <section className="flex flex-col gap-2 rounded-lg border border-gray-200 bg-white p-3.5 md:col-span-2">
+                                        <div className="flex items-center justify-between">
+                                            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                                Account{Array.isArray(draftFilters.accountIds) && draftFilters.accountIds.length > 0 ? ` · ${draftFilters.accountIds.length}` : ""}
                                             </p>
-                                            <div className="flex flex-wrap gap-2">
-                                                {["all", ...accountOptions.map((account) => account.id)].map((accountId) => (
-                                                    <button
-                                                        key={accountId}
-                                                        type="button"
-                                                        className={`rounded-md border px-2.5 py-1.5 text-xs ${
-                                                            (accountId === "all" && (!Array.isArray(draftFilters.accountIds) || draftFilters.accountIds.length === 0)) ||
-                                                            (Array.isArray(draftFilters.accountIds) && draftFilters.accountIds.includes(accountId))
-                                                                ? "border-gray-900 bg-gray-900 text-white"
-                                                                : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-                                                        }`}
-                                                        onClick={() =>
-                                                            setDraftFilters((current) => {
-                                                                const currentAccounts = Array.isArray(current.accountIds) ? current.accountIds : []
-                                                                if (accountId === "all") return { ...current, accountIds: [] }
-                                                                const exists = currentAccounts.includes(accountId)
-                                                                return {
-                                                                    ...current,
-                                                                    accountIds: exists
-                                                                        ? currentAccounts.filter((item) => item !== accountId)
-                                                                        : [...currentAccounts, accountId],
-                                                                }
-                                                            })
-                                                        }
-                                                    >
-                                                        {accountId === "all"
-                                                            ? "All accounts"
-                                                            : accountOptions.find((item) => item.id === accountId)?.name || accountId}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </section>
-
-                                        <section className="space-y-2">
-                                            <p className="text-sm font-medium text-gray-700">
-                                                Category {Array.isArray(draftFilters.categoryIds) && draftFilters.categoryIds.length > 0
-                                                    ? `(${draftFilters.categoryIds.length + (draftFilters.includeUncategorizedIncome ? 1 : 0) + (draftFilters.includeUncategorizedExpenses ? 1 : 0)})`
-                                                    : (draftFilters.includeUncategorizedIncome || draftFilters.includeUncategorizedExpenses)
-                                                        ? `(${(draftFilters.includeUncategorizedIncome ? 1 : 0) + (draftFilters.includeUncategorizedExpenses ? 1 : 0)})`
-                                                        : ""}
-                                            </p>
-                                            <div className="flex flex-wrap gap-2">
-                                                {[
-                                                    "all",
-                                                    UNCATEGORIZED_INCOME_FILTER_VALUE,
-                                                    UNCATEGORIZED_EXPENSES_FILTER_VALUE,
-                                                    ...categories.map((category) => category.id),
-                                                ].map((categoryId) => (
-                                                    <button
-                                                        key={categoryId}
-                                                        type="button"
-                                                        className={`rounded-md border px-2.5 py-1.5 text-xs ${
-                                                            (categoryId === "all" &&
-                                                                (!Array.isArray(draftFilters.categoryIds) || draftFilters.categoryIds.length === 0) &&
-                                                                !draftFilters.includeUncategorizedIncome &&
-                                                                !draftFilters.includeUncategorizedExpenses) ||
-                                                            (categoryId === UNCATEGORIZED_INCOME_FILTER_VALUE && draftFilters.includeUncategorizedIncome) ||
-                                                            (categoryId === UNCATEGORIZED_EXPENSES_FILTER_VALUE && draftFilters.includeUncategorizedExpenses) ||
-                                                            (Array.isArray(draftFilters.categoryIds) && draftFilters.categoryIds.includes(categoryId))
-                                                                ? "border-gray-900 bg-gray-900 text-white"
-                                                                : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-                                                        }`}
-                                                        onClick={() =>
-                                                            setDraftFilters((current) => {
-                                                                const currentCategories = Array.isArray(current.categoryIds) ? current.categoryIds : []
-                                                                if (categoryId === "all") {
+                                            {Array.isArray(draftFilters.accountIds) && draftFilters.accountIds.length > 0 && (
+                                                <button
+                                                    type="button"
+                                                    className="text-xs text-gray-500 hover:text-gray-800"
+                                                    onClick={() => setDraftFilters((current) => ({ ...current, accountIds: [] }))}
+                                                >
+                                                    Clear
+                                                </button>
+                                            )}
+                                        </div>
+                                        {accountOptions.length > 6 && (
+                                            <input
+                                                type="text"
+                                                value={filterModalAccountSearch}
+                                                onChange={(e) => setFilterModalAccountSearch(e.target.value)}
+                                                placeholder="Search accounts"
+                                                className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs outline-none focus:border-gray-400"
+                                            />
+                                        )}
+                                        <div className="max-h-48 overflow-y-auto rounded-md border border-gray-200 bg-gray-50/40">
+                                            <button
+                                                type="button"
+                                                className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs ${
+                                                    (!Array.isArray(draftFilters.accountIds) || draftFilters.accountIds.length === 0)
+                                                        ? "bg-gray-900 text-white"
+                                                        : "text-gray-700 hover:bg-white"
+                                                }`}
+                                                onClick={() => setDraftFilters((current) => ({ ...current, accountIds: [] }))}
+                                            >
+                                                <span>All accounts</span>
+                                            </button>
+                                            {accountOptions
+                                                .filter((account) => {
+                                                    const term = filterModalAccountSearch.trim().toLowerCase()
+                                                    if (!term) return true
+                                                    return String(account.name || "").toLowerCase().includes(term)
+                                                })
+                                                .map((account) => {
+                                                    const selected = Array.isArray(draftFilters.accountIds) && draftFilters.accountIds.includes(account.id)
+                                                    return (
+                                                        <button
+                                                            key={account.id}
+                                                            type="button"
+                                                            className={`flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs ${
+                                                                selected ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-white"
+                                                            }`}
+                                                            onClick={() =>
+                                                                setDraftFilters((current) => {
+                                                                    const currentAccounts = Array.isArray(current.accountIds) ? current.accountIds : []
+                                                                    const exists = currentAccounts.includes(account.id)
                                                                     return {
                                                                         ...current,
-                                                                        categoryIds: [],
-                                                                        includeUncategorizedIncome: false,
-                                                                        includeUncategorizedExpenses: false,
+                                                                        accountIds: exists
+                                                                            ? currentAccounts.filter((item) => item !== account.id)
+                                                                            : [...currentAccounts, account.id],
                                                                     }
-                                                                }
-                                                                if (categoryId === UNCATEGORIZED_INCOME_FILTER_VALUE) {
-                                                                    return {
-                                                                        ...current,
-                                                                        includeUncategorizedIncome: !current.includeUncategorizedIncome,
-                                                                    }
-                                                                }
-                                                                if (categoryId === UNCATEGORIZED_EXPENSES_FILTER_VALUE) {
-                                                                    return {
-                                                                        ...current,
-                                                                        includeUncategorizedExpenses: !current.includeUncategorizedExpenses,
-                                                                    }
-                                                                }
-                                                                const exists = currentCategories.includes(categoryId)
-                                                                return {
-                                                                    ...current,
-                                                                    categoryIds: exists
-                                                                        ? currentCategories.filter((item) => item !== categoryId)
-                                                                        : [...currentCategories, categoryId],
-                                                                }
-                                                            })
-                                                        }
-                                                    >
-                                                        {categoryId === "all"
-                                                            ? "All categories"
-                                                            : categoryId === UNCATEGORIZED_INCOME_FILTER_VALUE
-                                                                ? "Uncategorized income"
-                                                                : categoryId === UNCATEGORIZED_EXPENSES_FILTER_VALUE
-                                                                    ? "Uncategorized expenses"
-                                                                    : categories.find((item) => item.id === categoryId)?.name || categoryId}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </section>
+                                                                })
+                                                            }
+                                                        >
+                                                            <span className="truncate">{account.name || account.id}</span>
+                                                            {selected && (
+                                                                <svg className="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                                                    <path d="M20 6 9 17l-5-5" />
+                                                                </svg>
+                                                            )}
+                                                        </button>
+                                                    )
+                                                })}
+                                        </div>
+                                    </section>
 
-                                        <section className="space-y-2">
-                                            <p className="text-sm font-medium text-gray-700">Split</p>
-                                            <div className="flex flex-wrap gap-2">
-                                                {[
-                                                    { id: "all", label: "All entries" },
-                                                    { id: "split", label: "Split only" },
-                                                    { id: "regular", label: "Regular only" },
-                                                ].map((option) => (
-                                                    <button
-                                                        key={option.id}
-                                                        type="button"
-                                                        className={`rounded-md border px-2.5 py-1.5 text-xs ${
-                                                            String(draftFilters.splitMode || "all") === option.id
-                                                                ? "border-gray-900 bg-gray-900 text-white"
-                                                                : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-                                                        }`}
-                                                        onClick={() =>
-                                                            setDraftFilters((current) => ({
-                                                                ...current,
-                                                                splitMode: option.id,
-                                                            }))
-                                                        }
-                                                    >
-                                                        {option.label}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </section>
-
-                                        <section className="space-y-2">
-                                            <p className="text-sm font-medium text-gray-700">Amount sign</p>
-                                            <div className="flex flex-wrap gap-2">
-                                                {AMOUNT_SIGN_OPTIONS.map((option) => (
-                                                    <button
-                                                        key={option.id}
-                                                        type="button"
-                                                        className={`rounded-md border px-2.5 py-1.5 text-xs ${
-                                                            String(draftFilters.amountSign || "all") === option.id
-                                                                ? "border-gray-900 bg-gray-900 text-white"
-                                                                : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-                                                        }`}
-                                                        onClick={() =>
-                                                            setDraftFilters((current) => ({
-                                                                ...current,
-                                                                amountSign: option.id,
-                                                            }))
-                                                        }
-                                                    >
-                                                        {option.label}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </section>
-
-                                        <section className="space-y-2">
-                                            <p className="text-sm font-medium text-gray-700">LLM</p>
-                                            <div className="flex flex-wrap gap-2">
-                                                {LLM_PROCESSED_OPTIONS.map((option) => (
-                                                    <button
-                                                        key={option.id}
-                                                        type="button"
-                                                        className={`rounded-md border px-2.5 py-1.5 text-xs ${
-                                                            String(draftFilters.llmProcessed || "all") === option.id
-                                                                ? "border-gray-900 bg-gray-900 text-white"
-                                                                : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-                                                        }`}
-                                                        onClick={() =>
-                                                            setDraftFilters((current) => ({
-                                                                ...current,
-                                                                llmProcessed: option.id,
-                                                            }))
-                                                        }
-                                                    >
-                                                        {option.label}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </section>
-
-                                        <section className="space-y-2">
-                                            <p className="text-sm font-medium text-gray-700">Icon</p>
-                                            <div className="flex flex-wrap gap-2">
-                                                {ICON_TYPE_OPTIONS.map((option) => (
-                                                    <button
-                                                        key={option.id}
-                                                        type="button"
-                                                        className={`inline-flex items-center justify-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs ${
-                                                            String(draftFilters.iconType || "all") === option.id
-                                                                ? "border-gray-900 bg-gray-900 text-white"
-                                                                : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-                                                        }`}
-                                                        title={option.label}
-                                                        aria-label={option.label}
-                                                        onClick={() =>
-                                                            setDraftFilters((current) => ({
-                                                                ...current,
-                                                                iconType: option.id,
-                                                            }))
-                                                        }
-                                                    >
-                                                        {renderIconFilterOption(option.id) || option.label}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </section>
-
-                                        <section className="space-y-2">
-                                            <p className="text-sm font-medium text-gray-700">
-                                                Year {Array.isArray(draftFilters.years) && draftFilters.years.length > 0 ? `(${draftFilters.years.length})` : ""}
+                                    <section className="flex flex-col gap-2 rounded-lg border border-gray-200 bg-white p-3.5 md:col-span-2">
+                                        <div className="flex items-center justify-between">
+                                            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                                Category{(Array.isArray(draftFilters.categoryIds) && draftFilters.categoryIds.length > 0) || draftFilters.includeUncategorizedIncome || draftFilters.includeUncategorizedExpenses
+                                                    ? ` · ${(Array.isArray(draftFilters.categoryIds) ? draftFilters.categoryIds.length : 0) + (draftFilters.includeUncategorizedIncome ? 1 : 0) + (draftFilters.includeUncategorizedExpenses ? 1 : 0)}`
+                                                    : ""}
                                             </p>
-                                            <div className="flex flex-wrap gap-2">
-                                                {["all", ...yearOptions].map((year) => (
+                                            {((Array.isArray(draftFilters.categoryIds) && draftFilters.categoryIds.length > 0) || draftFilters.includeUncategorizedIncome || draftFilters.includeUncategorizedExpenses) && (
+                                                <button
+                                                    type="button"
+                                                    className="text-xs text-gray-500 hover:text-gray-800"
+                                                    onClick={() => setDraftFilters((current) => ({
+                                                        ...current,
+                                                        categoryIds: [],
+                                                        includeUncategorizedIncome: false,
+                                                        includeUncategorizedExpenses: false,
+                                                    }))}
+                                                >
+                                                    Clear
+                                                </button>
+                                            )}
+                                        </div>
+                                        <input
+                                            type="text"
+                                            value={filterModalCategorySearch}
+                                            onChange={(e) => setFilterModalCategorySearch(e.target.value)}
+                                            placeholder="Search categories"
+                                            className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs outline-none focus:border-gray-400"
+                                        />
+                                        <div className="max-h-48 overflow-y-auto rounded-md border border-gray-200 bg-gray-50/40">
+                                            <button
+                                                type="button"
+                                                className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs ${
+                                                    (!Array.isArray(draftFilters.categoryIds) || draftFilters.categoryIds.length === 0) &&
+                                                    !draftFilters.includeUncategorizedIncome &&
+                                                    !draftFilters.includeUncategorizedExpenses
+                                                        ? "bg-gray-900 text-white"
+                                                        : "text-gray-700 hover:bg-white"
+                                                }`}
+                                                onClick={() => setDraftFilters((current) => ({
+                                                    ...current,
+                                                    categoryIds: [],
+                                                    includeUncategorizedIncome: false,
+                                                    includeUncategorizedExpenses: false,
+                                                }))}
+                                            >
+                                                <span>All categories</span>
+                                            </button>
+                                            {[
+                                                { id: UNCATEGORIZED_INCOME_FILTER_VALUE, name: "Uncategorized income" },
+                                                { id: UNCATEGORIZED_EXPENSES_FILTER_VALUE, name: "Uncategorized expenses" },
+                                                ...categories,
+                                            ]
+                                                .filter((category) => {
+                                                    const term = filterModalCategorySearch.trim().toLowerCase()
+                                                    if (!term) return true
+                                                    return String(category.name || "").toLowerCase().includes(term)
+                                                })
+                                                .map((category) => {
+                                                    const selected =
+                                                        (category.id === UNCATEGORIZED_INCOME_FILTER_VALUE && draftFilters.includeUncategorizedIncome) ||
+                                                        (category.id === UNCATEGORIZED_EXPENSES_FILTER_VALUE && draftFilters.includeUncategorizedExpenses) ||
+                                                        (Array.isArray(draftFilters.categoryIds) && draftFilters.categoryIds.includes(category.id))
+                                                    return (
+                                                        <button
+                                                            key={category.id}
+                                                            type="button"
+                                                            className={`flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs ${
+                                                                selected ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-white"
+                                                            }`}
+                                                            onClick={() =>
+                                                                setDraftFilters((current) => {
+                                                                    if (category.id === UNCATEGORIZED_INCOME_FILTER_VALUE) {
+                                                                        return { ...current, includeUncategorizedIncome: !current.includeUncategorizedIncome }
+                                                                    }
+                                                                    if (category.id === UNCATEGORIZED_EXPENSES_FILTER_VALUE) {
+                                                                        return { ...current, includeUncategorizedExpenses: !current.includeUncategorizedExpenses }
+                                                                    }
+                                                                    const currentCategories = Array.isArray(current.categoryIds) ? current.categoryIds : []
+                                                                    const exists = currentCategories.includes(category.id)
+                                                                    return {
+                                                                        ...current,
+                                                                        categoryIds: exists
+                                                                            ? currentCategories.filter((item) => item !== category.id)
+                                                                            : [...currentCategories, category.id],
+                                                                    }
+                                                                })
+                                                            }
+                                                        >
+                                                            <span className="truncate">{category.name || category.id}</span>
+                                                            {selected && (
+                                                                <svg className="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                                                    <path d="M20 6 9 17l-5-5" />
+                                                                </svg>
+                                                            )}
+                                                        </button>
+                                                    )
+                                                })}
+                                        </div>
+                                    </section>
+
+                                    <section className="flex flex-col gap-2 rounded-lg border border-gray-200 bg-white p-3.5 md:col-span-2">
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Date range</p>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <label className="flex flex-col gap-1 text-xs text-gray-600">
+                                                From
+                                                <input
+                                                    type="date"
+                                                    className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm"
+                                                    value={draftFilters.fromDate}
+                                                    onChange={(e) => setDraftFilters((current) => ({ ...current, fromDate: e.target.value }))}
+                                                />
+                                            </label>
+                                            <label className="flex flex-col gap-1 text-xs text-gray-600">
+                                                To
+                                                <input
+                                                    type="date"
+                                                    className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm"
+                                                    value={draftFilters.toDate}
+                                                    onChange={(e) => setDraftFilters((current) => ({ ...current, toDate: e.target.value }))}
+                                                />
+                                            </label>
+                                        </div>
+                                    </section>
+
+                                    <section className="flex flex-col gap-2 rounded-lg border border-gray-200 bg-white p-3.5">
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                            Year{Array.isArray(draftFilters.years) && draftFilters.years.length > 0 ? ` · ${draftFilters.years.length}` : ""}
+                                        </p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            <button
+                                                type="button"
+                                                className={`rounded-md border px-2 py-1 text-xs ${
+                                                    !Array.isArray(draftFilters.years) || draftFilters.years.length === 0
+                                                        ? "border-gray-900 bg-gray-900 text-white"
+                                                        : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                                                }`}
+                                                onClick={() => setDraftFilters((current) => ({ ...current, years: [] }))}
+                                            >
+                                                All
+                                            </button>
+                                            {yearOptions.map((year) => {
+                                                const selected = Array.isArray(draftFilters.years) && draftFilters.years.includes(year)
+                                                return (
                                                     <button
                                                         key={year}
                                                         type="button"
-                                                        className={`rounded-md border px-2.5 py-1.5 text-xs ${
-                                                            (year === "all" && (!Array.isArray(draftFilters.years) || draftFilters.years.length === 0)) ||
-                                                            (Array.isArray(draftFilters.years) && draftFilters.years.includes(year))
+                                                        className={`rounded-md border px-2 py-1 text-xs ${
+                                                            selected
                                                                 ? "border-gray-900 bg-gray-900 text-white"
                                                                 : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
                                                         }`}
                                                         onClick={() =>
                                                             setDraftFilters((current) => {
                                                                 const currentYears = Array.isArray(current.years) ? current.years : []
-                                                                if (year === "all") return { ...current, years: [] }
                                                                 const exists = currentYears.includes(year)
                                                                 return {
                                                                     ...current,
@@ -2411,31 +2424,43 @@ function LedgerEntriesTable({
                                                             })
                                                         }
                                                     >
-                                                        {year === "all" ? "All years" : year}
+                                                        {year}
                                                     </button>
-                                                ))}
-                                            </div>
-                                        </section>
+                                                )
+                                            })}
+                                        </div>
+                                    </section>
 
-                                        <section className="space-y-2">
-                                            <p className="text-sm font-medium text-gray-700">
-                                                Month {Array.isArray(draftFilters.months) && draftFilters.months.length > 0 ? `(${draftFilters.months.length})` : ""}
-                                            </p>
-                                            <div className="flex flex-wrap gap-2">
-                                                {["all", ...monthOptions].map((monthValue) => (
+                                    <section className="flex flex-col gap-2 rounded-lg border border-gray-200 bg-white p-3.5">
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                            Month{Array.isArray(draftFilters.months) && draftFilters.months.length > 0 ? ` · ${draftFilters.months.length}` : ""}
+                                        </p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            <button
+                                                type="button"
+                                                className={`rounded-md border px-2 py-1 text-xs ${
+                                                    !Array.isArray(draftFilters.months) || draftFilters.months.length === 0
+                                                        ? "border-gray-900 bg-gray-900 text-white"
+                                                        : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                                                }`}
+                                                onClick={() => setDraftFilters((current) => ({ ...current, months: [] }))}
+                                            >
+                                                All
+                                            </button>
+                                            {monthOptions.map((monthValue) => {
+                                                const selected = Array.isArray(draftFilters.months) && draftFilters.months.includes(monthValue)
+                                                return (
                                                     <button
                                                         key={monthValue}
                                                         type="button"
-                                                        className={`rounded-md border px-2.5 py-1.5 text-xs ${
-                                                            (monthValue === "all" && (!Array.isArray(draftFilters.months) || draftFilters.months.length === 0)) ||
-                                                            (Array.isArray(draftFilters.months) && draftFilters.months.includes(monthValue))
+                                                        className={`rounded-md border px-2 py-1 text-xs ${
+                                                            selected
                                                                 ? "border-gray-900 bg-gray-900 text-white"
                                                                 : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
                                                         }`}
                                                         onClick={() =>
                                                             setDraftFilters((current) => {
                                                                 const currentMonths = Array.isArray(current.months) ? current.months : []
-                                                                if (monthValue === "all") return { ...current, months: [] }
                                                                 const exists = currentMonths.includes(monthValue)
                                                                 return {
                                                                     ...current,
@@ -2445,50 +2470,18 @@ function LedgerEntriesTable({
                                                                 }
                                                             })
                                                         }
-                                                        >
-                                                            {monthValue === "all"
-                                                                ? "All months"
-                                                                : MONTH_LABELS[monthValue] || monthValue}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                        </section>
+                                                    >
+                                                        {MONTH_LABELS[monthValue] || monthValue}
+                                                    </button>
+                                                )
+                                            })}
+                                        </div>
+                                    </section>
 
-                                        <section className="space-y-2">
-                                            <p className="text-sm font-medium text-gray-700">Date range</p>
-                                            <label className="flex flex-col gap-1 text-sm text-gray-600">
-                                                From
-                                                <input
-                                                    type="date"
-                                                    className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm"
-                                                    value={draftFilters.fromDate}
-                                                    onChange={(e) =>
-                                                        setDraftFilters((current) => ({
-                                                            ...current,
-                                                            fromDate: e.target.value,
-                                                        }))
-                                                    }
-                                                />
-                                            </label>
-                                            <label className="flex flex-col gap-1 text-sm text-gray-600">
-                                                To
-                                                <input
-                                                    type="date"
-                                                    className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm"
-                                                    value={draftFilters.toDate}
-                                                    onChange={(e) =>
-                                                        setDraftFilters((current) => ({
-                                                            ...current,
-                                                            toDate: e.target.value,
-                                                        }))
-                                                    }
-                                                />
-                                            </label>
-                                        </section>
-
-                                        <section className="space-y-2">
-                                            <p className="text-sm font-medium text-gray-700">Amount range</p>
-                                            <label className="flex flex-col gap-1 text-sm text-gray-600">
+                                    <section className="flex flex-col gap-2 rounded-lg border border-gray-200 bg-white p-3.5 md:col-span-2">
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Amount range</p>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <label className="flex flex-col gap-1 text-xs text-gray-600">
                                                 Min
                                                 <input
                                                     type="number"
@@ -2499,7 +2492,7 @@ function LedgerEntriesTable({
                                                     onChange={(e) => setDraftFilters((current) => ({ ...current, minAmount: e.target.value }))}
                                                 />
                                             </label>
-                                            <label className="flex flex-col gap-1 text-sm text-gray-600">
+                                            <label className="flex flex-col gap-1 text-xs text-gray-600">
                                                 Max
                                                 <input
                                                     type="number"
@@ -2510,14 +2503,105 @@ function LedgerEntriesTable({
                                                     onChange={(e) => setDraftFilters((current) => ({ ...current, maxAmount: e.target.value }))}
                                                 />
                                             </label>
-                                        </section>
-                                    </div>
+                                        </div>
+                                    </section>
+
+                                    <section className="flex flex-col gap-2 rounded-lg border border-gray-200 bg-white p-3.5 md:col-span-2">
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Quick filters</p>
+                                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                            <div className="flex flex-col gap-1.5">
+                                                <span className="text-[11px] text-gray-500">Split</span>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {[
+                                                        { id: "all", label: "All" },
+                                                        { id: "split", label: "Split only" },
+                                                        { id: "regular", label: "Regular only" },
+                                                    ].map((option) => (
+                                                        <button
+                                                            key={option.id}
+                                                            type="button"
+                                                            className={`rounded-md border px-2 py-1 text-xs ${
+                                                                String(draftFilters.splitMode || "all") === option.id
+                                                                    ? "border-gray-900 bg-gray-900 text-white"
+                                                                    : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                                                            }`}
+                                                            onClick={() => setDraftFilters((current) => ({ ...current, splitMode: option.id }))}
+                                                        >
+                                                            {option.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            <div className="flex flex-col gap-1.5">
+                                                <span className="text-[11px] text-gray-500">Amount sign</span>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {AMOUNT_SIGN_OPTIONS.map((option) => (
+                                                        <button
+                                                            key={option.id}
+                                                            type="button"
+                                                            className={`rounded-md border px-2 py-1 text-xs ${
+                                                                String(draftFilters.amountSign || "all") === option.id
+                                                                    ? "border-gray-900 bg-gray-900 text-white"
+                                                                    : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                                                            }`}
+                                                            onClick={() => setDraftFilters((current) => ({ ...current, amountSign: option.id }))}
+                                                        >
+                                                            {option.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            <div className="flex flex-col gap-1.5">
+                                                <span className="text-[11px] text-gray-500">AI / LLM</span>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {LLM_PROCESSED_OPTIONS.map((option) => (
+                                                        <button
+                                                            key={option.id}
+                                                            type="button"
+                                                            className={`rounded-md border px-2 py-1 text-xs ${
+                                                                String(draftFilters.llmProcessed || "all") === option.id
+                                                                    ? "border-gray-900 bg-gray-900 text-white"
+                                                                    : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                                                            }`}
+                                                            onClick={() => setDraftFilters((current) => ({ ...current, llmProcessed: option.id }))}
+                                                        >
+                                                            {option.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            <div className="flex flex-col gap-1.5">
+                                                <span className="text-[11px] text-gray-500">Icon</span>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {ICON_TYPE_OPTIONS.map((option) => (
+                                                        <button
+                                                            key={option.id}
+                                                            type="button"
+                                                            className={`inline-flex items-center justify-center gap-1 rounded-md border px-2 py-1 text-xs ${
+                                                                String(draftFilters.iconType || "all") === option.id
+                                                                    ? "border-gray-900 bg-gray-900 text-white"
+                                                                    : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                                                            }`}
+                                                            title={option.label}
+                                                            aria-label={option.label}
+                                                            onClick={() => setDraftFilters((current) => ({ ...current, iconType: option.id }))}
+                                                        >
+                                                            {renderIconFilterOption(option.id) || option.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </section>
                                 </div>
 
-                                <footer className="flex items-center justify-end gap-2 border-t border-gray-100 bg-white px-4 py-3">
+                                <footer className="flex items-center justify-between gap-2 border-t border-gray-100 bg-gray-50/60 px-5 py-3">
                                     <button
                                         type="button"
-                                        className="rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                                        className="rounded-md px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-800"
                                         onClick={() => {
                                             const reset = {
                                                 accountIds: [],
@@ -2540,21 +2624,30 @@ function LedgerEntriesTable({
                                             setShowFilterModal(false)
                                         }}
                                     >
-                                        Clear
+                                        Clear all
                                     </button>
 
-                                    <button
-                                        type="button"
-                                        className="rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black"
-                                        onClick={() => {
-                                            onApplyFilters?.(draftFilters)
-                                            setShowFilterModal(false)
-                                        }}
-                                    >
-                                        Apply
-                                    </button>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            className="rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                                            onClick={() => setShowFilterModal(false)}
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black"
+                                            onClick={() => {
+                                                onApplyFilters?.(draftFilters)
+                                                setShowFilterModal(false)
+                                            }}
+                                        >
+                                            Apply filters
+                                        </button>
+                                    </div>
                                 </footer>
-                            </aside>
+                            </div>
                         </div>
                     )}
                 </div>
