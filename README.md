@@ -104,6 +104,15 @@ VITE_API_URL=http://localhost:3001
 
 ## Como rodar
 
+### Tudo de uma vez (da raiz)
+
+```bash
+npm run install:all
+npm run dev
+```
+
+O `npm run dev` da raiz usa `concurrently` para subir backend (`:3001`) e frontend (`:5173`) em paralelo, com output prefixado por cor.
+
 ### Backend
 
 ```bash
