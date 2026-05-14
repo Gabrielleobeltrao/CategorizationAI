@@ -270,6 +270,7 @@ Permissões são aplicadas por:
 - `requirePermission`
 - `authorizeScope`
 - `validateObjectId`
+- `requireFeature` (add-ons como CRM; retorna 402 quando o office não tem o flag)
 
 Existem roles base e roles customizadas por office.
 
@@ -282,6 +283,7 @@ Principais áreas protegidas:
 - categories
 - transactions
 - profit loss
+- tasks (`tasks:read/create/update/delete`, sempre gated por `requireFeature("crm")`)
 
 ## Módulos do produto
 
@@ -317,6 +319,14 @@ npm run features:set -- --officeId=<officeId> --crm=false
 
 - **Frontend**: hook `useFeature("crm")` retorna booleano. Componente `<FeatureGate flag="crm" fallback={null}>...</FeatureGate>` esconde children. Both leem de `office.features` carregado no bootstrap.
 
+### Recent Activity per usuário
+
+A seção "Recent Activity" do Home filtra atividades pelo usuário logado, enquanto o `/bookkeeping` mantém a visão do office inteiro. Cada documento que vira card de atividade (clients, transactions de import CSV, categorization_jobs, user_profiles) guarda `createdBy` = `userProfile._id` do criador.
+
+- `getOfficeDashboardSnapshot(officeId, { actorId })` aceita um filtro opcional que se aplica às 4 fontes do feed
+- Home passa `actorId = profile._id`; demais consumers (Bookkeeping Dashboard) deixam ausente para ver tudo do office
+- Documentos pré-existentes sem `createdBy` não aparecem na visão filtrada (intencional; novos eventos passam a aparecer)
+
 ## Principais coleções MongoDB
 
 - `offices`
@@ -329,6 +339,7 @@ npm run features:set -- --officeId=<officeId> --crm=false
 - `transaction_memory`
 - `open_test_access_codes`
 - `office_tags`
+- `tasks`
 
 ## API
 
@@ -344,7 +355,8 @@ Base: `/api`
 - `POST /offices`
 - `GET /offices/:id`
 - `PATCH /offices/:id`
-- `GET /offices/:id/dashboard`
+- `PATCH /offices/:id/features` — toggle de add-ons (ex: CRM), gated por `offices:update`
+- `GET /offices/:id/dashboard?actorId=<userProfileId>` — quando `actorId` é informado, o feed de atividade filtra pelo criador
 
 ### Private Beta
 - `GET /open-test/config`
@@ -408,6 +420,14 @@ Base: `/api`
 - `GET /transactions/categorize-all-llm/jobs`
 - `GET /transactions/categorize-all-llm/jobs/:jobId`
 
+### Tasks (CRM add-on)
+Todas as rotas exigem `requireAuth + requirePermission("tasks:*") + requireFeature("crm")`. Quando o office não tem CRM ativo a resposta é **402 Payment Required**.
+- `GET /tasks?clientId=&assigneeId=&status=`
+- `POST /tasks` — todos os campos opcionais (title, description, clientId, assigneeId, dueDate)
+- `GET /tasks/:id`
+- `PATCH /tasks/:id` — alternar status entre `open` e `done` carimba/limpa `doneAt` automaticamente
+- `DELETE /tasks/:id`
+
 ### Profit & Loss
 - `GET /clients/:clientId/profit-loss/period-options`
 - `GET /clients/:clientId/profit-loss`
@@ -416,10 +436,14 @@ Base: `/api`
 
 ### Páginas principais
 
-- `Home`
+- `Home` — boas-vindas com calendário de tasks (semana por default), cards "Assigned to you" e "Open for the team", Recent Activity filtrado pelo usuário logado
+- `Bookkeeping Dashboard` (`/bookkeeping`) — Performance Overview (KPIs + chart com toggle Month/Week e Blocks/Line/Columns) e Live Jobs Queue do office
+- `CRM Dashboard` (`/crm`) — Performance Overview com KPIs derivados de tasks (open, due this week, overdue, done this week, etc.)
+- `Tasks` (`/crm/tasks`) — listagem em 2 colunas (você / time) com filtro por client/status/assignee, modal de detalhes que mostra dados do client e do assignee, botão "Mark done" e timestamp `doneAt`
 - `Ledger`
 - `Profit & Loss`
-- `Clients`
+- `Clients` — listagem sem ícones de edit/delete (a edição vive em Settings do client)
+- `Client Settings` (`/clients/:id/settings`) — form completo + danger zone com delete
 - `Employees`
 - `Settings`
 - `Register`
