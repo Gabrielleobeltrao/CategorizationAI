@@ -792,9 +792,10 @@ export async function backfillTransactionsSearchAndDerivedFields() {
 }
 
 // salva transações em lote (batch)
-export async function insertTransactionsInBatches(transactions) {
+export async function insertTransactionsInBatches(transactions, options = {}) {
   const db = getDB()
   const collection = db.collection("transactions")
+  const createdBy = String(options?.createdBy || "")
 
   let insertedCount = 0
 
@@ -823,6 +824,7 @@ export async function insertTransactionsInBatches(transactions) {
       searchTerms: buildTransactionSearchTerms(t),
       searchText: buildTransactionSearchText(t),
       ...buildTransactionDerivedFields(t),
+      createdBy,
       createdAt: new Date(),
       updatedAt: new Date(),
     }))

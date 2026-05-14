@@ -304,6 +304,7 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
   const range = buildMonthRange(options.month)
   const previousRange = buildPreviousRange(range)
   const retentionCutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
+  const actorId = String(options?.actorId || "").trim()
   const office = await db
     .collection("offices")
     .findOne({ _id: new ObjectId(officeId) }, { projection: { name: 1 } })
@@ -311,7 +312,7 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
 
   const clients = await db
     .collection("clients")
-    .find({ officeId }, { projection: { _id: 1, name: 1, createdAt: 1 } })
+    .find({ officeId }, { projection: { _id: 1, name: 1, createdAt: 1, createdBy: 1 } })
     .sort({ createdAt: -1 })
     .toArray()
 
@@ -351,6 +352,7 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
   const jobsCollection = db.collection("categorization_jobs")
   const recentClientsForActivity = clients
     .filter((client) => client?.createdAt instanceof Date && client.createdAt >= retentionCutoff)
+    .filter((client) => !actorId || String(client.createdBy || "") === actorId)
     .slice(0, 4)
 
   const [
@@ -454,7 +456,9 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
       .toArray(),
     jobsCollection
       .find(
-        { clientId: { $in: clientIdList } },
+        actorId
+          ? { clientId: { $in: clientIdList }, createdBy: actorId }
+          : { clientId: { $in: clientIdList } },
         {
           projection: {
             _id: 1,
@@ -466,6 +470,7 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
             updatedAt: 1,
             errorMessage: 1,
             createdAt: 1,
+            createdBy: 1,
           },
         }
       )
@@ -488,6 +493,7 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
               $gte: retentionCutoff,
               $type: "date",
             },
+            ...(actorId ? { createdBy: actorId } : {}),
           },
         },
         {
@@ -523,8 +529,9 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
         {
           officeId,
           createdAt: { $gte: retentionCutoff },
+          ...(actorId ? { createdBy: actorId } : {}),
         },
-        { projection: { name: 1, email: 1, createdAt: 1 } }
+        { projection: { name: 1, email: 1, createdAt: 1, createdBy: 1 } }
       )
       .sort({ createdAt: -1 })
       .limit(4)

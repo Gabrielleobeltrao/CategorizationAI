@@ -106,6 +106,7 @@ export async function createClientService(input, context = {}) {
     owners: normalizeOwners(input.owners),
     ownerEmail: normalizeOptionalText(input.ownerEmail),
     ownerPhone: normalizeOptionalText(input.ownerPhone),
+    createdBy: String(context?.actorProfileId || ""),
   })
 
   enqueueClientCategorySync({

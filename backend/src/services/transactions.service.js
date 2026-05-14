@@ -1166,7 +1166,7 @@ function buildZelleCategorizationUpdatesFromResults(
     .filter(Boolean)
 }
 
-export async function createTransactionsBatchService(transactions) {
+export async function createTransactionsBatchService(transactions, context = {}) {
   if (!Array.isArray(transactions)) {
     throw new Error("transactions must be an array")
   }
@@ -1174,6 +1174,8 @@ export async function createTransactionsBatchService(transactions) {
   if (transactions.length === 0) {
     throw new Error("transactions cannot be empty")
   }
+
+  const createdBy = String(context?.actorProfileId || "")
 
   const normalizedTransactions = transactions.map((transaction) => {
     const amount = Number(transaction?.amount || 0)
@@ -1205,7 +1207,7 @@ export async function createTransactionsBatchService(transactions) {
     }
   })
 
-  return insertTransactionsInBatches(normalizedTransactions)
+  return insertTransactionsInBatches(normalizedTransactions, { createdBy })
 }
 
 export async function updateTransactionByIdService(id, patch) {

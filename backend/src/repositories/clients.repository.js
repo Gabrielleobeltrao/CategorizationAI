@@ -295,6 +295,7 @@ export async function createClient(input) {
         ownerEmail: input.ownerEmail,
         ownerPhone: input.ownerPhone,
         ownerSearch: buildOwnerSearch(input.owners, input.ownerEmail, input.ownerPhone),
+        createdBy: String(input.createdBy || ""),
         createdAt: new Date(),
         updatedAt: new Date(),
     }

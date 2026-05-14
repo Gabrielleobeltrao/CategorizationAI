@@ -16,6 +16,7 @@ export async function createEmployeeAccountController(req, res) {
   try {
     const result = await createEmployeeAccountService(req.body, {
       auth: req.app.locals.auth,
+      actorProfileId: req.userProfile?._id ? String(req.userProfile._id) : "",
     })
     return res.status(201).json(result)
   } catch (error) {
@@ -25,7 +26,9 @@ export async function createEmployeeAccountController(req, res) {
 
 export async function createUserProfileController(req, res) {
   try {
-    const profile = await createUserProfileService(req.body)
+    const profile = await createUserProfileService(req.body, {
+      actorProfileId: req.userProfile?._id ? String(req.userProfile._id) : "",
+    })
     return res.status(201).json(profile)
   } catch (error) {
     return sendErrorResponse(res, error)

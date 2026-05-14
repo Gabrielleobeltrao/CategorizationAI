@@ -48,7 +48,7 @@ function normalizeStatus(value) {
   return status
 }
 
-export async function createUserProfileService(input) {
+export async function createUserProfileService(input, context = {}) {
   if (!input?.name) throw new Error("name is required")
   if (!input?.officeId) throw new Error("officeId is required")
   if (!input?.role) throw new Error("role is required")
@@ -76,6 +76,7 @@ export async function createUserProfileService(input) {
     authUserId: input?.authUserId || undefined,
     mustChangePassword: Boolean(input?.mustChangePassword),
     passwordResetAt: input?.passwordResetAt || null,
+    createdBy: String(context?.actorProfileId || ""),
   })
 }
 
@@ -303,7 +304,7 @@ export async function createEmployeeAccountService(input, context = {}) {
       role,
       status: "active",
       authUserId: String(authUser._id),
-    })
+    }, { actorProfileId: context?.actorProfileId })
 
     return {
       authUser: signUpResult,

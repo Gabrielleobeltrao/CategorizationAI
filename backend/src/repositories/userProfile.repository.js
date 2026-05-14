@@ -40,6 +40,7 @@ export async function createUserProfile(input) {
         authUserId: input.authUserId,
         mustChangePassword: input.mustChangePassword ?? false,
         passwordResetAt: input.passwordResetAt ?? null,
+        createdBy: String(input.createdBy || ""),
         createdAt: new Date(),
         updatedAt: new Date(),
     }
