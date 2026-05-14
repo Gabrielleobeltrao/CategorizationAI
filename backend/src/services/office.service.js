@@ -3,6 +3,8 @@ import {
   deleteOfficeById,
   updateOfficeById,
   getOfficeById,
+  setOfficeFeatures,
+  normalizeOfficeFeatures,
 } from "../repositories/office.repository.js"
 import { getOfficeDashboardSnapshot } from "../repositories/dashboard.repository.js"
 import { OPEN_TEST_ENABLED } from "../config/openTest.js"
@@ -100,6 +102,20 @@ export async function getOfficeByIdService(id, options = {}) {
   }
 
   return getOfficeById(id)
+}
+
+export async function setOfficeFeaturesService(officeId, featuresPatch) {
+  if (!officeId) throw new Error("officeId is required")
+
+  const existing = await getOfficeById(officeId)
+  if (!existing) throw new Error("Office not found")
+
+  const merged = {
+    ...normalizeOfficeFeatures(existing.features),
+    ...(featuresPatch && typeof featuresPatch === "object" ? featuresPatch : {}),
+  }
+
+  return setOfficeFeatures(officeId, merged)
 }
 
 export async function getOfficeDashboardByIdService(officeId, options = {}) {

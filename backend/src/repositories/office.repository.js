@@ -1,6 +1,18 @@
 import { ObjectId, ReturnDocument } from "mongodb"
 import { getDB } from "../db.js"
 
+export const DEFAULT_OFFICE_FEATURES = Object.freeze({
+    crm: false,
+})
+
+export function normalizeOfficeFeatures(features) {
+    return {
+        ...DEFAULT_OFFICE_FEATURES,
+        ...(features && typeof features === "object" ? features : {}),
+        crm: Boolean(features?.crm),
+    }
+}
+
 // criar
 
 export async function createOffice(input) {
@@ -16,12 +28,26 @@ export async function createOffice(input) {
         isOpenTestOffice: Boolean(input?.openTest?.isOpenTestOffice),
         openTestAccessCodeLabel: String(input?.openTest?.accessCodeLabel || ""),
         openTestCreatedAt: input?.openTest?.createdAt || null,
+        // Feature flags drive paid add-ons (e.g. Operations CRM). Stripe will sync these later.
+        features: { ...DEFAULT_OFFICE_FEATURES },
         createdAt: new Date(),
         updatedAt: new Date(),
     }
 
     const result = await db.collection("offices").insertOne(doc)
     return {...doc, _id: result.insertedId}
+}
+
+// internal: bypass regular update path; used by scripts and (later) Stripe webhook
+export async function setOfficeFeatures(id, featuresPatch) {
+    const db = getDB()
+    const safeFeatures = normalizeOfficeFeatures(featuresPatch)
+
+    return db.collection("offices").findOneAndUpdate(
+        { _id: new ObjectId(id) },
+        { $set: { features: safeFeatures, updatedAt: new Date() } },
+        { returnDocument: "after" }
+    )
 }
 
 // atualizar

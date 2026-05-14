@@ -1,5 +1,6 @@
 import { getCurrentUserProfileService } from "../services/userProfile.service.js"
 import { getOfficeByIdService } from "../services/office.service.js"
+import { normalizeOfficeFeatures } from "../repositories/office.repository.js"
 import { listPermissionsCatalogService, listRolesForOfficeService } from "../services/roles.service.js"
 import { listOfficeTagsService } from "../services/tag.service.js"
 import { sendErrorResponse } from "../utils/httpError.js"
@@ -34,10 +35,14 @@ export async function getAppBootstrapController(req, res) {
       ? officeTagsResult.value
       : []
 
+    const officeWithFeatures = office
+      ? { ...office, features: normalizeOfficeFeatures(office.features) }
+      : null
+
     return res.status(200).json({
       isAuthenticated: true,
       profile: profile || null,
-      office: office || null,
+      office: officeWithFeatures,
       officeTags,
       roles,
       permissionCatalog: listPermissionsCatalogService(),
