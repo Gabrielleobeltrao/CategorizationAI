@@ -4,17 +4,31 @@ import { getClientById } from "../../services/clients.service"
 import { signOut } from "../../services/auth.service"
 import { useAuth } from "../../contexts/auth.context"
 import { useNotification } from "../../contexts/notification.context"
+import { useFeature } from "../../hooks/useFeature"
 import { hasPermission } from "../../utils/permissions"
 
-const navItems = [
+const homeNavItem = {
+  to: "/home",
+  label: "Home",
+  icon: (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 10.5 12 3l9 7.5" />
+      <path d="M5 9.5V21h14V9.5" />
+      <path d="M10 21v-6h4v6" />
+    </svg>
+  ),
+}
+
+const bookkeepingNavItems = [
   {
-    to: "/home",
-    label: "Home",
+    to: "/bookkeeping",
+    label: "Dashboard",
     icon: (
       <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M3 10.5 12 3l9 7.5" />
-        <path d="M5 9.5V21h14V9.5" />
-        <path d="M10 21v-6h4v6" />
+        <path d="M3 3h7v7H3z" />
+        <path d="M14 3h7v7h-7z" />
+        <path d="M14 14h7v7h-7z" />
+        <path d="M3 14h7v7H3z" />
       </svg>
     ),
   },
@@ -30,15 +44,43 @@ const navItems = [
       </svg>
     ),
   },
+]
+
+const employeesNavItem = {
+  to: "/employees",
+  label: "Employees",
+  icon: (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="8" cy="8" r="3" />
+      <circle cx="17" cy="9" r="2.5" />
+      <path d="M3 20v-1a5 5 0 0 1 5-5h1" />
+      <path d="M13 20v-1a4 4 0 0 1 4-4h1" />
+    </svg>
+  ),
+}
+
+const crmNavItems = [
   {
-    to: "/employees",
-    label: "Employees",
+    to: "/crm",
+    label: "Dashboard",
     icon: (
       <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="8" cy="8" r="3" />
-        <circle cx="17" cy="9" r="2.5" />
-        <path d="M3 20v-1a5 5 0 0 1 5-5h1" />
-        <path d="M13 20v-1a4 4 0 0 1 4-4h1" />
+        <path d="M3 3h7v7H3z" />
+        <path d="M14 3h7v7h-7z" />
+        <path d="M14 14h7v7h-7z" />
+        <path d="M3 14h7v7H3z" />
+      </svg>
+    ),
+  },
+  {
+    to: "/crm/tasks",
+    label: "Tasks",
+    icon: (
+      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="4" y="5" width="16" height="15" rx="2" />
+        <path d="M9 3v4" />
+        <path d="M15 3v4" />
+        <path d="m8 13 2.5 2.5L16 10" />
       </svg>
     ),
   },
@@ -60,40 +102,12 @@ function Sidebar({ isCollapsed, onToggleCollapse }) {
   const navigate = useNavigate()
   const { success, error } = useNotification()
   const { profile: currentProfile, clearAuth } = useAuth()
+  const isCrmEnabled = useFeature("crm")
   const clientScopeMatch = matchPath("/clients/:clientId/*", location.pathname)
   const clientId = clientScopeMatch?.params?.clientId
   const [selectedClient, setSelectedClient] = useState(null)
 
   const clientMenuItems = clientId
-    ? [
-        {
-          to: `/clients/${clientId}/ledger`,
-          label: "Ledger",
-          icon: (
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="4" y="3" width="16" height="18" rx="2" />
-              <path d="M8 8h8" />
-              <path d="M8 12h8" />
-              <path d="M8 16h5" />
-            </svg>
-          ),
-        },
-        {
-          to: `/clients/${clientId}/profit-loss`,
-          label: "Profit & Loss",
-          icon: (
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M4 19h16" />
-              <path d="M6 16V9" />
-              <path d="M12 16V6" />
-              <path d="M18 16v-4" />
-            </svg>
-          ),
-        },
-      ]
-    : []
-
-  const ledgerSubItems = clientId
     ? [
         {
           to: `/clients/${clientId}/ledger`,
@@ -124,6 +138,28 @@ function Sidebar({ isCollapsed, onToggleCollapse }) {
               <path d="M4 7h10" />
               <path d="M4 12h16" />
               <path d="M4 17h12" />
+            </svg>
+          ),
+        },
+        {
+          to: `/clients/${clientId}/profit-loss`,
+          label: "Profit & Loss",
+          icon: (
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 19h16" />
+              <path d="M6 16V9" />
+              <path d="M12 16V6" />
+              <path d="M18 16v-4" />
+            </svg>
+          ),
+        },
+        {
+          to: `/clients/${clientId}/settings`,
+          label: "Settings",
+          icon: (
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3h.1a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8v.1a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z" />
             </svg>
           ),
         },
@@ -192,88 +228,135 @@ function Sidebar({ isCollapsed, onToggleCollapse }) {
         </button>
       </div>
 
-      <div className="min-h-0 flex-1">
+      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
         <nav className="flex flex-col gap-2">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) =>
-                `flex items-center rounded-lg py-2 text-sm font-medium transition-colors ${
-                  isCollapsed ? "justify-center px-2" : "gap-3 px-3"
-                } ${
-                  isActive ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
-                }`
-              }
-              title={isCollapsed ? item.label : undefined}
-            >
-              <span>{item.icon}</span>
-              {!isCollapsed && <span>{item.label}</span>}
-            </NavLink>
-          ))}
+          <NavLink
+            to={homeNavItem.to}
+            className={({ isActive }) =>
+              `flex items-center rounded-lg py-2 text-sm font-medium transition-colors ${
+                isCollapsed ? "justify-center px-2" : "gap-3 px-3"
+              } ${
+                isActive ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
+              }`
+            }
+            title={isCollapsed ? homeNavItem.label : undefined}
+          >
+            <span>{homeNavItem.icon}</span>
+            {!isCollapsed && <span>{homeNavItem.label}</span>}
+          </NavLink>
         </nav>
 
-        {clientMenuItems.length > 0 && (
+        <div className="mt-4 border-t border-gray-100 pt-4">
+          {isCrmEnabled && !isCollapsed && (
+            <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+              Bookkeeping
+            </p>
+          )}
+          <nav className="flex flex-col gap-2">
+            {bookkeepingNavItems.map((item) => (
+              <div key={item.to}>
+                <NavLink
+                  to={item.to}
+                  end
+                  className={({ isActive }) =>
+                    `flex items-center rounded-lg py-2 text-sm font-medium transition-colors ${
+                      isCollapsed ? "justify-center px-2" : "gap-3 px-3"
+                    } ${
+                      isActive ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
+                    }`
+                  }
+                  title={isCollapsed ? item.label : undefined}
+                >
+                  <span>{item.icon}</span>
+                  {!isCollapsed && <span>{item.label}</span>}
+                </NavLink>
+
+                {item.to === "/clients" && clientMenuItems.length > 0 && (
+                  <div className={`mt-1 flex flex-col gap-1 ${isCollapsed ? "items-center" : "ml-3 border-l border-gray-100 pl-3"}`}>
+                    {!isCollapsed && (
+                      <p className="px-2 pb-0.5 pt-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+                        {selectedClient ? selectedClient.name : "Client"}
+                      </p>
+                    )}
+                    {clientMenuItems.map((clientItem) => (
+                      <NavLink
+                        key={clientItem.to}
+                        to={clientItem.to}
+                        end
+                        className={({ isActive }) =>
+                          `flex items-center rounded-md py-1.5 text-xs font-medium transition-colors ${
+                            isCollapsed ? "justify-center px-2" : "gap-2 px-2"
+                          } ${
+                            isActive ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-100 hover:text-gray-800"
+                          }`
+                        }
+                        title={isCollapsed ? clientItem.label : undefined}
+                      >
+                        <span>{clientItem.icon}</span>
+                        {!isCollapsed && <span>{clientItem.label}</span>}
+                      </NavLink>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </nav>
+        </div>
+
+        {isCrmEnabled && (
           <div className="mt-4 border-t border-gray-100 pt-4">
             {!isCollapsed && (
               <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                {selectedClient ? selectedClient.name : "Client"}
+                CRM Operacional
               </p>
             )}
-
             <nav className="flex flex-col gap-2">
-              {clientMenuItems.map((item) => (
-                <div key={item.to}>
-                  <NavLink
-                    to={item.to}
-                    end={item.label !== "Ledger"}
-                    className={({ isActive }) =>
-                      `flex items-center rounded-lg py-2 text-sm font-medium transition-colors ${
-                        isCollapsed ? "justify-center px-2" : "gap-2 px-3"
-                      } ${
-                        isActive ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
-                      }`
-                    }
-                    title={isCollapsed ? item.label : undefined}
-                  >
-                    <span>{item.icon}</span>
-                    {!isCollapsed && <span>{item.label}</span>}
-                  </NavLink>
-
-                  {item.label === "Ledger" && (
-                    <div className={`mt-1 flex flex-col gap-1 ${isCollapsed ? "items-center" : "ml-9"}`}>
-                      {ledgerSubItems.map((subItem) => (
-                        <NavLink
-                          key={subItem.to}
-                          to={subItem.to}
-                          end={subItem.to.endsWith("/ledger")}
-                          title={isCollapsed ? subItem.label : undefined}
-                          className={({ isActive }) =>
-                            `rounded-md font-medium transition-colors ${
-                              isCollapsed ? "flex h-10 w-10 items-center justify-center" : "flex items-center gap-2 px-2 py-2 text-xs"
-                            } ${
-                              isActive ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-                            }`
-                          }
-                        >
-                          <span>{subItem.icon}</span>
-                          {!isCollapsed && <span>{subItem.label}</span>}
-                        </NavLink>
-                      ))}
-                    </div>
-                  )}
-                </div>
+              {crmNavItems.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end
+                  className={({ isActive }) =>
+                    `flex items-center rounded-lg py-2 text-sm font-medium transition-colors ${
+                      isCollapsed ? "justify-center px-2" : "gap-3 px-3"
+                    } ${
+                      isActive ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
+                    }`
+                  }
+                  title={isCollapsed ? item.label : undefined}
+                >
+                  <span>{item.icon}</span>
+                  {!isCollapsed && <span>{item.label}</span>}
+                </NavLink>
               ))}
             </nav>
           </div>
         )}
+
       </div>
+
+      <NavLink
+        to={employeesNavItem.to}
+        end
+        className={({ isActive }) =>
+          `mt-4 flex items-center rounded-lg py-2 text-sm font-medium transition-colors ${
+            isCollapsed ? "justify-center px-2" : "gap-3 px-3"
+          } ${
+            isActive ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
+          }`
+        }
+        title={isCollapsed ? employeesNavItem.label : undefined}
+      >
+        <span>{employeesNavItem.icon}</span>
+        {!isCollapsed && <span>{employeesNavItem.label}</span>}
+      </NavLink>
 
       {canReadSettings && (
         <NavLink
           to={settingsNavItem.to}
+          end
           className={({ isActive }) =>
-            `mt-4 flex items-center rounded-lg py-2 text-sm font-medium transition-colors ${
+            `mt-2 flex items-center rounded-lg py-2 text-sm font-medium transition-colors ${
               isCollapsed ? "justify-center px-2" : "gap-3 px-3"
             } ${
               isActive ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
