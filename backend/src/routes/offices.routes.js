@@ -6,6 +6,7 @@ import {
   getOfficeByIdController,
   getOfficeDashboardByIdController,
   listOfficeTagsController,
+  setOfficeFeaturesController,
 } from "../controllers/office.controller.js"
 import { requireAuth } from "../middlewares/requireAuth.js"
 import { validateObjectIdParam } from "../middlewares/validateObjectId.js"
@@ -23,6 +24,15 @@ router.patch(
   validateObjectIdParam("id"),
   ensureResourceExists({ collection: "offices", from: "params", field: "id", assignKey: "office" }),
   updateOfficeByIdController
+)
+
+router.patch(
+  "/offices/:id/features",
+  requireAuth,
+  requirePermission("offices:update"),
+  validateObjectIdParam("id"),
+  ensureResourceExists({ collection: "offices", from: "params", field: "id", assignKey: "office" }),
+  setOfficeFeaturesController
 )
 
 router.get(

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { updateMyProfile } from "../services/auth.service"
 import { useAuth } from "../contexts/auth.context"
-import { getCachedOfficeById, getOfficeById, updateOfficeById } from "../services/office.service"
+import { getCachedOfficeById, getOfficeById, updateOfficeById, updateOfficeFeatures } from "../services/office.service"
 import { hasPermission } from "../utils/permissions"
 import { useNotification } from "../contexts/notification.context"
 
@@ -51,7 +51,7 @@ function formatStatus(value) {
 }
 
 function SettingsPage() {
-  const { profile, updateProfile } = useAuth()
+  const { profile, updateProfile, refreshAuth } = useAuth()
   const [office, setOffice] = useState(null)
   const [accountForm, setAccountForm] = useState({
     name: "",
@@ -65,6 +65,7 @@ function SettingsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSavingAccount, setIsSavingAccount] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [isTogglingCrm, setIsTogglingCrm] = useState(false)
   const { success, error } = useNotification()
 
   const permissions = useMemo(() => profile?.permissions || [], [profile?.permissions])
@@ -168,6 +169,30 @@ function SettingsPage() {
       error(err.message || "Failed to update account")
     } finally {
       setIsSavingAccount(false)
+    }
+  }
+
+  const handleToggleCrm = async (nextEnabled) => {
+    if (!office?._id) {
+      error("Office not found")
+      return
+    }
+
+    if (!canEditOffice) {
+      error("You do not have permission to manage add-ons")
+      return
+    }
+
+    try {
+      setIsTogglingCrm(true)
+      const updatedOffice = await updateOfficeFeatures(office._id, { crm: Boolean(nextEnabled) })
+      setOffice(updatedOffice || null)
+      await refreshAuth({ force: true })
+      success(nextEnabled ? "Operations CRM enabled" : "Operations CRM disabled")
+    } catch (err) {
+      error(err.message || "Failed to update add-on")
+    } finally {
+      setIsTogglingCrm(false)
     }
   }
 
@@ -440,6 +465,92 @@ function SettingsPage() {
             </div>
           )}
         </form>
+
+        <section className="border-t border-gray-200" aria-labelledby="addons-heading">
+          <div className="py-4">
+            <div className="flex items-center justify-between gap-4">
+              <h2 id="addons-heading" className="text-lg font-semibold text-gray-900">
+                Plan &amp; add-ons
+              </h2>
+              <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[11px] font-medium text-amber-800">
+                Manual toggle · Stripe coming soon
+              </span>
+            </div>
+            <p className="mt-1 text-sm text-gray-500">
+              Bookkeeping Core is always included. Operations CRM is an add-on you can toggle while billing is not connected yet.
+            </p>
+          </div>
+
+          <div className="grid gap-3 py-4 md:grid-cols-2">
+            <article className="flex flex-col gap-2 rounded-2xl border border-gray-200 bg-white p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900">Bookkeeping Core</h3>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Clients, accounts, transactions, categories, ledger, P&amp;L, AI categorization.
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full bg-gray-900 px-2.5 py-0.5 text-[11px] font-medium text-white">
+                  Included
+                </span>
+              </div>
+              <p className="mt-2 text-[11px] text-gray-400">
+                Always active on every office.
+              </p>
+            </article>
+
+            <article className="flex flex-col gap-2 rounded-2xl border border-gray-200 bg-white p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900">Operations CRM</h3>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Tasks, CRM status, missing documents, timeline, monthly closing, follow-ups.
+                  </p>
+                </div>
+                <span
+                  className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-medium ${
+                    office?.features?.crm
+                      ? "bg-emerald-100 text-emerald-800"
+                      : "bg-gray-100 text-gray-600"
+                  }`}
+                >
+                  {office?.features?.crm ? "Active" : "Inactive"}
+                </span>
+              </div>
+
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <span className="text-xs text-gray-500">
+                  {office?.features?.crm
+                    ? "CRM menus and tabs are visible."
+                    : "Turn on to reveal CRM menus and tabs."}
+                </span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={Boolean(office?.features?.crm)}
+                  disabled={!canEditOffice || isTogglingCrm}
+                  onClick={() => handleToggleCrm(!office?.features?.crm)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                    office?.features?.crm ? "bg-gray-900" : "bg-gray-300"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                      office?.features?.crm ? "translate-x-5" : "translate-x-0.5"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {!canEditOffice && (
+                <p className="mt-2 text-[11px] text-gray-400">
+                  Only roles with offices:update can manage add-ons.
+                </p>
+              )}
+            </article>
+          </div>
+        </section>
+
 
       </div>
     </section>

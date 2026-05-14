@@ -3,6 +3,7 @@ import {
     updateOfficeByIdService,
     getOfficeByIdService,
     getOfficeDashboardByIdService,
+    setOfficeFeaturesService,
 } from "../services/office.service.js"
 import { deleteOfficeTagService, listOfficeTagsService } from "../services/tag.service.js"
 import { sendErrorResponse } from "../utils/httpError.js"
@@ -23,6 +24,21 @@ export async function updateOfficeByIdController(req, res) {
         const { id } = req.params
         const updatedOffice = await updateOfficeByIdService(id, {
             ...req.body,
+            actorOfficeId: req.userProfile?.officeId,
+        })
+        return res.status(200).json(updatedOffice)
+    } catch (error) {
+        return sendErrorResponse(res, error)
+    }
+}
+
+export async function setOfficeFeaturesController(req, res) {
+    try {
+        const { id } = req.params
+        const features = req.body?.features && typeof req.body.features === "object"
+            ? req.body.features
+            : {}
+        const updatedOffice = await setOfficeFeaturesService(id, features, {
             actorOfficeId: req.userProfile?.officeId,
         })
         return res.status(200).json(updatedOffice)
@@ -55,6 +71,7 @@ export async function getOfficeDashboardByIdController(req, res) {
         const { id } = req.params
         const dashboard = await getOfficeDashboardByIdService(id, {
             month: req.query?.month,
+            actorId: req.query?.actorId,
             actorOfficeId: req.userProfile?.officeId,
         })
         return res.status(200).json(dashboard)

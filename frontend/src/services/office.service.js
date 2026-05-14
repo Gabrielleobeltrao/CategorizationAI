@@ -71,6 +71,21 @@ export async function updateOfficeById(officeId, patch) {
   })
 }
 
+export async function updateOfficeFeatures(officeId, features) {
+  const id = String(officeId || "").trim()
+  if (!id) throw new Error("officeId is required")
+  if (!features || typeof features !== "object") {
+    throw new Error("features must be an object")
+  }
+
+  return api(`/api/offices/${id}/features`, {
+    method: "PATCH",
+    body: JSON.stringify({ features }),
+  }).then((payload) => {
+    return hydrateOfficeCache(payload)
+  })
+}
+
 export async function listOfficeTags(officeId) {
   const id = String(officeId || "").trim()
   if (!id) throw new Error("officeId is required")

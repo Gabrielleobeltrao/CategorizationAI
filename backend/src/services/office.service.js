@@ -104,8 +104,13 @@ export async function getOfficeByIdService(id, options = {}) {
   return getOfficeById(id)
 }
 
-export async function setOfficeFeaturesService(officeId, featuresPatch) {
+export async function setOfficeFeaturesService(officeId, featuresPatch, options = {}) {
   if (!officeId) throw new Error("officeId is required")
+
+  const actorOfficeId = String(options?.actorOfficeId || "").trim()
+  if (actorOfficeId && actorOfficeId !== String(officeId).trim()) {
+    throw new Error("Forbidden for this office")
+  }
 
   const existing = await getOfficeById(officeId)
   if (!existing) throw new Error("Office not found")
@@ -128,5 +133,6 @@ export async function getOfficeDashboardByIdService(officeId, options = {}) {
 
   return getOfficeDashboardSnapshot(officeId, {
     month: options?.month,
+    actorId: options?.actorId,
   })
 }
