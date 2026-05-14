@@ -9,6 +9,19 @@ import { readSessionCache, removeSessionCache, writeSessionCache } from "../util
 const AuthContext = createContext(null)
 const AUTH_SNAPSHOT_CACHE_KEY = "auth:snapshot:v1"
 
+const DEFAULT_FEATURES = Object.freeze({
+  crm: false,
+})
+
+function resolveFeatures(office) {
+  const raw = office?.features
+  return {
+    ...DEFAULT_FEATURES,
+    ...(raw && typeof raw === "object" ? raw : {}),
+    crm: Boolean(raw?.crm),
+  }
+}
+
 let bootstrapPromise = null
 let bootstrapCache = readSessionCache(AUTH_SNAPSHOT_CACHE_KEY, null)
 
@@ -58,12 +71,14 @@ export function AuthProvider({ children }) {
   const [isBootstrapping, setIsBootstrapping] = useState(() => !bootstrapCache)
   const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(bootstrapCache?.isAuthenticated))
   const [profile, setProfile] = useState(() => bootstrapCache?.profile || null)
+  const [office, setOffice] = useState(() => bootstrapCache?.office || null)
 
   const refreshAuth = useCallback(async (options = {}) => {
     const force = Boolean(options?.force)
     const snapshot = await bootstrapAuthSnapshot(force)
     setIsAuthenticated(Boolean(snapshot?.isAuthenticated))
     setProfile(snapshot?.profile || null)
+    setOffice(snapshot?.office || null)
     setIsBootstrapping(false)
     return snapshot
   }, [])
@@ -72,10 +87,12 @@ export function AuthProvider({ children }) {
     bootstrapCache = {
       isAuthenticated: false,
       profile: null,
+      office: null,
     }
     writeSessionCache(AUTH_SNAPSHOT_CACHE_KEY, bootstrapCache)
     setIsAuthenticated(false)
     setProfile(null)
+    setOffice(null)
     setIsBootstrapping(false)
   }, [])
 
@@ -89,11 +106,13 @@ export function AuthProvider({ children }) {
     bootstrapCache = {
       isAuthenticated: Boolean(safeProfile),
       profile: safeProfile,
+      office: safeProfile ? (bootstrapCache?.office || null) : null,
     }
     if (safeProfile) {
       writeSessionCache(AUTH_SNAPSHOT_CACHE_KEY, bootstrapCache)
     } else {
       removeSessionCache(AUTH_SNAPSHOT_CACHE_KEY)
+      setOffice(null)
     }
     setIsAuthenticated(Boolean(safeProfile))
     setProfile(safeProfile)
@@ -107,6 +126,7 @@ export function AuthProvider({ children }) {
         if (!active) return
         setIsAuthenticated(Boolean(snapshot?.isAuthenticated))
         setProfile(snapshot?.profile || null)
+        setOffice(snapshot?.office || null)
       })
       .finally(() => {
         if (!active) return
@@ -118,17 +138,21 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
+  const features = useMemo(() => resolveFeatures(office), [office])
+
   const value = useMemo(
     () => ({
       isBootstrapping,
       isAuthenticated,
       profile,
+      office,
+      features,
       refreshAuth,
       clearAuth,
       beginAuthenticatedSession,
       updateProfile,
     }),
-    [beginAuthenticatedSession, clearAuth, isAuthenticated, isBootstrapping, profile, refreshAuth, updateProfile]
+    [beginAuthenticatedSession, clearAuth, features, isAuthenticated, isBootstrapping, office, profile, refreshAuth, updateProfile]
   )
 
   return (
