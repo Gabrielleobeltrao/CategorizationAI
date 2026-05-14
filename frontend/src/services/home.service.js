@@ -8,6 +8,7 @@ function getOfficeHomeDashboardCacheKey(officeId, options = {}) {
   return JSON.stringify({
     officeId: String(officeId || "").trim(),
     month: String(options?.month || "").trim(),
+    actorId: String(options?.actorId || "").trim(),
   })
 }
 
@@ -59,6 +60,9 @@ export async function getOfficeHomeDashboard(officeId, options = {}) {
   const query = new URLSearchParams()
   if (options?.month) {
     query.set("month", String(options.month))
+  }
+  if (options?.actorId) {
+    query.set("actorId", String(options.actorId))
   }
   if (options?.noCache !== false) {
     query.set("_ts", String(Date.now()))

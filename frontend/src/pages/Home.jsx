@@ -1,17 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Legend,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts"
 import { useAuth } from "../contexts/auth.context"
 import { useNotification } from "../contexts/notification.context"
 import {
@@ -23,15 +11,13 @@ import {
   subscribeRecentOpenedClients,
 } from "../utils/recentClients"
 import { subscribeDashboardRefresh } from "../utils/dashboardRefresh"
-
-function getQueueStatusClass(status) {
-  const safe = String(status || "").toLowerCase()
-  if (safe === "running") return "bg-sky-100 text-sky-700"
-  if (safe === "queued") return "bg-amber-100 text-amber-700"
-  if (safe === "failed") return "bg-rose-100 text-rose-700"
-  if (safe === "done") return "bg-emerald-100 text-emerald-700"
-  return "bg-gray-100 text-gray-700"
-}
+import { useFeature } from "../hooks/useFeature"
+import FeatureGate from "../components/auth/FeatureGate"
+import { listTasks, updateTaskById as updateTask } from "../services/tasks.service"
+import { listClientsByOfficeId } from "../services/clients.service"
+import { listEmployeesByOfficeId } from "../services/employees.service"
+import TaskDetailsModal from "../components/tasks/TaskDetailsModal"
+import TasksCalendar from "../components/tasks/TasksCalendar"
 
 function formatOpenedAt(value) {
   const date = new Date(value)
@@ -47,15 +33,6 @@ function formatOpenedAt(value) {
 
   const diffDays = Math.floor(diffHours / 24)
   return `${diffDays}d ago`
-}
-
-function parseMetricValue(value) {
-  const normalized = String(value || "")
-    .replace(/,/g, "")
-    .trim()
-
-  const parsed = Number(normalized)
-  return Number.isFinite(parsed) ? parsed : 0
 }
 
 const EMPTY_DASHBOARD = {
@@ -74,19 +51,6 @@ const EMPTY_DASHBOARD = {
   meta: {},
 }
 
-const CHART_SERIES = [
-  { key: "imported", label: "Imported", color: "#111827" },
-  { key: "categorized", label: "Categorized", color: "#2563eb" },
-  { key: "aiProcessed", label: "AI Processed", color: "#0f766e" },
-  { key: "aiCategorized", label: "AI Categorized", color: "#16a34a" },
-  { key: "pending", label: "Pending", color: "#d97706" },
-]
-
-const OVERVIEW_VIEW_STORAGE_KEY = "home.performanceOverview.view"
-const OVERVIEW_PERIOD_STORAGE_KEY = "home.performanceOverview.period"
-const ALLOWED_OVERVIEW_VIEWS = new Set(["blocks", "line", "columns"])
-const ALLOWED_OVERVIEW_PERIODS = new Set(["month", "week"])
-
 function normalizeDashboardPayload(payload = {}) {
   return {
     header: {
@@ -103,102 +67,139 @@ function normalizeDashboardPayload(payload = {}) {
   }
 }
 
-function readStoredOverviewOption(storageKey, allowedValues, fallbackValue) {
-  if (typeof window === "undefined") return fallbackValue
+function formatTaskDueBadge(dateStr) {
+  if (!dateStr) return null
+  const due = new Date(`${dateStr}T00:00:00`)
+  if (Number.isNaN(due.getTime())) return null
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const diffDays = Math.round((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
 
-  const storedValue = window.localStorage.getItem(storageKey)
-  return allowedValues.has(storedValue) ? storedValue : fallbackValue
+  let label
+  if (diffDays < 0) label = `Overdue ${Math.abs(diffDays)}d`
+  else if (diffDays === 0) label = "Due today"
+  else if (diffDays === 1) label = "Tomorrow"
+  else if (diffDays <= 7) label = `In ${diffDays}d`
+  else {
+    label = new Intl.DateTimeFormat("en-US", { month: "short", day: "2-digit" }).format(due)
+  }
+
+  return { label, tone: "bg-gray-100 text-gray-700" }
 }
 
-function OverviewTooltip({ active, payload, label }) {
-  if (!active || !Array.isArray(payload) || payload.length === 0) return null
+function HomeTaskItem({ task, clientsById, employeesById, showAssignee, onSelect, onMarkDone }) {
+  const due = formatTaskDueBadge(task.dueDate)
+  const client = task.clientId ? clientsById.get(String(task.clientId)) : null
+  const assignee = showAssignee && task.assigneeId
+    ? employeesById.get(String(task.assigneeId))
+    : null
+  const description = String(task.description || "").trim()
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 shadow-lg">
-      <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">{label}</p>
-      <div className="mt-2 flex flex-col gap-1.5">
-        {payload.map((item) => (
-          <div key={item.dataKey} className="flex items-center justify-between gap-4 text-sm">
-            <div className="flex items-center gap-2">
-              <span
-                className="h-2.5 w-2.5 rounded-full"
-                style={{ backgroundColor: item.color }}
-              />
-              <span className="text-gray-600">{item.name}</span>
-            </div>
-            <span className="font-semibold text-gray-900">
-              {Number(item.value || 0).toLocaleString("en-US")}
+    <li className="flex items-start gap-3 rounded-lg border border-gray-100 bg-gray-50 p-3 hover:bg-gray-100">
+      <button type="button" onClick={() => onSelect?.(task)} className="flex min-w-0 flex-1 flex-col gap-1.5 text-left">
+        <div className="flex items-start justify-between gap-3">
+          <p className="truncate text-sm font-medium text-gray-900">
+            {task.title || "(Untitled)"}
+          </p>
+          {due && (
+            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${due.tone}`}>
+              {due.label}
             </span>
+          )}
+        </div>
+        {description && (
+          <p className="line-clamp-2 text-xs text-gray-500">{description}</p>
+        )}
+        {(client || assignee) && (
+          <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+            {client && (
+              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-700">
+                {client.name || "Client"}
+              </span>
+            )}
+            {assignee && (
+              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-700">
+                {assignee.name || assignee.email || "Member"}
+              </span>
+            )}
           </div>
-        ))}
-      </div>
-    </div>
+        )}
+      </button>
+      {onMarkDone && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            onMarkDone(task)
+          }}
+          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-emerald-600 bg-emerald-600 px-2 py-1 text-[11px] font-medium text-white hover:bg-emerald-700"
+          aria-label="Mark task as done"
+          title="Mark task as done"
+        >
+          <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20 6 9 17l-5-5" />
+          </svg>
+          Done
+        </button>
+      )}
+    </li>
   )
 }
 
-function OverviewChart({ data = [], chartType = "line", isWeek = false }) {
+function HomeTasksCard({
+  title,
+  subtitle,
+  tasks,
+  isLoading,
+  emptyLabel,
+  clientsById,
+  employeesById,
+  showAssignee,
+  onOpenTasks,
+  onSelectTask,
+  onMarkDone,
+}) {
   return (
-    <div className="mt-4 h-[22rem] rounded-xl border border-gray-200 bg-gray-50 p-4">
-      <div className="h-full w-full">
-        <ResponsiveContainer width="100%" height="100%">
-          {chartType === "columns" ? (
-            <BarChart
-              data={data}
-              margin={{ top: 16, right: 20, left: 0, bottom: 8 }}
-              barCategoryGap={isWeek ? 18 : 28}
-            >
-              <CartesianGrid stroke="#e5e7eb" vertical={false} />
-              <XAxis dataKey={isWeek ? "day" : "week"} tick={{ fill: "#6b7280", fontSize: 12 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: "#6b7280", fontSize: 12 }} axisLine={false} tickLine={false} />
-              <Tooltip content={<OverviewTooltip />} cursor={{ fill: "rgba(229, 231, 235, 0.22)" }} />
-              <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ paddingBottom: 18, fontSize: "12px" }} />
-              {CHART_SERIES.map((serie) => (
-                <Bar
-                  key={serie.key}
-                  dataKey={serie.key}
-                  name={serie.label}
-                  fill={serie.color}
-                  radius={[8, 8, 0, 0]}
-                  maxBarSize={isWeek ? 32 : 28}
-                />
-              ))}
-            </BarChart>
-          ) : (
-            <LineChart data={data} margin={{ top: 16, right: 20, left: 0, bottom: 8 }}>
-              <CartesianGrid stroke="#e5e7eb" vertical={false} />
-              <XAxis dataKey={isWeek ? "day" : "week"} tick={{ fill: "#6b7280", fontSize: 12 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: "#6b7280", fontSize: 12 }} axisLine={false} tickLine={false} />
-              <Tooltip content={<OverviewTooltip />} cursor={{ stroke: "#d1d5db", strokeWidth: 1 }} />
-              <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ paddingBottom: 18, fontSize: "12px" }} />
-              {CHART_SERIES.map((serie) => (
-                <Line
-                  key={serie.key}
-                  type="monotone"
-                  dataKey={serie.key}
-                  name={serie.label}
-                  stroke={serie.color}
-                  strokeWidth={isWeek ? 4 : 3}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  dot={{
-                    r: isWeek ? 5 : 4,
-                    stroke: "#ffffff",
-                    strokeWidth: 2,
-                    fill: serie.color,
-                  }}
-                  activeDot={{
-                    r: isWeek ? 7 : 6,
-                    stroke: "#ffffff",
-                    strokeWidth: 2,
-                    fill: serie.color,
-                  }}
-                />
-              ))}
-            </LineChart>
-          )}
-        </ResponsiveContainer>
-      </div>
-    </div>
+    <article className="rounded-xl border border-gray-200 bg-white p-4">
+      <header className="flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold">{title}</h2>
+          <p className="text-sm text-gray-500">{subtitle}</p>
+        </div>
+        <button
+          type="button"
+          onClick={onOpenTasks}
+          className="rounded-md border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100"
+        >
+          Open Tasks
+        </button>
+      </header>
+
+      <ul className="mt-4 flex flex-col gap-2">
+        {isLoading ? (
+          <li className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
+            Loading…
+          </li>
+        ) : tasks.length === 0 ? (
+          <li className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
+            {emptyLabel}
+          </li>
+        ) : (
+          tasks.slice(0, 6).map((task) => (
+            <HomeTaskItem
+              key={task._id || task.id}
+              task={task}
+              clientsById={clientsById}
+              employeesById={employeesById}
+              showAssignee={showAssignee}
+              onSelect={onSelectTask}
+              onMarkDone={onMarkDone}
+            />
+          ))
+        )}
+      </ul>
+    </article>
   )
 }
 
@@ -206,6 +207,12 @@ function Home() {
   const navigate = useNavigate()
   const { error } = useNotification()
   const { profile } = useAuth()
+  const isCrmEnabled = useFeature("crm")
+  const [openTasks, setOpenTasks] = useState([])
+  const [taskClientsById, setTaskClientsById] = useState(() => new Map())
+  const [taskEmployeesById, setTaskEmployeesById] = useState(() => new Map())
+  const [isLoadingTasks, setIsLoadingTasks] = useState(false)
+  const [viewingTask, setViewingTask] = useState(null)
   const [recentClients, setRecentClients] = useState(() => getRecentOpenedClients())
   const [employee, setEmployee] = useState({
     id: "",
@@ -214,43 +221,26 @@ function Home() {
     role: "",
   })
   const [dashboard, setDashboard] = useState(EMPTY_DASHBOARD)
-  const [isLoadingDashboard, setIsLoadingDashboard] = useState(true)
-  const [overviewView, setOverviewView] = useState(() =>
-    readStoredOverviewOption(
-      OVERVIEW_VIEW_STORAGE_KEY,
-      ALLOWED_OVERVIEW_VIEWS,
-      "blocks"
-    )
-  )
-  const [overviewPeriod, setOverviewPeriod] = useState(() =>
-    readStoredOverviewOption(
-      OVERVIEW_PERIOD_STORAGE_KEY,
-      ALLOWED_OVERVIEW_PERIODS,
-      "month"
-    )
-  )
 
   const loadDashboard = useCallback(async (officeId, options = {}) => {
     const safeOfficeId = String(officeId || "").trim()
-    const showLoading = Boolean(options?.showLoading)
     const notifyError = options?.notifyError !== false
-    const cachedDashboard = getCachedOfficeHomeDashboard(safeOfficeId)
+    const actorId = String(profile?._id || profile?.id || "").trim()
+    const cacheOptions = { actorId }
+    const cachedDashboard = getCachedOfficeHomeDashboard(safeOfficeId, cacheOptions)
 
     if (!safeOfficeId) {
       setDashboard(EMPTY_DASHBOARD)
-      if (showLoading) setIsLoadingDashboard(false)
       return
     }
 
     if (cachedDashboard) {
       setDashboard(normalizeDashboardPayload(cachedDashboard))
-      if (showLoading) setIsLoadingDashboard(false)
-    } else if (showLoading) {
-      setIsLoadingDashboard(true)
     }
 
     try {
       const payload = await getOfficeHomeDashboard(safeOfficeId, {
+        ...cacheOptions,
         noCache: true,
         backgroundLoadingMessage: cachedDashboard ? "Updating cached dashboard data..." : "",
       })
@@ -262,27 +252,103 @@ function Home() {
       if (notifyError) {
         error(err.message || "Failed to load home dashboard")
       }
-    } finally {
-      if (showLoading) setIsLoadingDashboard(false)
     }
-  }, [error])
+  }, [error, profile?._id, profile?.id])
 
-  const monthMetricItems = useMemo(() => {
-    return dashboard.kpis.map((item) => ({
-      ...item,
-      numericValue: parseMetricValue(item.value),
-    }))
-  }, [dashboard.kpis])
+  const currentProfileId = String(profile?._id || profile?.id || "").trim()
+  const tasksForMe = useMemo(
+    () => openTasks.filter(
+      (task) => task.status !== "done"
+        && String(task.assigneeId || "") === currentProfileId
+        && currentProfileId
+    ),
+    [openTasks, currentProfileId]
+  )
+  const tasksForTeam = useMemo(
+    () => openTasks.filter((task) => task.status !== "done" && !task.assigneeId),
+    [openTasks]
+  )
 
-  const weekMetricItems = useMemo(() => {
-    return dashboard.weekKpis.map((item) => ({
-      ...item,
-      numericValue: parseMetricValue(item.value),
-    }))
-  }, [dashboard.weekKpis])
+  const calendarTasks = useMemo(
+    () => openTasks.filter((task) => {
+      if (!task?.dueDate) return false
+      if (!task.assigneeId) return true
+      return currentProfileId && String(task.assigneeId) === currentProfileId
+    }),
+    [openTasks, currentProfileId]
+  )
 
-  const activeMetricItems = overviewPeriod === "month" ? monthMetricItems : weekMetricItems
-  const activeTrendData = overviewPeriod === "month" ? dashboard.weeklyTrend : dashboard.dailyTrend
+  const handleHomeTaskMarkDone = async (task) => {
+    if (!task?._id && !task?.id) return
+    const id = String(task._id || task.id)
+    try {
+      const updated = await updateTask(id, { status: "done" })
+      setOpenTasks((current) =>
+        current.map((t) => (String(t._id || t.id) === id ? updated : t))
+      )
+      setViewingTask((current) =>
+        current && String(current._id || current.id) === id ? updated : current
+      )
+    } catch (err) {
+      error(err.message || "Failed to update task")
+    }
+  }
+
+  const handleHomeTaskToggleStatus = async (task) => {
+    if (!task?._id && !task?.id) return
+    const id = String(task._id || task.id)
+    const nextStatus = task.status === "done" ? "open" : "done"
+    try {
+      const updated = await updateTask(id, { status: nextStatus })
+      setOpenTasks((current) =>
+        current.map((t) => (String(t._id || t.id) === id ? updated : t))
+      )
+      setViewingTask((current) =>
+        current && String(current._id || current.id) === id ? updated : current
+      )
+    } catch (err) {
+      error(err.message || "Failed to update task")
+    }
+  }
+
+  useEffect(() => {
+    const officeId = String(profile?.officeId || "").trim()
+    if (!isCrmEnabled || !officeId) {
+      setOpenTasks([])
+      setTaskClientsById(new Map())
+      setTaskEmployeesById(new Map())
+      return undefined
+    }
+    let active = true
+    setIsLoadingTasks(true)
+    Promise.all([
+      listTasks({ status: "open" }).catch(() => []),
+      listClientsByOfficeId(officeId, { limit: 500 }).catch(() => null),
+      listEmployeesByOfficeId(officeId).catch(() => null),
+    ])
+      .then(([list, clientList, employeeList]) => {
+        if (!active) return
+        setOpenTasks(Array.isArray(list) ? list : [])
+        const clientItems = Array.isArray(clientList?.items)
+          ? clientList.items
+          : Array.isArray(clientList)
+            ? clientList
+            : []
+        const employeeItems = Array.isArray(employeeList?.items)
+          ? employeeList.items
+          : Array.isArray(employeeList)
+            ? employeeList
+            : []
+        setTaskClientsById(new Map(clientItems.map((c) => [String(c._id || c.id), c])))
+        setTaskEmployeesById(new Map(employeeItems.map((e) => [String(e._id || e.id), e])))
+      })
+      .finally(() => {
+        if (active) setIsLoadingTasks(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [isCrmEnabled, profile?.officeId])
 
   useEffect(() => {
     setRecentClients(getRecentOpenedClients())
@@ -291,14 +357,6 @@ function Home() {
     })
     return unsubscribe
   }, [])
-
-  useEffect(() => {
-    window.localStorage.setItem(OVERVIEW_VIEW_STORAGE_KEY, overviewView)
-  }, [overviewView])
-
-  useEffect(() => {
-    window.localStorage.setItem(OVERVIEW_PERIOD_STORAGE_KEY, overviewPeriod)
-  }, [overviewPeriod])
 
   useEffect(() => {
     const safeOfficeId = String(profile?.officeId || "").trim()
@@ -311,7 +369,6 @@ function Home() {
 
     if (!profile) {
       setDashboard(EMPTY_DASHBOARD)
-      setIsLoadingDashboard(false)
     }
   }, [profile])
 
@@ -319,16 +376,10 @@ function Home() {
     const safeOfficeId = String(employee.officeId || "").trim()
     if (!safeOfficeId) return undefined
 
-    loadDashboard(safeOfficeId, {
-      showLoading: true,
-      notifyError: true,
-    })
+    loadDashboard(safeOfficeId, { notifyError: true })
 
     const refreshSilently = () => {
-      loadDashboard(safeOfficeId, {
-        showLoading: false,
-        notifyError: false,
-      })
+      loadDashboard(safeOfficeId, { notifyError: false })
     }
 
     const refreshTimer = setInterval(refreshSilently, 15000)
@@ -367,119 +418,42 @@ function Home() {
               <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">
                 Last sync: {dashboard.header.lastSyncAt}
               </span>
-              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getQueueStatusClass(dashboard.header.queueStatus)}`}>
-                Queue: {dashboard.header.queueStatus}
-              </span>
             </div>
           </div>
         </header>
 
-        <section className="rounded-xl border border-gray-200 bg-white p-4">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <h2 className="text-lg font-semibold">Performance Overview</h2>
-              <p className="text-sm text-gray-500">
-                {overviewPeriod === "month"
-                  ? "Office performance for the current month"
-                  : "Office performance for the current week"}
-              </p>
-            </div>
+        <FeatureGate flag="crm">
+          <TasksCalendar tasks={calendarTasks} onSelectTask={setViewingTask} defaultMode="week" />
 
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <div className="inline-flex rounded-full border border-gray-200 bg-gray-50 p-1">
-                <button
-                  type="button"
-                  className={`rounded-full px-3 py-1.5 text-sm font-medium ${
-                    overviewView === "blocks"
-                      ? "bg-gray-900 text-white"
-                      : "text-gray-600"
-                  }`}
-                  onClick={() => setOverviewView("blocks")}
-                >
-                  Blocks
-                </button>
-                <button
-                  type="button"
-                  className={`rounded-full px-3 py-1.5 text-sm font-medium ${
-                    overviewView === "line"
-                      ? "bg-gray-900 text-white"
-                      : "text-gray-600"
-                  }`}
-                  onClick={() => setOverviewView("line")}
-                >
-                  Lines
-                </button>
-                <button
-                  type="button"
-                  className={`rounded-full px-3 py-1.5 text-sm font-medium ${
-                    overviewView === "columns"
-                      ? "bg-gray-900 text-white"
-                      : "text-gray-600"
-                  }`}
-                  onClick={() => setOverviewView("columns")}
-                >
-                  Columns
-                </button>
-              </div>
-
-              <div className="inline-flex rounded-full border border-gray-200 bg-gray-50 p-1">
-                <button
-                  type="button"
-                  className={`rounded-full px-3 py-1.5 text-sm font-medium ${
-                    overviewPeriod === "month"
-                      ? "bg-gray-900 text-white"
-                      : "text-gray-600"
-                  }`}
-                  onClick={() => setOverviewPeriod("month")}
-                >
-                  Month
-                </button>
-                <button
-                  type="button"
-                  className={`rounded-full px-3 py-1.5 text-sm font-medium ${
-                    overviewPeriod === "week"
-                      ? "bg-gray-900 text-white"
-                      : "text-gray-600"
-                  }`}
-                  onClick={() => setOverviewPeriod("week")}
-                >
-                  Week
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {isLoadingDashboard && dashboard.kpis.length === 0 && (
-            <div className="mt-4 h-[22rem] rounded-xl border border-gray-200 bg-gray-50 p-4">
-              <p className="text-sm text-gray-500">Loading dashboard...</p>
-            </div>
-          )}
-
-          {!isLoadingDashboard && overviewView === "blocks" && (
-            <div className="mt-4 h-[22rem]">
-              <div className="grid h-full grid-cols-1 gap-4 md:grid-cols-2 md:auto-rows-fr xl:grid-cols-5 xl:auto-rows-auto">
-                {activeMetricItems.map((kpi) => (
-                <article
-                  key={kpi.id}
-                  className="flex min-h-0 flex-col rounded-xl border border-gray-200 bg-gray-50 p-4"
-                >
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">{kpi.label}</p>
-                  <h2 className="mt-1 text-2xl font-bold text-gray-900">{kpi.value}</h2>
-                  <p className="mt-auto pt-3 text-sm text-gray-600">{kpi.trend}</p>
-                </article>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {!isLoadingDashboard && overviewView !== "blocks" && (
-            <OverviewChart
-              data={activeTrendData}
-              chartType={overviewView}
-              isWeek={overviewPeriod === "week"}
+          <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <HomeTasksCard
+              title="Assigned to you"
+              subtitle="Open tasks assigned to your user"
+              tasks={tasksForMe}
+              isLoading={isLoadingTasks}
+              emptyLabel="Nothing assigned to you yet."
+              clientsById={taskClientsById}
+              employeesById={taskEmployeesById}
+              showAssignee={false}
+              onOpenTasks={() => navigate("/crm/tasks")}
+              onSelectTask={setViewingTask}
+              onMarkDone={handleHomeTaskMarkDone}
             />
-          )}
-        </section>
+            <HomeTasksCard
+              title="Open for the team"
+              subtitle="Tasks no one picked up yet"
+              tasks={tasksForTeam}
+              isLoading={isLoadingTasks}
+              emptyLabel="No unassigned tasks."
+              clientsById={taskClientsById}
+              employeesById={taskEmployeesById}
+              showAssignee={false}
+              onOpenTasks={() => navigate("/crm/tasks")}
+              onSelectTask={setViewingTask}
+              onMarkDone={handleHomeTaskMarkDone}
+            />
+          </section>
+        </FeatureGate>
 
         <section className="rounded-xl border border-gray-200 bg-white p-4">
           <h2 className="text-lg font-semibold">Recently Opened Clients</h2>
@@ -507,37 +481,6 @@ function Home() {
           )}
         </section>
 
-        <section className="grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1.45fr)_minmax(360px,1fr)]">
-          <article className="rounded-xl border border-gray-200 bg-white p-4">
-            <h2 className="text-lg font-semibold">Live Jobs Queue</h2>
-            <p className="text-sm text-gray-500">LLM and categorization pipeline status</p>
-
-            <div className="mt-4 flex max-h-[34rem] flex-col gap-2 overflow-y-auto pr-1">
-              {dashboard.jobsQueue.length === 0 && (
-                <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
-                  No active jobs right now
-                </p>
-              )}
-              {dashboard.jobsQueue.map((job) => (
-                <div key={job.id} className="rounded-lg border border-gray-100 bg-gray-50 p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium text-gray-900">{job.client}</p>
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${getQueueStatusClass(job.status)}`}>
-                      {job.status}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs text-gray-500">
-                    {job.label || "Job"} • {job.processed}/{job.total} • {job.updatedAt}
-                  </p>
-                  <div className="mt-2 h-2 w-full rounded-full bg-gray-100">
-                    <div className="h-2 rounded-full bg-gray-700" style={{ width: `${Math.max(2, job.progress)}%` }} />
-                  </div>
-                  {job.error && <p className="mt-2 text-xs text-rose-600">{job.error}</p>}
-                </div>
-              ))}
-            </div>
-          </article>
-        </section>
 
         <section className="grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
           <article className="rounded-xl border border-gray-200 bg-white p-4">
@@ -580,6 +523,18 @@ function Home() {
           </aside>
         </section>
       </div>
+
+      <TaskDetailsModal
+        task={viewingTask}
+        client={viewingTask?.clientId ? taskClientsById.get(String(viewingTask.clientId)) : null}
+        assignee={viewingTask?.assigneeId ? taskEmployeesById.get(String(viewingTask.assigneeId)) : null}
+        onClose={() => setViewingTask(null)}
+        onEdit={() => {
+          setViewingTask(null)
+          navigate("/crm/tasks")
+        }}
+        onToggleStatus={handleHomeTaskToggleStatus}
+      />
     </section>
   )
 }
