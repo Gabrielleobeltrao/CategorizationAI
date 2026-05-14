@@ -60,6 +60,10 @@ const fallbackPermissionCatalog = [
     { key: "roles:create", group: "Roles", label: "Create roles" },
     { key: "roles:update", group: "Roles", label: "Update roles" },
     { key: "roles:delete", group: "Roles", label: "Delete roles" },
+    { key: "tasks:read", group: "Tasks", label: "Read tasks" },
+    { key: "tasks:create", group: "Tasks", label: "Create tasks" },
+    { key: "tasks:update", group: "Tasks", label: "Update tasks" },
+    { key: "tasks:delete", group: "Tasks", label: "Delete tasks" },
 ]
 
 function normalizePermissions(value) {

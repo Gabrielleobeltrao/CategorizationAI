@@ -30,6 +30,10 @@ export const PERMISSION_DEFINITIONS = [
   { key: "roles:create", group: "Roles", label: "Create roles" },
   { key: "roles:update", group: "Roles", label: "Update roles" },
   { key: "roles:delete", group: "Roles", label: "Delete roles" },
+  { key: "tasks:read", group: "Tasks", label: "Read tasks" },
+  { key: "tasks:create", group: "Tasks", label: "Create tasks" },
+  { key: "tasks:update", group: "Tasks", label: "Update tasks" },
+  { key: "tasks:delete", group: "Tasks", label: "Delete tasks" },
 ]
 
 export const PERMISSION_KEYS = PERMISSION_DEFINITIONS.map((item) => item.key)
@@ -49,6 +53,7 @@ export const ROLE_DEFINITIONS = [
       "profitLoss:read",
       "userProfiles:read",
       "roles:read",
+      "tasks:read",
     ],
   },
   {
@@ -74,6 +79,7 @@ export const ROLE_DEFINITIONS = [
       "profitLoss:read",
       "userProfiles:read",
       "roles:read",
+      "tasks:*",
     ],
   },
   {
@@ -94,6 +100,7 @@ export const ROLE_DEFINITIONS = [
       "userProfiles:update",
       "userProfiles:delete",
       "roles:*",
+      "tasks:*",
     ],
   },
   {

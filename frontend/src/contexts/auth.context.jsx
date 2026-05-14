@@ -7,7 +7,7 @@ import { hydrateOfficeTagsCache } from "../hooks/useOfficeTags"
 import { readSessionCache, removeSessionCache, writeSessionCache } from "../utils/sessionCache"
 
 const AuthContext = createContext(null)
-const AUTH_SNAPSHOT_CACHE_KEY = "auth:snapshot:v1"
+const AUTH_SNAPSHOT_CACHE_KEY = "auth:snapshot:v2"
 
 const DEFAULT_FEATURES = Object.freeze({
   crm: false,

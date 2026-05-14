@@ -6,7 +6,7 @@ const availableRolesCache = new Map()
 let rolePermissionsCache = null
 const EMPLOYEES_CACHE_PREFIX = "cache:employees:"
 const ROLES_CACHE_PREFIX = "cache:roles:"
-const ROLE_PERMISSIONS_CACHE_KEY = "cache:role-permissions"
+const ROLE_PERMISSIONS_CACHE_KEY = "cache:role-permissions:v2"
 
 function getOfficeScopedCacheKey(officeId) {
   return String(officeId || "").trim()
