@@ -14,6 +14,7 @@
     "start": "node src/server.js",
     "backfill:office-tags": "node scripts/backfillOfficeTags.js",
     "set:user-office": "node scripts/setUserProfileOffice.js",
+    "features:set": "node scripts/setOfficeFeatures.js",
     "seed:client-ledger": "node scripts/seedClientLedgerData.js",
     "seed:llm-processed": "node scripts/markLlmProcessedSample.js"
   },

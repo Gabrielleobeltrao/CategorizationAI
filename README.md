@@ -283,6 +283,40 @@ Principais áreas protegidas:
 - transactions
 - profit loss
 
+## Módulos do produto
+
+O sistema é dividido em dois módulos conceituais:
+
+- **Bookkeeping Core** (plano base) — clients, accounts, transactions, categories, ledger, P&L, AI categorization, dashboard. Sempre habilitado.
+- **Operations CRM Add-on** (futuro plano pago) — tasks, missing documents, monthly closing, timeline, CRM status, follow-ups. Habilitado via flag por office.
+
+### Feature flags
+
+O documento `offices` carrega `features: { crm: boolean }`. Default é `{ crm: false }`. A intenção é que o Stripe sincronize isso por webhook quando entrar em produção; hoje a ativação é manual.
+
+Ativar CRM num office específico (dev/staging):
+
+```bash
+cd backend
+npm run features:set -- --officeId=<officeId> --crm=true
+```
+
+Desativar:
+
+```bash
+npm run features:set -- --officeId=<officeId> --crm=false
+```
+
+### Como gatear backend e frontend
+
+- **Backend**: `import { requireFeature } from "../middlewares/requireFeature.js"` e usar como middleware na rota. Retorna **402 Payment Required** quando a flag está off (distingue de 403/permissão).
+
+  ```js
+  router.get("/api/crm/tasks", requireAuth, requireFeature("crm"), handler)
+  ```
+
+- **Frontend**: hook `useFeature("crm")` retorna booleano. Componente `<FeatureGate flag="crm" fallback={null}>...</FeatureGate>` esconde children. Both leem de `office.features` carregado no bootstrap.
+
 ## Principais coleções MongoDB
 
 - `offices`
