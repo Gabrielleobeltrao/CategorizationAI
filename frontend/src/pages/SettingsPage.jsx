@@ -66,6 +66,7 @@ function SettingsPage() {
   const [isSavingAccount, setIsSavingAccount] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [isTogglingCrm, setIsTogglingCrm] = useState(false)
+  const [isTogglingOperationalStatus, setIsTogglingOperationalStatus] = useState(false)
   const { success, error } = useNotification()
 
   const permissions = useMemo(() => profile?.permissions || [], [profile?.permissions])
@@ -169,6 +170,30 @@ function SettingsPage() {
       error(err.message || "Failed to update account")
     } finally {
       setIsSavingAccount(false)
+    }
+  }
+
+  const handleToggleOperationalStatus = async (nextEnabled) => {
+    if (!office?._id) {
+      error("Office not found")
+      return
+    }
+    if (!canEditOffice) {
+      error("You do not have permission to manage add-ons")
+      return
+    }
+    try {
+      setIsTogglingOperationalStatus(true)
+      const updatedOffice = await updateOfficeFeatures(office._id, {
+        crmOperationalStatus: Boolean(nextEnabled),
+      })
+      setOffice(updatedOffice || null)
+      await refreshAuth({ force: true })
+      success(nextEnabled ? "Operational Status enabled" : "Operational Status disabled")
+    } catch (err) {
+      error(err.message || "Failed to update add-on")
+    } finally {
+      setIsTogglingOperationalStatus(false)
     }
   }
 
@@ -548,6 +573,39 @@ function SettingsPage() {
                 <p className="mt-2 text-[11px] text-gray-400">
                   Only roles with offices:update can manage add-ons.
                 </p>
+              )}
+
+              {office?.features?.crm && (
+                <div className="mt-3 border-t border-gray-100 pt-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                    Sub-features
+                  </p>
+                  <div className="mt-2 flex items-start justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900">Operational Status</p>
+                      <p className="mt-1 text-xs text-gray-500">
+                        Automatic per-client status driven by bookkeeping data (onboarding,
+                        importing, needs review, etc). A few states can be manually overridden.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={Boolean(office?.features?.crmOperationalStatus)}
+                      disabled={!canEditOffice || isTogglingOperationalStatus}
+                      onClick={() => handleToggleOperationalStatus(!office?.features?.crmOperationalStatus)}
+                      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                        office?.features?.crmOperationalStatus ? "bg-gray-900" : "bg-gray-300"
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                          office?.features?.crmOperationalStatus ? "translate-x-5" : "translate-x-0.5"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
               )}
             </article>
           </div>
