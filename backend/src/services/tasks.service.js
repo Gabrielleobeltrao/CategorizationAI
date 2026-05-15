@@ -20,12 +20,15 @@ export async function createTaskService(input, context = {}) {
 
     return createTask({
         officeId,
+        clientIds: input?.clientIds,
         clientId: input?.clientId,
+        assigneeIds: input?.assigneeIds,
         assigneeId: input?.assigneeId,
         dueDate: input?.dueDate,
         title: input?.title,
         description: input?.description,
         status: input?.status,
+        priority: input?.priority,
         createdBy: String(context?.actorProfileId || "").trim(),
     })
 }
@@ -38,6 +41,9 @@ export async function listTasksService(query = {}, context = {}) {
         clientId: query?.clientId,
         assigneeId: query?.assigneeId,
         status: query?.status,
+        priority: query?.priority,
+        from: query?.from,
+        to: query?.to,
     })
 }
 
