@@ -72,9 +72,8 @@ function normalizeDashboardPayload(payload = {}) {
 function HomeTasksCard({
   title,
   subtitle,
-  tasks,
+  groups = [],
   isLoading,
-  emptyLabel,
   clientsById,
   employeesById,
   onOpenTasks,
@@ -85,7 +84,7 @@ function HomeTasksCard({
       <header className="flex items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">{title}</h2>
-          <p className="text-sm text-gray-500">{subtitle}</p>
+          {subtitle && <p className="text-sm text-gray-500">{subtitle}</p>}
         </div>
         <button
           type="button"
@@ -96,27 +95,38 @@ function HomeTasksCard({
         </button>
       </header>
 
-      <ul className="mt-4 flex flex-col gap-2">
-        {isLoading ? (
-          <li className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
-            Loading…
-          </li>
-        ) : tasks.length === 0 ? (
-          <li className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
-            {emptyLabel}
-          </li>
-        ) : (
-          tasks.slice(0, 6).map((task) => (
-            <TaskCard
-              key={task._id || task.id}
-              task={task}
-              clientById={clientsById}
-              employeeById={employeesById}
-              onSelect={onSelectTask}
-            />
-          ))
-        )}
-      </ul>
+      {isLoading ? (
+        <p className="mt-4 rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
+          Loading…
+        </p>
+      ) : (
+        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+          {groups.map((group) => (
+            <section key={group.key}>
+              <p className="px-1 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                {group.title}
+              </p>
+              <ul className="flex flex-col gap-2">
+                {group.tasks.length === 0 ? (
+                  <li className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
+                    {group.emptyLabel}
+                  </li>
+                ) : (
+                  group.tasks.slice(0, 6).map((task) => (
+                    <TaskCard
+                      key={task._id || task.id}
+                      task={task}
+                      clientById={clientsById}
+                      employeeById={employeesById}
+                      onSelect={onSelectTask}
+                    />
+                  ))
+                )}
+              </ul>
+            </section>
+          ))}
+        </div>
+      )}
     </article>
   )
 }
@@ -193,6 +203,10 @@ function Home() {
   const tasksForTeam = useMemo(
     () => openTasks.filter((task) => task.status !== "done" && getTaskAssigneeIds(task).length === 0),
     [openTasks]
+  )
+  const myAndTeamTasks = useMemo(
+    () => [...tasksForMe, ...tasksForTeam],
+    [tasksForMe, tasksForTeam]
   )
 
   const calendarTasks = useMemo(
@@ -337,54 +351,42 @@ function Home() {
   }, [employee.officeId, loadDashboard])
 
   return (
-    <section className="w-full p-8">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-5">
+    <section className="w-full p-4 sm:p-6 lg:p-8">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 sm:gap-5">
         <header className="rounded-xl border border-gray-200 bg-white p-4">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <h1 className="text-3xl font-bold">
-                {dashboard.header.officeName || "Office"}
-              </h1>
-              <p className="text-sm text-gray-500">
-                {employee.name} ({employee.role})
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">
-                Last sync: {dashboard.header.lastSyncAt}
-              </span>
-            </div>
-          </div>
+          <h1 className="text-2xl font-bold sm:text-3xl">
+            {dashboard.header.officeName || "Office"}
+          </h1>
+          <p className="text-sm text-gray-500">
+            {employee.name} ({employee.role})
+          </p>
         </header>
 
         <FeatureGate flag="crm">
           <TasksCalendar tasks={calendarTasks} onSelectTask={setViewingTask} defaultMode="week" />
 
-          <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <HomeTasksCard
-              title="Assigned to you"
-              subtitle="Open tasks assigned to your user"
-              tasks={tasksForMe}
-              isLoading={isLoadingTasks}
-              emptyLabel="Nothing assigned to you yet."
-              clientsById={taskClientsById}
-              employeesById={taskEmployeesById}
-              onOpenTasks={() => navigate("/crm/tasks")}
-              onSelectTask={setViewingTask}
-            />
-            <HomeTasksCard
-              title="Open for the team"
-              subtitle="Tasks no one picked up yet"
-              tasks={tasksForTeam}
-              isLoading={isLoadingTasks}
-              emptyLabel="No unassigned tasks."
-              clientsById={taskClientsById}
-              employeesById={taskEmployeesById}
-              onOpenTasks={() => navigate("/crm/tasks")}
-              onSelectTask={setViewingTask}
-            />
-          </section>
+          <HomeTasksCard
+            title="Your tasks"
+            isLoading={isLoadingTasks}
+            groups={[
+              {
+                key: "me",
+                title: "Assigned to you",
+                tasks: tasksForMe,
+                emptyLabel: "Nothing assigned to you yet.",
+              },
+              {
+                key: "team",
+                title: "Open for the team",
+                tasks: tasksForTeam,
+                emptyLabel: "No unassigned tasks.",
+              },
+            ]}
+            clientsById={taskClientsById}
+            employeesById={taskEmployeesById}
+            onOpenTasks={() => navigate("/crm/tasks")}
+            onSelectTask={setViewingTask}
+          />
         </FeatureGate>
 
         <section className="rounded-xl border border-gray-200 bg-white p-4">
@@ -414,7 +416,7 @@ function Home() {
         </section>
 
 
-        <section className="grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+        <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
           <article className="rounded-xl border border-gray-200 bg-white p-4">
             <h2 className="text-lg font-semibold">Recent Activity</h2>
             <p className="text-sm text-gray-500">Latest office operations</p>

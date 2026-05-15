@@ -118,11 +118,11 @@ function BookkeepingDashboardPage() {
   }, [error, officeId, customRange, scopeOptions])
 
   return (
-    <section className="w-full p-8">
-      <div className="mx-auto flex max-w-5xl flex-col gap-6">
+    <section className="w-full p-4 sm:p-6 lg:p-8">
+      <div className="mx-auto flex max-w-5xl flex-col gap-4 sm:gap-6">
         <header className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
-            <h1 className="text-3xl font-bold">Bookkeeping Overview</h1>
+            <h1 className="text-2xl font-bold sm:text-3xl">Bookkeeping Overview</h1>
             <p className="mt-2 text-sm text-gray-500">
               Office-wide accounting metrics and recent activity.
             </p>

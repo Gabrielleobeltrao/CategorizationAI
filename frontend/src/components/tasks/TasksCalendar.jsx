@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 
-const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+const WEEKDAY_LABELS_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 
 function pad2(value) {
   return String(value).padStart(2, "0")
@@ -68,6 +68,19 @@ function getWeekGrid(cursor) {
 function TasksCalendar({ tasks = [], onSelectTask, defaultMode = "month" }) {
   const [mode, setMode] = useState(defaultMode === "week" ? "week" : "month")
   const [cursor, setCursor] = useState(() => new Date())
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches
+  )
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined
+    const query = window.matchMedia("(max-width: 767px)")
+    const onChange = (event) => setIsMobile(event.matches)
+    query.addEventListener("change", onChange)
+    return () => query.removeEventListener("change", onChange)
+  }, [])
+
+  const effectiveMode = isMobile ? "week" : mode
 
   const tasksByDate = useMemo(() => {
     const map = new Map()
@@ -80,23 +93,21 @@ function TasksCalendar({ tasks = [], onSelectTask, defaultMode = "month" }) {
     return map
   }, [tasks])
 
-  const grid = mode === "month" ? getMonthGrid(cursor) : getWeekGrid(cursor)
+  const grid = effectiveMode === "month" ? getMonthGrid(cursor) : getWeekGrid(cursor)
   const today = useMemo(() => startOfDay(new Date()), [])
 
-  const headerLabel = mode === "month"
+  const headerLabel = effectiveMode === "month"
     ? new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" }).format(cursor)
     : `${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(grid[0])} – ${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(grid[6])}`
 
   const navigate = (direction) => {
-    setCursor((current) => (mode === "month" ? addMonths(current, direction) : addWeeks(current, direction)))
+    setCursor((current) => (effectiveMode === "month" ? addMonths(current, direction) : addWeeks(current, direction)))
   }
 
-  const cellMinHeight = mode === "month" ? 84 : 200
-
   return (
-    <article className="rounded-xl border border-gray-200 bg-white p-4">
+    <article className="rounded-xl border border-gray-200 bg-white p-3 sm:p-4">
       <header className="flex flex-wrap items-center justify-between gap-3 pb-3">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           <button
             type="button"
             onClick={() => navigate(-1)}
@@ -107,7 +118,7 @@ function TasksCalendar({ tasks = [], onSelectTask, defaultMode = "month" }) {
               <path d="m15 18-6-6 6-6" />
             </svg>
           </button>
-          <h3 className="min-w-[150px] text-sm font-semibold text-gray-900">{headerLabel}</h3>
+          <h3 className="min-w-0 truncate text-sm font-semibold text-gray-900 sm:min-w-[150px]">{headerLabel}</h3>
           <button
             type="button"
             onClick={() => navigate(1)}
@@ -127,7 +138,7 @@ function TasksCalendar({ tasks = [], onSelectTask, defaultMode = "month" }) {
           </button>
         </div>
 
-        <div className="inline-flex rounded-md border border-gray-200 p-0.5">
+        <div className="hidden rounded-md border border-gray-200 p-0.5 md:inline-flex">
           {[
             { id: "month", label: "Month" },
             { id: "week", label: "Week" },
@@ -146,70 +157,131 @@ function TasksCalendar({ tasks = [], onSelectTask, defaultMode = "month" }) {
         </div>
       </header>
 
-      <div className="grid grid-cols-7 gap-1 pb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-        {WEEKDAY_LABELS.map((day) => (
-          <div key={day} className="px-2 py-1">{day}</div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-7 gap-1">
-        {grid.map((day) => {
-          const key = formatDateKey(day)
-          const dayTasks = tasksByDate.get(key) || []
-          const isToday = isSameDay(day, today)
-          const inCurrentMonth = mode === "week" || day.getMonth() === cursor.getMonth()
-
-          return (
-            <div
-              key={key}
-              style={{ minHeight: cellMinHeight }}
-              className={`flex flex-col gap-1 rounded-md border p-1.5 ${
-                isToday ? "border-gray-900 bg-gray-50" : "border-gray-100 bg-white"
-              } ${inCurrentMonth ? "" : "opacity-40"}`}
-            >
-              <span className={`text-[11px] font-medium ${isToday ? "text-gray-900" : "text-gray-500"}`}>
-                {day.getDate()}
-              </span>
-              <ul className="flex min-h-0 flex-col gap-0.5 overflow-y-auto">
-                {dayTasks.slice(0, mode === "month" ? 3 : 8).map((task) => {
-                  const status = task.status || "open"
-                  const isDone = status === "done"
-                  const priority = task.priority || "low"
-                  let className
-                  if (isDone) {
-                    className = "bg-gray-100 text-gray-500 line-through hover:bg-gray-200"
-                  } else if (priority === "urgent") {
-                    className = "bg-rose-600 text-white hover:bg-rose-700"
-                  } else if (priority === "high") {
-                    className = "bg-amber-500 text-white hover:bg-amber-600"
-                  } else if (priority === "medium") {
-                    className = "bg-sky-600 text-white hover:bg-sky-700"
-                  } else {
-                    className = "bg-gray-700 text-white hover:bg-gray-900"
-                  }
-                  return (
-                    <li key={task._id || task.id}>
-                      <button
-                        type="button"
-                        onClick={() => onSelectTask?.(task)}
-                        className={`w-full truncate rounded px-1.5 py-0.5 text-left text-[10px] font-medium transition-colors ${className}`}
-                        title={`${task.title || "(Untitled)"}${priority !== "low" ? ` — ${priority}` : ""}`}
-                      >
-                        {task.title || "(Untitled)"}
-                      </button>
-                    </li>
-                  )
-                })}
-                {dayTasks.length > (mode === "month" ? 3 : 8) && (
-                  <li className="px-1.5 text-[10px] text-gray-400">
-                    +{dayTasks.length - (mode === "month" ? 3 : 8)} more
-                  </li>
-                )}
-              </ul>
-            </div>
-          )
-        })}
-      </div>
+      {effectiveMode === "month" ? (
+        <>
+          <div className="grid grid-cols-7 gap-1 pb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+            {WEEKDAY_LABELS_SHORT.map((day, idx) => (
+              <div key={day + idx} className="px-2 py-1">{day}</div>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-1">
+            {grid.map((day) => {
+              const key = formatDateKey(day)
+              const dayTasks = tasksByDate.get(key) || []
+              const isToday = isSameDay(day, today)
+              const inCurrentMonth = day.getMonth() === cursor.getMonth()
+              return (
+                <div
+                  key={key}
+                  style={{ minHeight: 110 }}
+                  className={`flex flex-col gap-1.5 rounded-md border p-2 ${
+                    isToday ? "border-gray-900 bg-gray-50" : "border-gray-100 bg-white"
+                  } ${inCurrentMonth ? "" : "opacity-40"}`}
+                >
+                  <span className={`text-sm font-semibold ${isToday ? "text-gray-900" : "text-gray-500"}`}>
+                    {day.getDate()}
+                  </span>
+                  <ul className="flex min-h-0 flex-col gap-1 overflow-y-auto">
+                    {dayTasks.slice(0, 5).map((task) => {
+                      const status = task.status || "open"
+                      const isDone = status === "done"
+                      const priority = task.priority || "low"
+                      let className
+                      if (isDone) {
+                        className = "bg-gray-100 text-gray-500 line-through hover:bg-gray-200"
+                      } else if (priority === "urgent") {
+                        className = "bg-rose-600 text-white hover:bg-rose-700"
+                      } else if (priority === "high") {
+                        className = "bg-amber-500 text-white hover:bg-amber-600"
+                      } else if (priority === "medium") {
+                        className = "bg-sky-600 text-white hover:bg-sky-700"
+                      } else {
+                        className = "bg-gray-700 text-white hover:bg-gray-900"
+                      }
+                      return (
+                        <li key={task._id || task.id}>
+                          <button
+                            type="button"
+                            onClick={() => onSelectTask?.(task)}
+                            className={`w-full truncate rounded px-2 py-1 text-left text-[11px] font-medium transition-colors ${className}`}
+                            title={`${task.title || "(Untitled)"}${priority !== "low" ? ` — ${priority}` : ""}`}
+                          >
+                            {task.title || "(Untitled)"}
+                          </button>
+                        </li>
+                      )
+                    })}
+                    {dayTasks.length > 5 && (
+                      <li className="px-2 text-[11px] text-gray-400">
+                        +{dayTasks.length - 5} more
+                      </li>
+                    )}
+                  </ul>
+                </div>
+              )
+            })}
+          </div>
+        </>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {grid.map((day) => {
+            const key = formatDateKey(day)
+            const dayTasks = tasksByDate.get(key) || []
+            const isToday = isSameDay(day, today)
+            return (
+              <li
+                key={key}
+                className={`flex items-start gap-3 rounded-md border p-2 ${
+                  isToday ? "border-gray-900 bg-gray-50" : "border-gray-100 bg-white"
+                }`}
+              >
+                <div className="flex w-14 shrink-0 flex-col items-center justify-center rounded-md bg-gray-50 py-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                    {WEEKDAY_LABELS_SHORT[day.getDay()]}
+                  </span>
+                  <span className={`text-lg font-semibold ${isToday ? "text-gray-900" : "text-gray-700"}`}>
+                    {day.getDate()}
+                  </span>
+                </div>
+                <ul className="flex min-w-0 flex-1 flex-col gap-1">
+                  {dayTasks.length === 0 && (
+                    <li className="text-xs text-gray-400">No tasks</li>
+                  )}
+                  {dayTasks.map((task) => {
+                    const status = task.status || "open"
+                    const isDone = status === "done"
+                    const priority = task.priority || "low"
+                    let className
+                    if (isDone) {
+                      className = "bg-gray-100 text-gray-500 line-through hover:bg-gray-200"
+                    } else if (priority === "urgent") {
+                      className = "bg-rose-600 text-white hover:bg-rose-700"
+                    } else if (priority === "high") {
+                      className = "bg-amber-500 text-white hover:bg-amber-600"
+                    } else if (priority === "medium") {
+                      className = "bg-sky-600 text-white hover:bg-sky-700"
+                    } else {
+                      className = "bg-gray-700 text-white hover:bg-gray-900"
+                    }
+                    return (
+                      <li key={task._id || task.id}>
+                        <button
+                          type="button"
+                          onClick={() => onSelectTask?.(task)}
+                          className={`block w-full truncate rounded px-2 py-1 text-left text-xs font-medium transition-colors ${className}`}
+                          title={`${task.title || "(Untitled)"}${priority !== "low" ? ` — ${priority}` : ""}`}
+                        >
+                          {task.title || "(Untitled)"}
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </li>
+            )
+          })}
+        </ul>
+      )}
     </article>
   )
 }

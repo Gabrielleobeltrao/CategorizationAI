@@ -149,7 +149,7 @@ function OverviewScopeFilter({
         </button>
 
         {open && (
-          <div className="absolute right-0 z-40 mt-2 flex w-[min(95vw,52rem)] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-[0_18px_48px_-12px_rgba(15,23,42,0.25)]">
+          <div className="absolute left-0 right-0 z-40 mt-2 flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-[0_18px_48px_-12px_rgba(15,23,42,0.25)] md:left-auto md:w-[min(95vw,52rem)]">
             <div className="relative border-b border-gray-100 p-3">
               <input
                 ref={searchInputRef}
