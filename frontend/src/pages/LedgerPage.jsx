@@ -1520,6 +1520,7 @@ function LedgerPage() {
             <div className="min-h-full min-w-0 flex flex-col gap-4 pb-4">
                 <Suspense fallback={<LedgerSectionFallback />}>
                     <LedgerHeader
+                        clientId={clientId}
                         clientName={client?.name || ""}
                     />
                 </Suspense>
