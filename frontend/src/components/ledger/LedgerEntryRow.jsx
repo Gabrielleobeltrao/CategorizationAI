@@ -1,7 +1,7 @@
 import { getTransactionAmountPresentation } from "../../utils/amountPresentation"
 import { getCategoryDisplayName } from "../../utils/categoryPresentation"
 
-const LEDGER_ENTRY_GRID_CLASS = "grid grid-cols-[auto_minmax(0,1fr)_auto] gap-x-2 gap-y-2 md:grid-cols-[24px_minmax(92px,0.8fr)_minmax(180px,2fr)_minmax(112px,1fr)_minmax(152px,1.2fr)_20px_minmax(84px,0.7fr)_88px] md:items-center md:gap-4"
+const LEDGER_ENTRY_GRID_CLASS = "grid grid-cols-[auto_minmax(0,1fr)_auto] gap-x-2 gap-y-2 md:grid-cols-[24px_minmax(92px,0.8fr)_minmax(180px,1.6fr)_minmax(112px,1fr)_minmax(180px,1.8fr)_minmax(84px,0.7fr)_88px] md:items-center md:gap-4"
 
 function LedgerEntryRow({
     index,
@@ -41,6 +41,7 @@ function LedgerEntryRow({
     editingTouched = {},
     isApplyingCategory = false,
     isCategoryPickerOpen = false,
+    isAiCategorizationEnabled = true,
 }) {
     const shouldUseDraftDate = isEditing && (!isBatchEditing || editingTouched?.date)
     const shouldUseDraftAccount = isEditing && (!isBatchEditing || editingTouched?.accountId)
@@ -152,70 +153,82 @@ function LedgerEntryRow({
                         Split ({splitCount})
                     </h4>
                 ) : (
-                    <div className="relative w-full">
-                        <button
-                            type="button"
-                            className={`w-full rounded-full border-3 bg-white p-2 pl-3 pr-8 text-left ${isCategoryPickerOpen ? "border-gray-300" : "border-gray-100"} ${isApplyingCategory ? "cursor-wait opacity-80" : ""}`}
-                            onClick={(event) => onOpenCategoryPicker?.({
-                                entryId: id,
-                                anchorElement: event.currentTarget,
-                                isEditing,
-                                currentCategory: displayedCategory,
-                                amount: Number(currentAmount || 0),
-                            })}
+                    <div className="flex w-full items-center gap-2">
+                        <div className="relative min-w-0 flex-1">
+                            <button
+                                type="button"
+                                className={`w-full rounded-full border-3 bg-white p-2 pl-3 pr-8 text-left ${isCategoryPickerOpen ? "border-gray-300" : "border-gray-100"} ${isApplyingCategory ? "cursor-wait opacity-80" : ""}`}
+                                onClick={(event) => onOpenCategoryPicker?.({
+                                    entryId: id,
+                                    anchorElement: event.currentTarget,
+                                    isEditing,
+                                    currentCategory: displayedCategory,
+                                    amount: Number(currentAmount || 0),
+                                })}
+                            >
+                                <span className="block truncate">{displayedCategory}</span>
+                            </button>
+                            <svg
+                                className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            >
+                                <path d="M6 9l6 6 6-6" />
+                            </svg>
+                        </div>
+                        {/*
+                            Icon slot ALWAYS reserved next to the category dropdown so every
+                            row gets the same internal layout — the dropdown never stretches
+                            into the icon space, eliminating the "hole" effect when some
+                            rows have icons and others don't. The live "processing" spinner
+                            still respects the AI sub-feature flag.
+                        */}
+                        <span
+                            className="inline-flex h-6 w-6 shrink-0 items-center justify-center"
+                            aria-hidden={!isLlmProcessing && !iconMode ? "true" : undefined}
                         >
-                            <span className="block truncate">{displayedCategory}</span>
-                        </button>
-                        <svg
-                            className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2.5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                        >
-                            <path d="M6 9l6 6 6-6" />
-                        </svg>
+                            {isLlmProcessing && isAiCategorizationEnabled ? (
+                                <span
+                                    className="inline-flex items-center justify-center rounded-full bg-amber-100 p-1 text-amber-700"
+                                    title="Processing by AI"
+                                    aria-label="Processing by AI"
+                                >
+                                    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 animate-spin" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M21 12a9 9 0 1 1-9-9" />
+                                    </svg>
+                                </span>
+                            ) : iconMode === "memory" ? (
+                                <span
+                                    className="inline-flex items-center justify-center rounded-full bg-violet-100 p-1 text-violet-700"
+                                    title="Categorized by memory"
+                                    aria-label="Categorized by memory"
+                                >
+                                    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M7 8a3 3 0 0 1 3-3h7v14h-7a3 3 0 0 0-3 3z" />
+                                        <path d="M17 5a3 3 0 0 1 3 3v14a3 3 0 0 0-3-3" />
+                                        <path d="M10 9h4" />
+                                        <path d="M10 13h4" />
+                                    </svg>
+                                </span>
+                            ) : iconMode === "ai" ? (
+                                <span
+                                    className="inline-flex items-center justify-center rounded-full bg-sky-100 p-1 text-sky-700"
+                                    title="Categorized by AI"
+                                    aria-label="Categorized by AI"
+                                >
+                                    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M12 3l1.9 4.3L18 9.2l-4.1 1.9L12 15.5l-1.9-4.4L6 9.2l4.1-1.9z" />
+                                        <path d="M19 16l.8 1.7L21.5 18l-1.7.8L19 20.5l-.8-1.7-1.7-.8 1.7-.3z" />
+                                    </svg>
+                                </span>
+                            ) : null}
+                        </span>
                     </div>
                 )}
-            </div>
-            <div className="flex justify-center max-md:col-start-3 max-md:row-start-3 max-md:items-center max-md:justify-self-end md:col-auto md:row-auto">
-                {isLlmProcessing ? (
-                    <span
-                        className="inline-flex items-center justify-center rounded-full bg-amber-100 p-1 text-amber-700"
-                        title="Processing by LLM"
-                        aria-label="Processing by LLM"
-                    >
-                        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 animate-spin" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M21 12a9 9 0 1 1-9-9" />
-                        </svg>
-                    </span>
-                ) : iconMode === "memory" ? (
-                    <span
-                        className="inline-flex items-center justify-center rounded-full bg-violet-100 p-1 text-violet-700"
-                        title="Categorized by memory"
-                        aria-label="Categorized by memory"
-                    >
-                        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M7 8a3 3 0 0 1 3-3h7v14h-7a3 3 0 0 0-3 3z" />
-                            <path d="M17 5a3 3 0 0 1 3 3v14a3 3 0 0 0-3-3" />
-                            <path d="M10 9h4" />
-                            <path d="M10 13h4" />
-                        </svg>
-                    </span>
-                ) : iconMode === "ai" ? (
-                    <span
-                        className="inline-flex items-center justify-center rounded-full bg-sky-100 p-1 text-sky-700"
-                        title="Categorized by AI"
-                        aria-label="Categorized by AI"
-                    >
-                        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M12 3l1.9 4.3L18 9.2l-4.1 1.9L12 15.5l-1.9-4.4L6 9.2l4.1-1.9z" />
-                            <path d="M19 16l.8 1.7L21.5 18l-1.7.8L19 20.5l-.8-1.7-1.7-.8 1.7-.3z" />
-                        </svg>
-                    </span>
-                ) : null}
             </div>
             <div className="max-md:row-start-1 max-md:col-start-3 max-md:justify-self-end max-md:self-start md:col-auto md:row-auto">
                 {isEditing && !isBatchEditing ? (

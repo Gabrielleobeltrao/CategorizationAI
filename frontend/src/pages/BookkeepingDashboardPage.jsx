@@ -153,7 +153,7 @@ function BookkeepingDashboardPage() {
         <section>
           <article className="rounded-xl border border-gray-200 bg-white p-4">
             <h2 className="text-lg font-semibold">Live Jobs Queue</h2>
-            <p className="text-sm text-gray-500">LLM and categorization pipeline status</p>
+            <p className="text-sm text-gray-500">AI categorization pipeline status</p>
 
             <div className="mt-4 flex max-h-[34rem] flex-col gap-2 overflow-y-auto pr-1">
               {feed.jobsQueue.length === 0 && (

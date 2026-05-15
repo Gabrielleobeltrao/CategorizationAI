@@ -49,7 +49,7 @@ const homeDashboardByOffice = {
     ],
     recentActivities: [
       { id: "act_1", time: "18:40", title: "Upload completed", detail: "VB Construction LLC • 1,024 transactions" },
-      { id: "act_2", time: "18:31", title: "LLM categorization finished", detail: "Northline Services • 430 transactions" },
+      { id: "act_2", time: "18:31", title: "AI categorization finished", detail: "Northline Services • 430 transactions" },
       { id: "act_3", time: "18:14", title: "Manual review batch applied", detail: "Ana • 162 transactions updated" },
       { id: "act_4", time: "17:58", title: "New employee created", detail: "User: maria@office.com • role: Viewer" },
       { id: "act_5", time: "17:43", title: "Client onboarded", detail: "Horizon Logistics LLC" },

@@ -7,6 +7,8 @@ import DateRangePicker from "../ui/DateRangePicker"
 import { getTransactionAmountPresentation } from "../../utils/amountPresentation"
 import { CATEGORY_TYPE_OPTIONS } from "../../constants/categoryTypes"
 import { getCategoryDisplayName } from "../../utils/categoryPresentation"
+import { useFeature } from "../../hooks/useFeature"
+import AiIconLegend from "./AiIconLegend"
 
 const UNCATEGORIZED_INCOME_FILTER_VALUE = "__uncategorized_income__"
 const UNCATEGORIZED_EXPENSES_FILTER_VALUE = "__uncategorized_expenses__"
@@ -33,7 +35,7 @@ const MONTH_LABELS = {
 const REQUIRED_UPLOAD_FIELDS = ["date", "description", "amount"]
 const LLM_PROCESSED_OPTIONS = [
     { id: "all", label: "All" },
-    { id: "processed", label: "LLM processed" },
+    { id: "processed", label: "AI processed" },
     { id: "not_processed", label: "Not processed" },
 ]
 const ICON_TYPE_OPTIONS = [
@@ -42,7 +44,7 @@ const ICON_TYPE_OPTIONS = [
     { id: "memory", label: "Memory icon" },
     { id: "none", label: "No icon" },
 ]
-const LEDGER_TABLE_GRID_CLASS = "grid grid-cols-[1fr_auto_auto] gap-2 md:grid-cols-[24px_minmax(92px,0.8fr)_minmax(180px,2fr)_minmax(112px,1fr)_minmax(152px,1.2fr)_20px_minmax(84px,0.7fr)_88px] md:items-center md:gap-4"
+const LEDGER_TABLE_GRID_CLASS = "grid grid-cols-[1fr_auto_auto] gap-2 md:grid-cols-[24px_minmax(92px,0.8fr)_minmax(180px,1.6fr)_minmax(112px,1fr)_minmax(180px,1.8fr)_minmax(84px,0.7fr)_88px] md:items-center md:gap-4"
 
 function renderIconFilterOption(optionId = "") {
     if (optionId === "ai") {
@@ -413,6 +415,7 @@ function LedgerEntriesTable({
     onCloseUploadModal,
     onCategorizeWithLlm,
 }) {
+    const isAiCategorizationEnabled = useFeature("bookkeepingLlm")
     const [editingTargetIds, setEditingTargetIds] = useState([])
     const [editingDraft, setEditingDraft] = useState(null)
     const [editingTouched, setEditingTouched] = useState({})
@@ -1857,23 +1860,25 @@ function LedgerEntriesTable({
                                 <span>Filter{activeFiltersCount > 0 ? ` (${activeFiltersCount})` : ""}</span>
                             </button>
 
-                            <button
-                                type="button"
-                                className={`inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-2 text-sm font-medium ${
-                                    isCategorizingWithLlm
-                                        ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
-                                        : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-                                }`}
-                                onClick={handleCategorizeWithLlmClick}
-                                disabled={isCategorizingWithLlm}
-                            >
-                                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M12 3v18" />
-                                    <path d="M3 12h18" />
-                                </svg>
-                                <span className="hidden sm:inline">{isCategorizingWithLlm ? "Categorizing..." : "Categorize with AI"}</span>
-                                <span className="sm:hidden">{isCategorizingWithLlm ? "AI..." : "AI"}</span>
-                            </button>
+                            {isAiCategorizationEnabled && (
+                                <button
+                                    type="button"
+                                    className={`inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-2 text-sm font-medium ${
+                                        isCategorizingWithLlm
+                                            ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
+                                            : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                                    }`}
+                                    onClick={handleCategorizeWithLlmClick}
+                                    disabled={isCategorizingWithLlm}
+                                >
+                                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M12 3v18" />
+                                        <path d="M3 12h18" />
+                                    </svg>
+                                    <span className="hidden sm:inline">{isCategorizingWithLlm ? "Categorizing..." : "Categorize with AI"}</span>
+                                    <span className="sm:hidden">{isCategorizingWithLlm ? "AI..." : "AI"}</span>
+                                </button>
+                            )}
 
                         </div>
                     </div>
@@ -1884,8 +1889,10 @@ function LedgerEntriesTable({
                         <h4>Date</h4>
                         <h4>Description</h4>
                         <h4>Account</h4>
-                        <h4>Category</h4>
-                        <span className="block h-4 w-4" aria-hidden="true" />
+                        <h4 className="inline-flex items-center gap-2">
+                            <span>Category</span>
+                            <AiIconLegend />
+                        </h4>
                         <div className="flex justify-end">
                             <h4>Amount</h4>
                         </div>
@@ -1921,6 +1928,7 @@ function LedgerEntriesTable({
                                 llmProcessedAt={entry.llmProcessedAt}
                                 categorizedSource={entry.categorizedSource}
                                 isLlmProcessing={pendingLlmEntryIdSet.has(entry.id)}
+                                isAiCategorizationEnabled={isAiCategorizationEnabled}
                                 isEditing={editingTargetIds.includes(entry.id)}
                                 editingDraft={editingDraft}
                                 onStartEdit={() => startEditEntry(entry)}
@@ -2011,7 +2019,6 @@ function LedgerEntriesTable({
                                                     </div>
                                                 )
                                             })()}
-                                            <span className="hidden md:block" />
                                             <input
                                                 type="number"
                                                 step="0.01"
@@ -2085,7 +2092,6 @@ function LedgerEntriesTable({
                                                 Number(Number(entry.amount || 0).toFixed(2))
                                             ).toFixed(2)}
                                         </span>
-                                        <span />
                                         <span />
                                     </div>
 
@@ -2172,7 +2178,6 @@ function LedgerEntriesTable({
                                                         amount: Number(split?.amount || 0),
                                                     })}
                                                 </span>
-                                                <span />
                                                 <span className={`text-right ${splitAmountPresentation.className}`}>{splitAmountPresentation.text}</span>
                                                 <span />
                                             </div>
@@ -2601,7 +2606,7 @@ function LedgerEntriesTable({
                                             </div>
 
                                             <div className="flex flex-col gap-1.5">
-                                                <span className="text-[11px] text-gray-500">AI / LLM</span>
+                                                <span className="text-[11px] text-gray-500">AI</span>
                                                 <div className="flex flex-wrap gap-1.5">
                                                     {LLM_PROCESSED_OPTIONS.map((option) => (
                                                         <button
