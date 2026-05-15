@@ -1,37 +1,19 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useAuth } from "../contexts/auth.context"
 import { useNotification } from "../contexts/notification.context"
 import {
-  getCachedOfficeHomeDashboard,
-  getOfficeHomeDashboard,
+  getOfficeHomeDashboardFeed,
+  getOfficeHomeDashboardCustomRange,
 } from "../services/home.service"
+import { listClientsByOfficeId } from "../services/clients.service"
+import { listEmployeesByOfficeId } from "../services/employees.service"
 import PerformanceOverview from "../components/dashboard/PerformanceOverview"
+import OverviewScopeFilter from "../components/dashboard/OverviewScopeFilter"
 
-const EMPTY_DASHBOARD = {
-  kpis: [],
-  weekKpis: [],
-  weeklyTrend: [],
-  dailyTrend: [],
-  recentActivities: [],
-  jobsQueue: [],
-}
+const EMPTY_FEED = { recentActivities: [], jobsQueue: [] }
 
-function normalizeKpi(value) {
-  if (!value || typeof value !== "object") return null
+function normalizeFeed(payload = {}) {
   return {
-    id: String(value.id || value.label || "").trim(),
-    label: String(value.label || "").trim(),
-    value: value.value ?? "—",
-    trend: value.trend || null,
-  }
-}
-
-function normalizePayload(payload = {}) {
-  return {
-    kpis: Array.isArray(payload.kpis) ? payload.kpis.map(normalizeKpi).filter(Boolean) : [],
-    weekKpis: Array.isArray(payload.weekKpis) ? payload.weekKpis.map(normalizeKpi).filter(Boolean) : [],
-    weeklyTrend: Array.isArray(payload.weeklyTrend) ? payload.weeklyTrend : [],
-    dailyTrend: Array.isArray(payload.dailyTrend) ? payload.dailyTrend : [],
     recentActivities: Array.isArray(payload.recentActivities) ? payload.recentActivities : [],
     jobsQueue: Array.isArray(payload.jobsQueue) ? payload.jobsQueue : [],
   }
@@ -47,86 +29,126 @@ function getQueueStatusClass(status) {
 }
 
 function BookkeepingDashboardPage() {
-  const { profile } = useAuth()
+  const { profile, office } = useAuth()
   const { error } = useNotification()
   const officeId = String(profile?.officeId || "").trim()
+  const officeName = String(office?.name || "").trim()
 
-  const initialCached = officeId ? getCachedOfficeHomeDashboard(officeId) : null
-  const [dashboard, setDashboard] = useState(initialCached ? normalizePayload(initialCached) : EMPTY_DASHBOARD)
-  const [isLoading, setIsLoading] = useState(Boolean(officeId))
+  const [feed, setFeed] = useState(EMPTY_FEED)
+  const [clients, setClients] = useState([])
+  const [employees, setEmployees] = useState([])
+  const [scopeMode, setScopeMode] = useState("team")
+  const [scopeId, setScopeId] = useState("")
+  const [customRange, setCustomRange] = useState(null)
+  const [customData, setCustomData] = useState({ kpis: [], trend: [] })
+  const [isCustomLoading, setIsCustomLoading] = useState(false)
+
+  const scopeOptions = useMemo(() => {
+    if (scopeMode === "client" && scopeId) return { clientId: scopeId }
+    if (scopeMode === "user" && scopeId) return { actorId: scopeId }
+    return {}
+  }, [scopeMode, scopeId])
 
   useEffect(() => {
     if (!officeId) return undefined
     let active = true
 
-    getOfficeHomeDashboard(officeId, { noCache: !initialCached })
-      .then((dashboardPayload) => {
-        if (!active) return
-        if (dashboardPayload) {
-          setDashboard(normalizePayload(dashboardPayload))
-        }
+    Promise.all([
+      listClientsByOfficeId(officeId, { limit: 500 }).catch(() => null),
+      listEmployeesByOfficeId(officeId).catch(() => null),
+    ]).then(([clientList, employeeList]) => {
+      if (!active) return
+      const clientItems = Array.isArray(clientList?.items)
+        ? clientList.items
+        : Array.isArray(clientList)
+          ? clientList
+          : []
+      const employeeItems = Array.isArray(employeeList?.items)
+        ? employeeList.items
+        : Array.isArray(employeeList)
+          ? employeeList
+          : []
+      setClients(clientItems)
+      setEmployees(employeeItems)
+    })
+
+    return () => { active = false }
+  }, [officeId])
+
+  useEffect(() => {
+    if (!officeId) return undefined
+    let active = true
+
+    getOfficeHomeDashboardFeed(officeId, scopeOptions)
+      .then((payload) => {
+        if (active && payload) setFeed(normalizeFeed(payload))
       })
       .catch((err) => {
-        if (active) error(err.message || "Failed to load bookkeeping dashboard")
-      })
-      .finally(() => {
-        if (active) setIsLoading(false)
+        if (active) error(err.message || "Failed to load activity feed")
       })
 
     return () => { active = false }
-    // initialCached is captured once at first render; safe to omit
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [error, officeId])
+  }, [error, officeId, scopeOptions])
+
+  useEffect(() => {
+    if (!officeId || !customRange?.from || !customRange?.to) return undefined
+    let active = true
+    setIsCustomLoading(true)
+
+    getOfficeHomeDashboardCustomRange(officeId, {
+      from: customRange.from,
+      to: customRange.to,
+      ...scopeOptions,
+    })
+      .then((payload) => {
+        if (!active) return
+        setCustomData({
+          kpis: Array.isArray(payload?.kpis) ? payload.kpis : [],
+          trend: Array.isArray(payload?.trend) ? payload.trend : [],
+        })
+      })
+      .catch((err) => {
+        if (active) error(err.message || "Failed to load custom range")
+      })
+      .finally(() => {
+        if (active) setIsCustomLoading(false)
+      })
+
+    return () => { active = false }
+  }, [error, officeId, customRange, scopeOptions])
 
   return (
     <section className="w-full p-8">
       <div className="mx-auto flex max-w-5xl flex-col gap-6">
-        <header>
-          <h1 className="text-3xl font-bold">Bookkeeping Dashboard</h1>
-          <p className="mt-2 text-sm text-gray-500">
-            Office-wide accounting metrics and recent activity.
-          </p>
+        <header className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">Bookkeeping Overview</h1>
+            <p className="mt-2 text-sm text-gray-500">
+              Office-wide accounting metrics and recent activity.
+            </p>
+          </div>
+          <OverviewScopeFilter
+            mode={scopeMode}
+            scopeId={scopeId}
+            onChange={({ mode, scopeId: nextScopeId }) => {
+              setScopeMode(mode)
+              setScopeId(nextScopeId)
+            }}
+            clients={clients}
+            users={employees}
+            officeName={officeName}
+          />
         </header>
 
-        {isLoading && dashboard.kpis.length === 0 ? (
-          <p className="text-sm text-gray-500">Loading KPIs…</p>
-        ) : (
-          <PerformanceOverview
-            title="Performance Overview"
-            subtitleMonth="Office performance for the current month"
-            subtitleWeek="Office performance for the current week"
-            monthKpis={dashboard.kpis}
-            weekKpis={dashboard.weekKpis}
-            weeklyTrend={dashboard.weeklyTrend}
-            dailyTrend={dashboard.dailyTrend}
-            storageNamespace="bookkeeping.performanceOverview"
-          />
-        )}
-
-        <section>
-          <article className="rounded-xl border border-gray-200 bg-white p-4">
-            <h2 className="text-lg font-semibold">Recent activity</h2>
-            <p className="text-sm text-gray-500">Latest office operations</p>
-            <ul className="mt-4 flex flex-col gap-2">
-              {dashboard.recentActivities.length === 0 && (
-                <li className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
-                  No recent activities in the last 3 days
-                </li>
-              )}
-              {dashboard.recentActivities.slice(0, 8).map((activity) => (
-                <li key={activity.id} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium text-gray-900">{activity.title}</p>
-                    <span className="text-xs text-gray-500">{activity.time}</span>
-                  </div>
-                  {activity.detail && (
-                    <p className="mt-1 text-sm text-gray-600">{activity.detail}</p>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </article>
-        </section>
+        <PerformanceOverview
+          title="Performance Overview"
+          subtitle="Office performance for the selected range"
+          kpis={customData.kpis}
+          trend={customData.trend}
+          range={customRange}
+          onRangeChange={setCustomRange}
+          isLoading={isCustomLoading}
+        />
 
         <section>
           <article className="rounded-xl border border-gray-200 bg-white p-4">
@@ -134,12 +156,12 @@ function BookkeepingDashboardPage() {
             <p className="text-sm text-gray-500">LLM and categorization pipeline status</p>
 
             <div className="mt-4 flex max-h-[34rem] flex-col gap-2 overflow-y-auto pr-1">
-              {dashboard.jobsQueue.length === 0 && (
+              {feed.jobsQueue.length === 0 && (
                 <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
                   No active jobs right now
                 </p>
               )}
-              {dashboard.jobsQueue.map((job) => (
+              {feed.jobsQueue.map((job) => (
                 <div key={job.id} className="rounded-lg border border-gray-100 bg-gray-50 p-3">
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-sm font-medium text-gray-900">{job.client}</p>
@@ -157,6 +179,31 @@ function BookkeepingDashboardPage() {
                 </div>
               ))}
             </div>
+          </article>
+        </section>
+
+        <section>
+          <article className="rounded-xl border border-gray-200 bg-white p-4">
+            <h2 className="text-lg font-semibold">Recent activity</h2>
+            <p className="text-sm text-gray-500">Latest office operations</p>
+            <ul className="mt-4 flex flex-col gap-2">
+              {feed.recentActivities.length === 0 && (
+                <li className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
+                  No recent activities in the last 3 days
+                </li>
+              )}
+              {feed.recentActivities.slice(0, 8).map((activity) => (
+                <li key={activity.id} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium text-gray-900">{activity.title}</p>
+                    <span className="text-xs text-gray-500">{activity.time}</span>
+                  </div>
+                  {activity.detail && (
+                    <p className="mt-1 text-sm text-gray-600">{activity.detail}</p>
+                  )}
+                </li>
+              ))}
+            </ul>
           </article>
         </section>
       </div>

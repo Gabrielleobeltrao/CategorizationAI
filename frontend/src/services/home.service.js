@@ -9,6 +9,7 @@ function getOfficeHomeDashboardCacheKey(officeId, options = {}) {
     officeId: String(officeId || "").trim(),
     month: String(options?.month || "").trim(),
     actorId: String(options?.actorId || "").trim(),
+    clientId: String(options?.clientId || "").trim(),
   })
 }
 
@@ -51,6 +52,40 @@ export function clearOfficeHomeDashboardCache(officeId = "") {
   }
 }
 
+export async function getOfficeHomeDashboardFeed(officeId, options = {}) {
+  const safeOfficeId = String(officeId || "").trim()
+  if (!safeOfficeId) {
+    throw new Error("officeId is required")
+  }
+
+  const query = new URLSearchParams()
+  if (options?.actorId) query.set("actorId", String(options.actorId))
+  if (options?.clientId) query.set("clientId", String(options.clientId))
+  query.set("_ts", String(Date.now()))
+
+  return api(`/api/offices/${safeOfficeId}/dashboard/feed?${query.toString()}`, {
+    silentLoading: true,
+  })
+}
+
+export async function getOfficeHomeDashboardCustomRange(officeId, options = {}) {
+  const safeOfficeId = String(officeId || "").trim()
+  if (!safeOfficeId) {
+    throw new Error("officeId is required")
+  }
+
+  const query = new URLSearchParams()
+  if (options?.from) query.set("from", String(options.from))
+  if (options?.to) query.set("to", String(options.to))
+  if (options?.actorId) query.set("actorId", String(options.actorId))
+  if (options?.clientId) query.set("clientId", String(options.clientId))
+  query.set("_ts", String(Date.now()))
+
+  return api(`/api/offices/${safeOfficeId}/dashboard/custom-range?${query.toString()}`, {
+    silentLoading: true,
+  })
+}
+
 export async function getOfficeHomeDashboard(officeId, options = {}) {
   const safeOfficeId = String(officeId || "").trim()
   if (!safeOfficeId) {
@@ -63,6 +98,9 @@ export async function getOfficeHomeDashboard(officeId, options = {}) {
   }
   if (options?.actorId) {
     query.set("actorId", String(options.actorId))
+  }
+  if (options?.clientId) {
+    query.set("clientId", String(options.clientId))
   }
   if (options?.noCache !== false) {
     query.set("_ts", String(Date.now()))

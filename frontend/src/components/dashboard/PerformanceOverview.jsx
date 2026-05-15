@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
+import DateRangePicker from "../ui/DateRangePicker"
 import {
-  Bar,
-  BarChart,
   CartesianGrid,
   Legend,
   Line,
@@ -20,19 +19,17 @@ const DEFAULT_CHART_SERIES = [
   { key: "pending", label: "Pending", color: "#d97706" },
 ]
 
-const ALLOWED_VIEWS = new Set(["blocks", "line", "columns"])
-const ALLOWED_PERIODS = new Set(["month", "week"])
+function toIsoDate(date) {
+  const yyyy = date.getFullYear()
+  const mm = String(date.getMonth() + 1).padStart(2, "0")
+  const dd = String(date.getDate()).padStart(2, "0")
+  return `${yyyy}-${mm}-${dd}`
+}
 
 function parseMetricValue(value) {
   const normalized = String(value || "").replace(/,/g, "").trim()
   const parsed = Number(normalized)
   return Number.isFinite(parsed) ? parsed : 0
-}
-
-function readStoredOption(storageKey, allowedValues, fallbackValue) {
-  if (typeof window === "undefined") return fallbackValue
-  const storedValue = window.localStorage.getItem(storageKey)
-  return allowedValues.has(storedValue) ? storedValue : fallbackValue
 }
 
 function OverviewTooltip({ active, payload, label }) {
@@ -57,45 +54,32 @@ function OverviewTooltip({ active, payload, label }) {
   )
 }
 
-function OverviewChart({ data = [], chartType = "line", isWeek = false, series = DEFAULT_CHART_SERIES }) {
+function OverviewChart({ data = [], xKey = "bucket", series = DEFAULT_CHART_SERIES }) {
   return (
-    <div className="mt-4 h-[22rem] rounded-xl border border-gray-200 bg-gray-50 p-4">
+    <div className="h-full min-h-[22rem] rounded-xl border border-gray-200 bg-gray-50 p-4">
       <div className="h-full w-full">
         <ResponsiveContainer width="100%" height="100%">
-          {chartType === "columns" ? (
-            <BarChart data={data} margin={{ top: 16, right: 20, left: 0, bottom: 8 }} barCategoryGap={isWeek ? 18 : 28}>
-              <CartesianGrid stroke="#e5e7eb" vertical={false} />
-              <XAxis dataKey={isWeek ? "day" : "week"} tick={{ fill: "#6b7280", fontSize: 12 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: "#6b7280", fontSize: 12 }} axisLine={false} tickLine={false} />
-              <Tooltip content={<OverviewTooltip />} cursor={{ fill: "rgba(229, 231, 235, 0.22)" }} />
-              <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ paddingBottom: 18, fontSize: "12px" }} />
-              {series.map((serie) => (
-                <Bar key={serie.key} dataKey={serie.key} name={serie.label} fill={serie.color} radius={[8, 8, 0, 0]} maxBarSize={isWeek ? 32 : 28} />
-              ))}
-            </BarChart>
-          ) : (
-            <LineChart data={data} margin={{ top: 16, right: 20, left: 0, bottom: 8 }}>
-              <CartesianGrid stroke="#e5e7eb" vertical={false} />
-              <XAxis dataKey={isWeek ? "day" : "week"} tick={{ fill: "#6b7280", fontSize: 12 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: "#6b7280", fontSize: 12 }} axisLine={false} tickLine={false} />
-              <Tooltip content={<OverviewTooltip />} cursor={{ stroke: "#d1d5db", strokeWidth: 1 }} />
-              <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ paddingBottom: 18, fontSize: "12px" }} />
-              {series.map((serie) => (
-                <Line
-                  key={serie.key}
-                  type="monotone"
-                  dataKey={serie.key}
-                  name={serie.label}
-                  stroke={serie.color}
-                  strokeWidth={isWeek ? 4 : 3}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  dot={{ r: isWeek ? 5 : 4, stroke: "#ffffff", strokeWidth: 2, fill: serie.color }}
-                  activeDot={{ r: isWeek ? 7 : 6, stroke: "#ffffff", strokeWidth: 2, fill: serie.color }}
-                />
-              ))}
-            </LineChart>
-          )}
+          <LineChart data={data} margin={{ top: 16, right: 20, left: 0, bottom: 8 }}>
+            <CartesianGrid stroke="#e5e7eb" vertical={false} />
+            <XAxis dataKey={xKey} tick={{ fill: "#6b7280", fontSize: 12 }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fill: "#6b7280", fontSize: 12 }} axisLine={false} tickLine={false} />
+            <Tooltip content={<OverviewTooltip />} cursor={{ stroke: "#d1d5db", strokeWidth: 1 }} />
+            <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ paddingBottom: 18, fontSize: "12px" }} />
+            {series.map((serie) => (
+              <Line
+                key={serie.key}
+                type="monotone"
+                dataKey={serie.key}
+                name={serie.label}
+                stroke={serie.color}
+                strokeWidth={3}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                dot={{ r: 4, stroke: "#ffffff", strokeWidth: 2, fill: serie.color }}
+                activeDot={{ r: 6, stroke: "#ffffff", strokeWidth: 2, fill: serie.color }}
+              />
+            ))}
+          </LineChart>
         </ResponsiveContainer>
       </div>
     </div>
@@ -104,118 +88,112 @@ function OverviewChart({ data = [], chartType = "line", isWeek = false, series =
 
 /**
  * Props:
- * - title, subtitleMonth, subtitleWeek: text
- * - monthKpis, weekKpis: array of { id, label, value, trend }
- * - weeklyTrend, dailyTrend: array of data points for the chart
- * - chartSeries?: override the default 5 series
- * - storageNamespace: key prefix for localStorage view/period state (so different dashboards remember independently)
- * - showChart?: whether to render the chart toggle + chart (default true)
+ * - title, subtitle: text
+ * - kpis: array of { id, label, value, trend }
+ * - trend: chart data array (x dimension keyed by chartXKey)
+ * - range: { from, to } current selected range (ISO date strings)
+ * - onRangeChange({ from, to }): fired when user picks a new range
+ * - isLoading?: shows loading state on date picker
+ * - chartSeries?: override the default series
+ * - chartXKey?: data key for the chart x-axis (default "bucket")
+ * - showChart?: whether to render the trend chart (default true)
  */
 function PerformanceOverview({
   title = "Performance Overview",
-  subtitleMonth = "Office performance for the current month",
-  subtitleWeek = "Office performance for the current week",
-  monthKpis = [],
-  weekKpis = [],
-  weeklyTrend = [],
-  dailyTrend = [],
+  subtitle = "Office performance for the selected range",
+  kpis = [],
+  trend = [],
+  range = null,
+  onRangeChange,
+  isLoading = false,
   chartSeries = DEFAULT_CHART_SERIES,
-  storageNamespace = "dashboard.performanceOverview",
+  chartXKey = "bucket",
   showChart = true,
+  footer = null,
 }) {
-  const viewKey = `${storageNamespace}.view`
-  const periodKey = `${storageNamespace}.period`
-  const [view, setView] = useState(() => readStoredOption(viewKey, ALLOWED_VIEWS, "blocks"))
-  const [period, setPeriod] = useState(() => readStoredOption(periodKey, ALLOWED_PERIODS, "month"))
+  const defaultRange = useMemo(() => {
+    const today = new Date()
+    const start = new Date(today)
+    start.setDate(start.getDate() - 13)
+    return { from: toIsoDate(start), to: toIsoDate(today) }
+  }, [])
+  const [draftRange, setDraftRange] = useState(() => ({
+    from: range?.from || defaultRange.from,
+    to: range?.to || defaultRange.to,
+  }))
 
   useEffect(() => {
-    if (typeof window !== "undefined") window.localStorage.setItem(viewKey, view)
-  }, [view, viewKey])
+    if (range?.from && range?.to) {
+      setDraftRange({ from: range.from, to: range.to })
+      return
+    }
+    onRangeChange?.(defaultRange)
+  }, [range?.from, range?.to, defaultRange, onRangeChange])
 
-  useEffect(() => {
-    if (typeof window !== "undefined") window.localStorage.setItem(periodKey, period)
-  }, [period, periodKey])
-
-  const monthItems = useMemo(
-    () => monthKpis.map((item) => ({ ...item, numericValue: parseMetricValue(item.value) })),
-    [monthKpis]
+  const items = useMemo(
+    () => kpis.map((item) => ({ ...item, numericValue: parseMetricValue(item.value) })),
+    [kpis]
   )
-  const weekItems = useMemo(
-    () => weekKpis.map((item) => ({ ...item, numericValue: parseMetricValue(item.value) })),
-    [weekKpis]
-  )
-
-  const activeItems = period === "month" ? monthItems : weekItems
-  const activeTrend = period === "month" ? weeklyTrend : dailyTrend
+  const hasChartData = Array.isArray(trend) && trend.length > 0
 
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-4">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h2 className="text-lg font-semibold">{title}</h2>
-          <p className="text-sm text-gray-500">{period === "month" ? subtitleMonth : subtitleWeek}</p>
+          <p className="text-sm text-gray-500">{subtitle}</p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex rounded-md border border-gray-200 p-0.5">
-            {[
-              { id: "month", label: "Month" },
-              { id: "week", label: "Week" },
-            ].map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                onClick={() => setPeriod(option.id)}
-                className={`rounded px-3 py-1.5 text-xs font-medium transition-colors ${
-                  period === option.id ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
-                }`}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-
-          {showChart && (
-            <div className="inline-flex rounded-md border border-gray-200 p-0.5">
-              {[
-                { id: "blocks", label: "Blocks" },
-                { id: "line", label: "Line" },
-                { id: "columns", label: "Columns" },
-              ].map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => setView(option.id)}
-                  className={`rounded px-3 py-1.5 text-xs font-medium transition-colors ${
-                    view === option.id ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
-                  }`}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        <DateRangePicker
+          value={draftRange}
+          onChange={(next) => {
+            setDraftRange(next)
+            onRangeChange?.(next)
+          }}
+          isLoading={isLoading}
+        />
       </div>
 
-      {view === "blocks" || !showChart ? (
-        activeItems.length === 0 ? (
-          <p className="mt-4 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center text-sm text-gray-500">
-            No KPIs available for this period.
-          </p>
-        ) : (
-          <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
-            {activeItems.map((item) => (
-              <article key={item.id || item.label} className="rounded-xl border border-gray-200 bg-white p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{item.label}</p>
-                <p className="mt-2 text-2xl font-semibold text-gray-900">{item.value}</p>
-                {item.trend && <p className="mt-1 text-xs text-gray-500">{item.trend}</p>}
+      {items.length === 0 ? (
+        <p className="mt-4 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center text-sm text-gray-500">
+          No KPIs available for this range.
+        </p>
+      ) : showChart && hasChartData ? (
+        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,280px)_minmax(0,1fr)]">
+          <div className="flex flex-col gap-2">
+            {items.map((item) => (
+              <article
+                key={item.id || item.label}
+                className="flex items-baseline justify-between gap-3 rounded-xl border border-gray-200 bg-white p-3"
+              >
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{item.label}</p>
+                  {item.trend && <p className="mt-0.5 text-[11px] text-gray-500">{item.trend}</p>}
+                </div>
+                <p className="shrink-0 text-xl font-semibold text-gray-900">{item.value}</p>
               </article>
             ))}
           </div>
-        )
+          <div className="min-h-[22rem]">
+            <OverviewChart data={trend} xKey={chartXKey} series={chartSeries} />
+          </div>
+        </div>
       ) : (
-        <OverviewChart data={activeTrend} chartType={view} isWeek={period === "week"} series={chartSeries} />
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {items.map((item) => (
+            <article key={item.id || item.label} className="rounded-xl border border-gray-200 bg-white p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{item.label}</p>
+              <p className="mt-2 text-2xl font-semibold text-gray-900">{item.value}</p>
+              {item.trend && <p className="mt-1 text-xs text-gray-500">{item.trend}</p>}
+            </article>
+          ))}
+        </div>
+      )}
+
+      {footer && (
+        <div className="mt-6 border-t border-gray-100 pt-4">
+          {footer}
+        </div>
       )}
     </section>
   )
