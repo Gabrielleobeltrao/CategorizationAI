@@ -40,6 +40,16 @@ function Combobox({
         )
     }, [options, searchable, searchTerm])
 
+    const visibleGroups = useMemo(() => {
+        const groups = new Map()
+        visibleOptions.forEach((option) => {
+            const key = option.group || ""
+            if (!groups.has(key)) groups.set(key, [])
+            groups.get(key).push(option)
+        })
+        return Array.from(groups.entries())
+    }, [visibleOptions])
+
     const closeDropdown = () => {
         setOpen(false)
         setSearchTerm("")
@@ -134,39 +144,48 @@ function Combobox({
                                     {searchable && searchTerm ? "No matches" : "No options"}
                                 </p>
                             ) : (
-                                visibleOptions.map((option) => {
-                                    const isSelected = String(option.value) === String(value)
-                                    return (
-                                        <button
-                                            key={String(option.value)}
-                                            type="button"
-                                            onClick={() => {
-                                                onChange?.(option.value)
-                                                closeDropdown()
-                                            }}
-                                            className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                                                isSelected
-                                                    ? "bg-gray-900 text-white"
-                                                    : "text-gray-700 hover:bg-gray-100"
-                                            }`}
-                                        >
-                                            <span className="truncate">{option.label}</span>
-                                            {isSelected && (
-                                                <svg
-                                                    className="h-3.5 w-3.5 shrink-0"
-                                                    viewBox="0 0 24 24"
-                                                    fill="none"
-                                                    stroke="currentColor"
-                                                    strokeWidth="3"
-                                                    strokeLinecap="round"
-                                                    strokeLinejoin="round"
+                                visibleGroups.map(([groupLabel, groupOptions], groupIndex) => (
+                                    <div key={groupLabel || `__no_group_${groupIndex}`} className={groupIndex > 0 ? "mt-1 border-t border-gray-100 pt-1" : ""}>
+                                        {groupLabel && (
+                                            <p className="px-3 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+                                                {groupLabel}
+                                            </p>
+                                        )}
+                                        {groupOptions.map((option) => {
+                                            const isSelected = String(option.value) === String(value)
+                                            return (
+                                                <button
+                                                    key={String(option.value)}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        onChange?.(option.value)
+                                                        closeDropdown()
+                                                    }}
+                                                    className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${
+                                                        isSelected
+                                                            ? "bg-gray-900 text-white"
+                                                            : "text-gray-700 hover:bg-gray-100"
+                                                    }`}
                                                 >
-                                                    <path d="M20 6 9 17l-5-5" />
-                                                </svg>
-                                            )}
-                                        </button>
-                                    )
-                                })
+                                                    <span className="truncate">{option.label}</span>
+                                                    {isSelected && (
+                                                        <svg
+                                                            className="h-3.5 w-3.5 shrink-0"
+                                                            viewBox="0 0 24 24"
+                                                            fill="none"
+                                                            stroke="currentColor"
+                                                            strokeWidth="3"
+                                                            strokeLinecap="round"
+                                                            strokeLinejoin="round"
+                                                        >
+                                                            <path d="M20 6 9 17l-5-5" />
+                                                        </svg>
+                                                    )}
+                                                </button>
+                                            )
+                                        })}
+                                    </div>
+                                ))
                             )}
                         </div>
                     </div>
