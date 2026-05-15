@@ -141,7 +141,7 @@ function DateRangePicker({ value, onChange, isLoading = false, align = "end", cl
       </button>
 
       {open && (
-        <div className={`absolute ${align === "start" ? "left-0" : "right-0"} z-50 mt-1 flex w-[min(95vw,30rem)] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-[0_18px_48px_-12px_rgba(15,23,42,0.25)] md:flex-row`}>
+        <div className={`absolute left-0 right-0 z-50 mt-1 flex max-w-[calc(100vw-1rem)] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-[0_18px_48px_-12px_rgba(15,23,42,0.25)] md:right-auto md:w-[30rem] md:flex-row ${align === "end" ? "md:left-auto md:right-0" : "md:left-0"}`}>
           <div className="flex shrink-0 flex-col gap-0.5 border-b border-gray-100 p-3 md:w-40 md:border-b-0 md:border-r">
             {PRESETS.map((preset) => (
               <button
@@ -155,7 +155,15 @@ function DateRangePicker({ value, onChange, isLoading = false, align = "end", cl
             ))}
           </div>
           <div className="flex flex-1 flex-col gap-3 p-4">
-            <div className="overflow-x-auto">
+            <div className="rdp-compact flex justify-center overflow-x-auto text-xs" style={{ "--rdp-cell-size": "32px", fontSize: "12px" }}>
+              <style>{`
+                .rdp-compact .rdp-day_button { font-size: 12px !important; font-weight: 500 !important; }
+                .rdp-compact .rdp-selected .rdp-day_button { font-weight: 600 !important; }
+                .rdp-compact .rdp-today .rdp-day_button { font-weight: 600 !important; }
+                .rdp-compact .rdp-weekday { font-size: 11px !important; }
+                .rdp-compact .rdp-caption_label { font-size: 13px !important; }
+                .rdp-compact .rdp-months { margin: 0 auto; }
+              `}</style>
               <DayPicker
                 mode="range"
                 selected={draft.from || draft.to ? draft : undefined}
