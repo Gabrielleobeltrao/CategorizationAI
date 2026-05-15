@@ -16,6 +16,7 @@ export async function ensureUserProfileIndexes() {
         ),
         collection.createIndex({ officeId: 1, createdAt: -1 }),
         collection.createIndex({ officeId: 1, role: 1 }),
+        collection.createIndex({ officeId: 1, createdBy: 1, createdAt: -1 }),
         authUsersCollection.createIndex(
             { email: 1 },
             {

@@ -272,6 +272,7 @@ export async function ensureClientsIndexes() {
         collection.createIndex({ officeId: 1, createdAt: -1 }),
         collection.createIndex({ officeId: 1, name: 1 }),
         collection.createIndex({ officeId: 1, tagIds: 1 }),
+        collection.createIndex({ officeId: 1, createdBy: 1, createdAt: -1 }),
     ])
 
     await ensureClientsSearchIndex()

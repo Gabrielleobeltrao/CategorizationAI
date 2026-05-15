@@ -11,6 +11,7 @@ export async function ensureCategorizationJobsIndexes() {
     collection.createIndex({ status: 1, createdAt: 1 }),
     collection.createIndex({ clientId: 1, createdAt: -1 }),
     collection.createIndex({ clientId: 1, updatedAt: -1, createdAt: -1 }),
+    collection.createIndex({ clientId: 1, createdBy: 1, updatedAt: -1 }),
   ])
 }
 
