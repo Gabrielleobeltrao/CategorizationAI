@@ -3,13 +3,17 @@ import { getDB } from "../db.js"
 
 export const DEFAULT_OFFICE_FEATURES = Object.freeze({
     crm: false,
+    crmOperationalStatus: false,
 })
 
 export function normalizeOfficeFeatures(features) {
+    const safeCrm = Boolean(features?.crm)
     return {
         ...DEFAULT_OFFICE_FEATURES,
         ...(features && typeof features === "object" ? features : {}),
-        crm: Boolean(features?.crm),
+        crm: safeCrm,
+        // Sub-flag stays off whenever the parent CRM add-on is disabled.
+        crmOperationalStatus: safeCrm && Boolean(features?.crmOperationalStatus),
     }
 }
 

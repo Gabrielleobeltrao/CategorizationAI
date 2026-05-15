@@ -1273,6 +1273,85 @@ export async function applyCategoryUpdates(updates = []) {
   return { modifiedCount: result.modifiedCount || 0 }
 }
 
+// Lightweight signals for the Operational Status compute (Operations CRM).
+// We avoid loading documents into the service layer by aggregating directly:
+//   - totalCount: any imported transaction at all (drives onboarding rule)
+//   - monthsInYear: distinct months covered inside the given year
+//                   (drives waiting_documents vs categorizing rule)
+//   - uncategorizedInYear: number of transactions in that year still missing
+//                          a categoryId/category (drives categorizing vs
+//                          ready_to_review rule)
+// The uncategorized condition mirrors the one used by the transactions list
+// filter so the dashboard signal matches what users actually see.
+export async function getClientYearOperationalSignals(clientId, year) {
+  const db = getDB()
+  const collection = db.collection("transactions")
+
+  const safeClientId = String(clientId || "").trim()
+  const safeYear = String(year || "").trim()
+  if (!safeClientId || !/^\d{4}$/.test(safeYear)) {
+    return { totalCount: 0, monthsInYear: [], uncategorizedInYear: 0 }
+  }
+
+  const uncategorizedClause = {
+    $or: [
+      { categoryId: null },
+      { categoryId: "" },
+      { category: null },
+      { category: "" },
+      { category: "Uncategorized income" },
+      { category: "Uncategorized expenses" },
+    ],
+  }
+
+  const [result] = await collection
+    .aggregate([
+      { $match: { clientId: safeClientId, date: { $regex: /^\d{4}-\d{2}-\d{2}$/ } } },
+      {
+        $project: {
+          year: { $substrBytes: ["$date", 0, 4] },
+          month: { $substrBytes: ["$date", 5, 2] },
+          categoryId: 1,
+          category: 1,
+          splits: 1,
+        },
+      },
+      {
+        $facet: {
+          total: [{ $count: "n" }],
+          months: [
+            { $match: { year: safeYear } },
+            { $group: { _id: "$month" } },
+          ],
+          uncategorized: [
+            {
+              $match: {
+                year: safeYear,
+                $or: [
+                  uncategorizedClause,
+                  {
+                    splits: {
+                      $elemMatch: uncategorizedClause,
+                    },
+                  },
+                ],
+              },
+            },
+            { $count: "n" },
+          ],
+        },
+      },
+    ])
+    .toArray()
+
+  const totalCount = Number(result?.total?.[0]?.n || 0)
+  const monthsInYear = Array.isArray(result?.months)
+    ? result.months.map((item) => String(item?._id || "")).filter(Boolean).sort()
+    : []
+  const uncategorizedInYear = Number(result?.uncategorized?.[0]?.n || 0)
+  return { totalCount, monthsInYear, uncategorizedInYear }
+}
+
 export async function listTransactionPeriodOptions(clientId) {
   const db = getDB()
   const collection = db.collection("transactions")

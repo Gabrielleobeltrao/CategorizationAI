@@ -295,7 +295,9 @@ O sistema é dividido em dois módulos conceituais:
 
 ### Feature flags
 
-O documento `offices` carrega `features: { crm: boolean }`. Default é `{ crm: false }`. A intenção é que o Stripe sincronize isso por webhook quando entrar em produção; hoje a ativação é manual.
+O documento `offices` carrega `features: { crm: boolean, crmOperationalStatus: boolean }`. Default é tudo `false`. A intenção é que o Stripe sincronize isso por webhook quando entrar em produção; hoje a ativação é manual.
+
+Sub-flags como `crmOperationalStatus` dependem da parent `crm` — quando `crm` está `false`, o normalizador força a sub-flag pra `false` também (ver `normalizeOfficeFeatures` em `backend/src/repositories/office.repository.js`).
 
 Ativar CRM num office específico (dev/staging):
 
@@ -319,6 +321,69 @@ npm run features:set -- --officeId=<officeId> --crm=false
   ```
 
 - **Frontend**: hook `useFeature("crm")` retorna booleano. Componente `<FeatureGate flag="crm" fallback={null}>...</FeatureGate>` esconde children. Both leem de `office.features` carregado no bootstrap.
+
+### Operational Status (sub-feature do Operations CRM)
+
+Cada cliente do office carrega um **Operational Status** que indica o estágio atual do trabalho operacional. O status é derivado automaticamente dos dados de bookkeeping (transações, categorização), com a possibilidade de override manual por dois status específicos.
+
+- Feature flag: `crmOperationalStatus` (depende de `crm` estar ativo)
+- Coleção: `client_operational_status` (1 doc por cliente, índice único em `clientId`)
+- Registry compartilhado: `backend/src/lib/operationalStatuses.js` + mirror em `frontend/src/constants/operationalStatuses.js`
+- Compute: `computeOperationalStatusForClient` em `backend/src/services/operationalStatus.service.js`
+
+#### Status disponíveis
+
+| id                 | tipo      | quando aparece                                                              |
+| ------------------ | --------- | --------------------------------------------------------------------------- |
+| `onboarding`       | auto      | Cliente sem nenhuma transação importada.                                    |
+| `waiting_documents`| auto      | Tem transações, mas o ano corrente ainda não tem transação em todos os meses. |
+| `categorizing`     | auto      | Ano corrente coberto nos 12 meses, mas existem transações sem categoria.    |
+| `ready_to_review`  | auto      | Ano corrente coberto nos 12 meses e todas as transações categorizadas.      |
+| `completed`        | **manual**| Usuário marca quando finaliza a revisão/processo.                           |
+| `paused`           | **manual**| Trabalho pausado intencionalmente — sobrescreve o status automático.        |
+
+#### Regras de cálculo (current-year scope)
+
+A regra inicial usa o **ano corrente (UTC)** como janela de avaliação. Ordem de avaliação dos status automáticos (primeiro match vence):
+
+1. `onboarding` — `totalCount === 0` (nenhuma transação importada)
+2. `waiting_documents` — `monthsInYear.length < 12` (faltam meses no ano corrente)
+3. `categorizing` — `monthsInYear.length === 12 && uncategorizedInYear > 0`
+4. `ready_to_review` — `monthsInYear.length === 12 && uncategorizedInYear === 0`
+
+Os sinais (`totalCount`, `monthsInYear`, `uncategorizedInYear`) vêm de `getClientYearOperationalSignals` em `backend/src/repositories/transactions.repository.js` — uma única aggregation por cliente.
+
+A janela do ano corrente é definida em `getCurrentYearForRules()` no service. Quando evoluirmos pra ano fiscal configurável ou rolling-12-months, é só trocar essa função (manter as regras intactas).
+
+#### Prioridade efetiva (manual vs computado)
+
+O `effectiveStatus` retornado em `normalizeRecord` (repository) é decidido na ordem:
+
+```
+manualStatus (paused, completed)  ▸  computedStatus  ▸  DEFAULT_OPERATIONAL_STATUS (onboarding)
+```
+
+Validações:
+- Apenas `paused` e `completed` podem ser definidos via PATCH manual (`setManualOperationalStatusService` rejeita os demais).
+- Limpar o manual (passar `status: null`) faz o `effectiveStatus` voltar a usar o `computedStatus`.
+
+#### Quando o compute roda
+
+- **Endpoint single** `GET /api/clients/:id/operational-status` — recomputa antes de responder.
+- **Endpoint list** `GET /api/offices/:id/operational-status` — recomputa todos os clientes do office.
+- **Mutações de transações** — disparam recompute fire-and-forget (`scheduleOperationalStatusRecompute`) sem bloquear a resposta. Hooks atuais em [transactions.service.js](backend/src/services/transactions.service.js):
+  - `createTransactionsBatchService` (CSV import / criação em lote)
+  - `updateTransactionByIdService` (edição individual, inclui categorização manual e splits)
+  - `updateTransactionsByIdsService` (edição em lote)
+  - `deleteTransactionByIdService` / `deleteTransactionsByIdsService`
+  - `categorizeTransactionsWithLlmService` / `categorizeZelleTransactionsService` (categorização automática)
+- **Deleção de cliente** — `deleteClientByIdService` remove o registro de operational status junto com as outras coleções cascateadas.
+- Falhas no recompute são logadas (`console.error`) mas nunca propagam pra mutação original. Em último caso a próxima leitura (single/list) recalcula.
+
+#### Onde os status aparecem na UI
+
+- **Lista de clientes** (`ClientsPage`) — badge ao lado do nome, gated por `useFeature("crmOperationalStatus")`.
+- Próximos passos planejados: widget na página do cliente, card no CRM Dashboard, ícone de info explicando as regras no tooltip.
 
 ### Recent Activity per usuário
 

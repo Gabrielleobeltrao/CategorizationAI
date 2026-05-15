@@ -14,6 +14,11 @@ import {
 } from "../middlewares/validateObjectId.js"
 import { ensureResourceExists } from "../middlewares/authorizeScope.js"
 import { requirePermission } from "../middlewares/requirePermission.js"
+import { requireFeature } from "../middlewares/requireFeature.js"
+import {
+  getClientOperationalStatusController,
+  setClientOperationalStatusController,
+} from "../controllers/operationalStatus.controller.js"
 
 const router = Router()
 
@@ -72,6 +77,26 @@ router.delete(
   validateObjectIdParam("id"),
   ensureResourceExists({ collection: "clients", from: "params", field: "id", assignKey: "client" }),
   deleteClientByIdController
+)
+
+router.get(
+  "/clients/:id/operational-status",
+  requireAuth,
+  requirePermission("clients:read"),
+  requireFeature("crmOperationalStatus"),
+  validateObjectIdParam("id"),
+  ensureResourceExists({ collection: "clients", from: "params", field: "id", assignKey: "client" }),
+  getClientOperationalStatusController
+)
+
+router.patch(
+  "/clients/:id/operational-status",
+  requireAuth,
+  requirePermission("clients:update"),
+  requireFeature("crmOperationalStatus"),
+  validateObjectIdParam("id"),
+  ensureResourceExists({ collection: "clients", from: "params", field: "id", assignKey: "client" }),
+  setClientOperationalStatusController
 )
 
 export default router

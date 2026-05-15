@@ -17,6 +17,7 @@ import { deleteCategoriesByClientIdService } from "./category.service.js"
 import { deleteTransactionsByClientId } from "../repositories/transactions.repository.js"
 import { deleteTransactionMemoriesByClientId } from "../repositories/transactionMemory.repository.js"
 import { deleteCategorizationJobsByClientId } from "../repositories/categorizationJob.repository.js"
+import { deleteOperationalStatusByClientId } from "../repositories/clientOperationalStatus.repository.js"
 import {
   hydrateOfficeTagsForDocumentService,
   hydrateOfficeTagsForDocumentsService,
@@ -273,6 +274,7 @@ export async function deleteClientByIdService(id) {
     deleteCategoriesByClientIdService(id),
     deleteTransactionMemoriesByClientId(id),
     deleteCategorizationJobsByClientId(id),
+    deleteOperationalStatusByClientId(id),
   ])
 
   return deleteClientById(id)

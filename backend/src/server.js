@@ -17,6 +17,7 @@ import { ensureCategoryTemplateIndexes } from "./repositories/categoryTemplate.r
 import { ensureOfficeTagIndexes } from "./repositories/tag.repository.js"
 import { ensureOpenTestAccessCodeIndexes } from "./repositories/openTestAccessCode.repository.js"
 import { ensureTasksIndexes } from "./repositories/tasks.repository.js"
+import { ensureClientOperationalStatusIndexes } from "./repositories/clientOperationalStatus.repository.js"
 import { startCategorizationWorker } from "./workers/categorization.worker.js"
 import { startCategorySyncWorker } from "./workers/categorySync.worker.js"
 
@@ -39,6 +40,7 @@ await ensureCategoryTemplateIndexes()
 await ensureOfficeTagIndexes()
 await ensureOpenTestAccessCodeIndexes()
 await ensureTasksIndexes()
+await ensureClientOperationalStatusIndexes()
 
 app.locals.auth = createAuth(getDB())
 await startCategorizationWorker()
