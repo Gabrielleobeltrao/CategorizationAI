@@ -210,25 +210,25 @@ function TasksPage() {
     }
 
     return (
-        <section className="w-full p-8">
-            <div className="mx-auto flex max-w-5xl flex-col gap-6">
-                <header className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-                    <div>
-                        <h1 className="text-3xl font-bold">Tasks</h1>
-                        <p className="mt-2 text-sm text-gray-500">
+        <section className="w-full p-4 sm:p-6 lg:p-8">
+            <div className="mx-auto flex max-w-5xl flex-col gap-4 sm:gap-6">
+                <header className="flex flex-row items-start justify-between gap-3">
+                    <div className="min-w-0">
+                        <h1 className="text-2xl font-bold sm:text-3xl">Tasks</h1>
+                        <p className="mt-2 hidden text-sm text-gray-500 sm:block">
                             Operational tasks for your office. Link a client, an assignee or a due date — all optional.
                         </p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex shrink-0 items-center gap-2">
                         <button
                             type="button"
                             onClick={() => setIsFiltersOpen(true)}
-                            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-2.5 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 sm:gap-2 sm:px-3"
                         >
                             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <path d="M3 4h18l-7 9v6l-4-2v-4z" />
                             </svg>
-                            Filters
+                            <span className="hidden sm:inline">Filters</span>
                             {activeFiltersCount > 0 && (
                                 <span className="rounded-full bg-gray-900 px-1.5 py-0.5 text-[10px] font-semibold text-white">
                                     {activeFiltersCount}
@@ -239,7 +239,7 @@ function TasksPage() {
                             <button
                                 type="button"
                                 onClick={() => setAppliedFilters(EMPTY_TASK_FILTERS)}
-                                className="rounded-lg px-2 py-2 text-xs font-medium text-gray-500 hover:bg-gray-100"
+                                className="hidden rounded-lg px-2 py-2 text-xs font-medium text-gray-500 hover:bg-gray-100 sm:inline-flex"
                                 title="Clear filters"
                             >
                                 Clear
@@ -248,9 +248,10 @@ function TasksPage() {
                         <button
                             type="button"
                             onClick={openCreate}
-                            className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black"
+                            className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black sm:px-4"
                         >
-                            New task
+                            <span className="hidden sm:inline">New task</span>
+                            <span className="sm:hidden">+ New</span>
                         </button>
                     </div>
                 </header>

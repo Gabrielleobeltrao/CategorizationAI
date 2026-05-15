@@ -127,7 +127,7 @@ function TaskDetailsModal({
                 onClick={onClose}
             />
             <div className="relative flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-                <header className="flex items-start justify-between gap-3 border-b border-gray-100 px-5 py-4">
+                <header className="flex items-start justify-between gap-3 border-b border-gray-100 px-4 py-3 sm:px-5 sm:py-4">
                     <div className="min-w-0">
                         {isDone && task.doneAt && (
                             <div className="flex flex-wrap items-center gap-2">
@@ -153,7 +153,7 @@ function TaskDetailsModal({
                     </button>
                 </header>
 
-                <div className="flex-1 overflow-y-auto px-5 py-4">
+                <div className="flex-1 overflow-y-auto px-4 py-3 sm:px-5 sm:py-4">
                     {task.description ? (
                         <p className="whitespace-pre-wrap text-sm text-gray-700">{task.description}</p>
                     ) : (
@@ -218,7 +218,7 @@ function TaskDetailsModal({
                     )}
                 </div>
 
-                <footer className="flex items-center justify-between gap-2 border-t border-gray-100 bg-gray-50/60 px-5 py-3">
+                <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 bg-gray-50/60 px-4 py-3 sm:px-5">
                     {onChangeStatus ? (
                         <div className="inline-flex rounded-md border border-gray-200 p-0.5">
                             {STATUS_OPTIONS.map((option) => {

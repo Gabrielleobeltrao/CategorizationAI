@@ -69,7 +69,7 @@ function TaskEditModal({
             />
             <form
                 onSubmit={handleSubmit}
-                className="relative flex w-full max-w-3xl flex-col gap-4 rounded-2xl bg-white p-6 shadow-2xl"
+                className="relative flex w-full max-w-3xl flex-col gap-4 rounded-2xl bg-white p-4 shadow-2xl sm:p-6"
             >
                 <header className="flex items-center justify-between">
                     <h2 className="text-lg font-semibold">

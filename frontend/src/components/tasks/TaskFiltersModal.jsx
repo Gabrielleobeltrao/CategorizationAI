@@ -55,7 +55,7 @@ function TaskFiltersModal({
                 aria-label="Close"
                 onClick={onCancel}
             />
-            <div className="relative flex w-full max-w-xl flex-col gap-4 rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="relative flex w-full max-w-xl flex-col gap-4 rounded-2xl bg-white p-4 shadow-2xl sm:p-6">
                 <header className="flex items-center justify-between">
                     <h2 className="text-lg font-semibold">Filters</h2>
                     <button
