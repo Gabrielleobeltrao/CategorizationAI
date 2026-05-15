@@ -131,9 +131,12 @@ function buildWeeklyBuckets(startDate, endDate) {
       bucketEnd.setTime(endDate.getTime())
     }
 
+    const labelOpts = { month: "short", day: "numeric", timeZone: "UTC" }
+    const startLabel = bucketStart.toLocaleString("en-US", labelOpts)
+    const endLabel = bucketEnd.toLocaleString("en-US", labelOpts)
     buckets.push({
       id: `w_${index}`,
-      label: `Week ${index}`,
+      label: `${startLabel} – ${endLabel}`,
       start: bucketStart,
       end: bucketEnd,
       imported: 0,
