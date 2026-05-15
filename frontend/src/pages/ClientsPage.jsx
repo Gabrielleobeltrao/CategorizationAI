@@ -472,18 +472,17 @@ function ClientsPage() {
     }
 
     return (
-        <section className="w-full p-8">
-            <div className="max-w-5xl mx-auto flex flex-col gap-6">
-                <header className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-                    <div>
-                        <h1 className="text-3xl font-bold">Clients</h1>
-                    </div>
+        <section className="w-full p-4 sm:p-6 lg:p-8">
+            <div className="mx-auto flex max-w-5xl flex-col gap-4 sm:gap-6">
+                <header className="flex flex-wrap items-start justify-between gap-3">
+                    <h1 className="text-2xl font-bold sm:text-3xl">Clients</h1>
                     <button
-                        className="border border-gray-200 rounded-lg px-4 py-2 text-sm font-medium text-left"
+                        className="shrink-0 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium hover:bg-gray-100 sm:px-4"
                         disabled={isResolvingOfficeContext}
                         onClick={() => setShowClientForm(true)}
                     >
-                        + New Client
+                        <span className="hidden sm:inline">+ New Client</span>
+                        <span className="sm:hidden">+ Client</span>
                     </button>
                 </header>
 
@@ -538,126 +537,84 @@ function ClientsPage() {
                                             </button>
 
                                             {isExpanded && (
-                                                <div className="mt-2 border-t border-gray-200 pt-3">
-                                                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(230px,0.8fr)]">
-                                                        <div className="space-y-3">
-                                                            <section className="space-y-2">
-                                                                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                                                                    <div>
-                                                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Business Type</p>
-                                                                        <p className="mt-1 text-sm text-gray-800">{client.businessType || "-"}</p>
-                                                                    </div>
-                                                                    <div>
-                                                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">State</p>
-                                                                        <p className="mt-1 text-sm text-gray-800">{client.state || "-"}</p>
-                                                                    </div>
-                                                                    <div>
-                                                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Main Activity</p>
-                                                                        <p className="mt-1 text-sm text-gray-800">{client.mainActivity || "-"}</p>
-                                                                    </div>
-                                                                </div>
-                                                            </section>
+                                                <div className="mt-3 border-t border-gray-200 pt-3">
+                                                    <dl className="grid grid-cols-2 gap-x-6 gap-y-3 md:grid-cols-4">
+                                                        <div>
+                                                            <dt className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Business Type</dt>
+                                                            <dd className="mt-0.5 text-sm text-gray-800">{client.businessType || "-"}</dd>
+                                                        </div>
+                                                        <div>
+                                                            <dt className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">State</dt>
+                                                            <dd className="mt-0.5 text-sm text-gray-800">{client.state || "-"}</dd>
+                                                        </div>
+                                                        <div>
+                                                            <dt className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Main Activity</dt>
+                                                            <dd className="mt-0.5 text-sm text-gray-800">{client.mainActivity || "-"}</dd>
+                                                        </div>
+                                                        <div>
+                                                            <dt className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Created</dt>
+                                                            <dd className="mt-0.5 text-sm text-gray-800">{formatClientDate(client.createdAt)}</dd>
+                                                        </div>
+                                                    </dl>
 
-                                                            <section className="space-y-2">
-                                                                <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">
-                                                                    Description
-                                                                </h3>
-                                                                <p className="text-sm leading-5 text-gray-700">{client.description || "-"}</p>
-                                                            </section>
+                                                    {client.description && (
+                                                        <section className="mt-3">
+                                                            <h3 className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Description</h3>
+                                                            <p className="mt-0.5 text-sm leading-5 text-gray-700">{client.description}</p>
+                                                        </section>
+                                                    )}
 
-                                                            <section className="space-y-2">
-                                                                <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">
-                                                                    Owners
-                                                                </h3>
-                                                                <div className="space-y-2">
-                                                                    {Array.isArray(client.owners) && client.owners.some(hasOwnerContactInfo) ? (
-                                                                        client.owners.map((owner, index) => (
-                                                                            <div
-                                                                                key={`owner-display-${client.id}-${index}`}
-                                                                                className="border-l border-gray-200 pl-3"
-                                                                            >
-                                                                                <div className="flex items-center justify-between gap-3">
-                                                                                    <p className="text-sm font-semibold text-gray-900">
-                                                                                        {String(owner?.name || "").trim() || `Owner ${index + 1}`}
-                                                                                    </p>
-                                                                                    <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-                                                                                        Owner {index + 1}
-                                                                                    </span>
-                                                                                </div>
-                                                                                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                                                                    <div>
-                                                                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Email</p>
-                                                                                        <p className="mt-1 text-sm text-gray-700">{String(owner?.email || "").trim() || "-"}</p>
-                                                                                    </div>
-                                                                                    <div>
-                                                                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Phone</p>
-                                                                                        <p className="mt-1 text-sm text-gray-700">{String(owner?.phone || "").trim() || "-"}</p>
-                                                                                    </div>
-                                                                                </div>
-                                                                            </div>
-                                                                        ))
-                                                                    ) : hasLegacyOwnerContact(client) ? (
-                                                                        <div className="border-l border-gray-200 pl-3">
-                                                                            <div className="flex items-center justify-between gap-3">
-                                                                                <p className="text-sm font-semibold text-gray-900">Owner</p>
-                                                                                <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-                                                                                    Legacy
-                                                                                </span>
-                                                                            </div>
-                                                                            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                                                                <div>
-                                                                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Email</p>
-                                                                                    <p className="mt-1 text-sm text-gray-700">{String(client.ownerEmail || "").trim() || "-"}</p>
-                                                                                </div>
-                                                                                <div>
-                                                                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Phone</p>
-                                                                                    <p className="mt-1 text-sm text-gray-700">{String(client.ownerPhone || "").trim() || "-"}</p>
-                                                                                </div>
-                                                                            </div>
-                                                                        </div>
-                                                                    ) : (
-                                                                        <div className="border-l border-dashed border-gray-200 pl-3 text-sm text-gray-500">
-                                                                            No owner details added yet
-                                                                        </div>
+                                                    <section className="mt-3">
+                                                        <h3 className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Owners</h3>
+                                                        <div className="mt-1.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                                            {Array.isArray(client.owners) && client.owners.some(hasOwnerContactInfo) ? (
+                                                                client.owners.map((owner, index) => (
+                                                                    <div
+                                                                        key={`owner-display-${client.id}-${index}`}
+                                                                        className="flex flex-col gap-0.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2"
+                                                                    >
+                                                                        <p className="text-sm font-semibold text-gray-900">
+                                                                            {String(owner?.name || "").trim() || `Owner ${index + 1}`}
+                                                                        </p>
+                                                                        {String(owner?.email || "").trim() && (
+                                                                            <p className="text-xs text-gray-600">{String(owner.email).trim()}</p>
+                                                                        )}
+                                                                        {String(owner?.phone || "").trim() && (
+                                                                            <p className="text-xs text-gray-600">{String(owner.phone).trim()}</p>
+                                                                        )}
+                                                                    </div>
+                                                                ))
+                                                            ) : hasLegacyOwnerContact(client) ? (
+                                                                <div className="flex flex-col gap-0.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                                                                    <p className="text-sm font-semibold text-gray-900">Owner</p>
+                                                                    {String(client.ownerEmail || "").trim() && (
+                                                                        <p className="text-xs text-gray-600">{String(client.ownerEmail).trim()}</p>
+                                                                    )}
+                                                                    {String(client.ownerPhone || "").trim() && (
+                                                                        <p className="text-xs text-gray-600">{String(client.ownerPhone).trim()}</p>
                                                                     )}
                                                                 </div>
-                                                            </section>
+                                                            ) : (
+                                                                <p className="text-sm text-gray-500">No owner details added yet</p>
+                                                            )}
                                                         </div>
+                                                    </section>
 
-                                                        <div className="space-y-3">
-                                                            <section className="space-y-2">
-                                                                <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">
-                                                                    Tags
-                                                                </h3>
-                                                                {Array.isArray(client.tags) && client.tags.length > 0 ? (
-                                                                    <div className="flex flex-wrap gap-2">
-                                                                        {client.tags.map((tag) => (
-                                                                            <span
-                                                                                key={`${client.id}-tag-${tag}`}
-                                                                                className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-700"
-                                                                            >
-                                                                                {tag}
-                                                                            </span>
-                                                                        ))}
-                                                                    </div>
-                                                                ) : (
-                                                                    <p className="text-sm text-gray-500">No tags</p>
-                                                                )}
-                                                            </section>
-
-                                                            <section className="space-y-2">
-                                                                <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">
-                                                                    Timeline
-                                                                </h3>
-                                                                <div className="space-y-2">
-                                                                    <div className="flex items-center justify-between gap-3">
-                                                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Created</p>
-                                                                        <p className="text-sm text-gray-700">{formatClientDate(client.createdAt)}</p>
-                                                                    </div>
-                                                                </div>
-                                                            </section>
-                                                        </div>
-                                                    </div>
+                                                    {Array.isArray(client.tags) && client.tags.length > 0 && (
+                                                        <section className="mt-3">
+                                                            <h3 className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Tags</h3>
+                                                            <div className="mt-1 flex flex-wrap gap-1.5">
+                                                                {client.tags.map((tag) => (
+                                                                    <span
+                                                                        key={`${client.id}-tag-${tag}`}
+                                                                        className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-xs font-medium text-gray-700"
+                                                                    >
+                                                                        {tag}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        </section>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>
@@ -665,7 +622,7 @@ function ClientsPage() {
                                         <div className="flex items-start justify-end gap-2">
                                             <button
                                                 type="button"
-                                                className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-gray-800"
+                                                className="rounded-md p-2 text-gray-500 hover:bg-gray-200 hover:text-gray-800"
                                                 onClick={(e) => {
                                                     e.stopPropagation()
                                                     toggleClientExpanded(client.id)
@@ -699,7 +656,7 @@ function ClientsPage() {
                 )}
 
                 {!isLoading && total > 0 && (
-                    <div className="flex items-center justify-between border-t border-gray-200 pt-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 pt-3">
                         <p className="text-sm text-gray-500">
                             Page {page} of {totalPages} · {total} clients
                         </p>

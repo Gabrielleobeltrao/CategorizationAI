@@ -634,26 +634,26 @@ function EmployeesPage() {
     }
 
     return (
-        <section className="w-full p-8">
-            <div className="max-w-5xl mx-auto flex flex-col gap-6">
-                <header className="flex items-start justify-between gap-3">
-                    <div>
-                        <h1 className="text-3xl font-bold">Employees</h1>
-                    </div>
-                    <div className="flex items-center gap-2">
+        <section className="w-full p-4 sm:p-6 lg:p-8">
+            <div className="mx-auto flex max-w-5xl flex-col gap-4 sm:gap-6">
+                <header className="flex flex-wrap items-start justify-between gap-3">
+                    <h1 className="text-2xl font-bold sm:text-3xl">Employees</h1>
+                    <div className="flex shrink-0 items-center gap-2">
                         {canManageRoles && (
                             <button
-                                className="border border-gray-200 rounded-lg px-4 py-2 text-sm font-medium text-left"
+                                className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium hover:bg-gray-100 sm:px-4"
                                 onClick={openCreateRoleForm}
                             >
-                                + New Role
+                                <span className="hidden sm:inline">+ New Role</span>
+                                <span className="sm:hidden">+ Role</span>
                             </button>
                         )}
                         <button
-                            className="border border-gray-200 rounded-lg px-4 py-2 text-sm font-medium text-left"
+                            className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium hover:bg-gray-100 sm:px-4"
                             onClick={() => setShowEmployeeForm(true)}
                         >
-                            + New Employee
+                            <span className="hidden sm:inline">+ New Employee</span>
+                            <span className="sm:hidden">+ Employee</span>
                         </button>
                     </div>
                 </header>
@@ -687,62 +687,94 @@ function EmployeesPage() {
 
                     {isRolesSectionExpanded && (
                         <>
-                            <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_130px_110px] gap-3 border-b border-gray-200 px-1 py-2 text-xs font-semibold uppercase tracking-wide text-gray-600">
+                            <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_130px_110px] gap-3 border-b border-gray-200 px-1 py-2 text-xs font-semibold uppercase tracking-wide text-gray-600 md:grid">
                                 <span>Role</span>
                                 <span>Description</span>
                                 <span>Permissions</span>
                                 <span className="text-right">Actions</span>
                             </div>
 
-                            <div className="divide-y divide-gray-100">
-                                {displayedRoles.map((roleItem) => (
-                                    <div key={roleItem.id || roleItem.key} className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_130px_110px] gap-3 px-1 py-2.5">
-                                        <div className="min-w-0">
-                                            <p className="truncate font-medium text-gray-900">{roleItem.label}</p>
-                                            <p className="text-xs text-gray-500">{roleItem.isSystem ? "System role" : "Custom role"}</p>
+                            <div className="md:divide-y md:divide-gray-100">
+                                {displayedRoles.map((roleItem) => {
+                                    const permsLabel = Array.isArray(roleItem.permissions) && roleItem.permissions.includes("*")
+                                        ? "All"
+                                        : `${normalizePermissions(roleItem.permissions).length}`
+                                    const canEditRole = !roleItem.isSystem && canManageRoles
+                                    return (
+                                        <div key={roleItem.id || roleItem.key} className="mt-2 flex flex-col gap-1.5 rounded-lg border border-gray-100 bg-gray-50/50 p-3 text-sm md:mt-0 md:grid md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_130px_110px] md:gap-3 md:rounded-none md:border-0 md:bg-transparent md:p-0 md:px-1 md:py-2.5 md:text-base">
+                                            <div className="flex items-start justify-between gap-2 md:block md:min-w-0">
+                                                <div className="min-w-0">
+                                                    <p className="truncate font-medium text-gray-900">{roleItem.label}</p>
+                                                    <p className="text-xs text-gray-500">{roleItem.isSystem ? "System role" : "Custom role"}</p>
+                                                </div>
+                                                {canEditRole && (
+                                                    <div className="flex items-center gap-1 md:hidden">
+                                                        <button
+                                                            type="button"
+                                                            className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-sky-700"
+                                                            onClick={() => openEditRoleForm(roleItem)}
+                                                            aria-label="Edit role"
+                                                        >
+                                                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                                <path d="M12 20h9" />
+                                                                <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5z" />
+                                                            </svg>
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-rose-600"
+                                                            onClick={() => setRoleToDelete(roleItem)}
+                                                            aria-label="Delete role"
+                                                        >
+                                                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                                <path d="M3 6h18" />
+                                                                <path d="M8 6V4h8v2" />
+                                                                <path d="M19 6l-1 14H6L5 6" />
+                                                                <path d="M10 11v6M14 11v6" />
+                                                            </svg>
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <p className="text-sm text-gray-700 md:truncate">
+                                                {roleItem.description || "-"}
+                                            </p>
+                                            <p className="text-xs text-gray-500 md:text-sm md:text-gray-700">
+                                                <span className="md:hidden">Permissions: </span>{permsLabel}
+                                            </p>
+                                            <div className="hidden items-center justify-end gap-1 md:flex">
+                                                {canEditRole && (
+                                                    <>
+                                                        <button
+                                                            type="button"
+                                                            className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-sky-700"
+                                                            onClick={() => openEditRoleForm(roleItem)}
+                                                            aria-label="Edit role"
+                                                        >
+                                                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                                <path d="M12 20h9" />
+                                                                <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5z" />
+                                                            </svg>
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-rose-600"
+                                                            onClick={() => setRoleToDelete(roleItem)}
+                                                            aria-label="Delete role"
+                                                        >
+                                                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                                <path d="M3 6h18" />
+                                                                <path d="M8 6V4h8v2" />
+                                                                <path d="M19 6l-1 14H6L5 6" />
+                                                                <path d="M10 11v6M14 11v6" />
+                                                            </svg>
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
                                         </div>
-                                        <p className="truncate text-sm text-gray-700">
-                                            {roleItem.description || "-"}
-                                        </p>
-                                        <p className="text-sm text-gray-700">
-                                            {Array.isArray(roleItem.permissions) && roleItem.permissions.includes("*")
-                                                ? "All"
-                                                : `${normalizePermissions(roleItem.permissions).length}`}
-                                        </p>
-                                        <div className="flex items-center justify-end gap-1">
-                                            {!roleItem.isSystem && canManageRoles && (
-                                                <>
-                                                    <button
-                                                        type="button"
-                                                        className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-sky-700"
-                                                        onClick={() => openEditRoleForm(roleItem)}
-                                                        title="Edit role"
-                                                        aria-label="Edit role"
-                                                    >
-                                                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                            <path d="M12 20h9" />
-                                                            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5z" />
-                                                        </svg>
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-rose-600"
-                                                        onClick={() => setRoleToDelete(roleItem)}
-                                                        title="Delete role"
-                                                        aria-label="Delete role"
-                                                    >
-                                                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                            <path d="M3 6h18" />
-                                                            <path d="M8 6V4h8v2" />
-                                                            <path d="M19 6l-1 14H6L5 6" />
-                                                            <path d="M10 11v6M14 11v6" />
-                                                        </svg>
-                                                    </button>
-                                                </>
-                                            )}
-                                        </div>
-                                    </div>
-                                ))}
+                                    )
+                                })}
                             </div>
                         </>
                     )}
@@ -800,7 +832,7 @@ function EmployeesPage() {
                 </div>
 
                 <section>
-                    <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.8fr)_120px_120px] gap-3 border-b border-gray-200 px-1 py-3 text-xs font-semibold uppercase tracking-wide text-gray-600">
+                    <div className="hidden grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.8fr)_120px_120px] gap-3 border-b border-gray-200 px-1 py-3 text-xs font-semibold uppercase tracking-wide text-gray-600 md:grid">
                         <span>Name</span>
                         <span>Email</span>
                         <span>Role</span>
@@ -809,15 +841,15 @@ function EmployeesPage() {
                             <span>Actions</span>
                         </div>
                     </div>
-                    <div className="divide-y divide-gray-100">
+                    <div className="flex flex-col gap-2 md:gap-0 md:divide-y md:divide-gray-100">
                         {filteredEmployees.map((employeeItem) => {
                             const isCurrent = isCurrentUser(employeeItem)
                             const isEditing = editingEmployeeId === employeeItem.id
 
                             return (
                                 <div key={employeeItem.id}>
-                                    <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.8fr)_120px_120px] gap-3 px-1 py-3 hover:bg-gray-50">
-                                        <div className="min-w-0">
+                                    <div className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-2 rounded-lg border border-gray-100 bg-gray-50/50 p-3 text-sm hover:bg-gray-50 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.8fr)_120px_120px] md:gap-3 md:rounded-none md:border-0 md:bg-transparent md:p-0 md:px-1 md:py-3 md:text-base">
+                                        <div className="min-w-0 max-md:col-start-1 max-md:row-start-1">
                                             {isEditing ? (
                                                 <input
                                                     type="text"
@@ -832,15 +864,15 @@ function EmployeesPage() {
                                             )}
                                         </div>
 
-                                        <div className="min-w-0 flex items-center">
-                                            <p className="truncate text-gray-700">{employeeItem.email}</p>
+                                        <div className="min-w-0 max-md:col-span-2 max-md:row-start-2 md:flex md:items-center">
+                                            <p className="truncate text-xs text-gray-500 md:text-base md:text-gray-700">{employeeItem.email}</p>
                                         </div>
 
-                                        <div className="min-w-0">
+                                        <div className="min-w-0 max-md:col-span-2 max-md:row-start-3">
                                             {isEditing ? (
                                                 <div className="relative">
                                                     <select
-                                                        className="w-full appearance-none rounded-full border-3 border-gray-100 bg-white px-3 py-1.5 pr-8 text-sm"
+                                                        className="w-full appearance-none rounded-md border border-gray-200 bg-white px-3 py-1.5 pr-8 text-sm md:rounded-full md:border-2 md:border-gray-100"
                                                         value={editingDraft.role}
                                                         onChange={(e) =>
                                                             setEditingDraft((current) => ({ ...current, role: e.target.value }))
@@ -865,13 +897,14 @@ function EmployeesPage() {
                                                     </svg>
                                                 </div>
                                             ) : (
-                                                <p className="truncate text-gray-700">
-                                                    {roleLabelByKey[employeeItem.role] || employeeItem.role}
+                                                <p className="text-xs text-gray-500 md:text-base md:text-gray-700 md:truncate">
+                                                    <span className="md:hidden">Role: </span>
+                                                    <span className="font-medium text-gray-700 md:font-normal">{roleLabelByKey[employeeItem.role] || employeeItem.role}</span>
                                                 </p>
                                             )}
                                         </div>
 
-                                        <div className="min-w-0 flex items-center">
+                                        <div className="min-w-0 flex items-center max-md:col-start-2 max-md:row-start-1 max-md:justify-end">
                                             {(() => {
                                                 const currentStatus = isEditing ? editingDraft.status : employeeItem.status
                                                 const statusUi = getEmployeeStatusStyles(currentStatus)
@@ -898,7 +931,7 @@ function EmployeesPage() {
                                             })()}
                                         </div>
 
-                                        <div className="flex items-center justify-end gap-2">
+                                        <div className="flex items-center justify-end gap-2 max-md:col-span-2 max-md:row-start-4 max-md:mt-1 max-md:border-t max-md:border-gray-100 max-md:pt-2">
                                             {isCurrent && (
                                                 <div className="flex items-center gap-2 opacity-0" aria-hidden="true">
                                                     <span className="h-4 w-4" />

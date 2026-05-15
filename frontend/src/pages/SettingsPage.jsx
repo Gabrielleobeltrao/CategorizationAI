@@ -236,7 +236,7 @@ function SettingsPage() {
 
   if (isLoading) {
     return (
-      <section className="w-full p-8">
+      <section className="w-full p-4 sm:p-6 lg:p-8">
         <div className="mx-auto max-w-5xl">
           <div className="border-b border-gray-200 py-6">
             <p className="text-sm text-gray-500">Loading settings...</p>
@@ -248,10 +248,10 @@ function SettingsPage() {
 
   if (!canReadOffice) {
     return (
-      <section className="w-full p-8">
+      <section className="w-full p-4 sm:p-6 lg:p-8">
         <div className="mx-auto max-w-5xl">
           <div className="border-b border-gray-200 py-6">
-            <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
+            <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">Settings</h1>
             <p className="mt-3 max-w-2xl text-sm text-gray-500">
               Your current role does not include permission to view office information. Add
               <span className="font-medium text-gray-700"> offices:read </span>
@@ -264,11 +264,11 @@ function SettingsPage() {
   }
 
   return (
-    <section className="w-full p-8">
-      <div className="mx-auto flex max-w-5xl flex-col gap-6">
+    <section className="w-full p-4 sm:p-6 lg:p-8">
+      <div className="mx-auto flex max-w-5xl flex-col gap-4 sm:gap-6">
         <header className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
-            <h1 className="text-3xl font-bold">Settings</h1>
+            <h1 className="text-2xl font-bold sm:text-3xl">Settings</h1>
             <p className="mt-2 text-sm text-gray-500">
               Manage your account and the main information used across your workspace.
             </p>
@@ -281,16 +281,7 @@ function SettingsPage() {
           className="border-t border-gray-200"
         >
           <div className="py-4">
-            <div className="flex items-center justify-between gap-4">
-              <h2 className="text-lg font-semibold text-gray-900">My account</h2>
-              <button
-                type="submit"
-                disabled={isSavingAccount || !isAccountDirty}
-                className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-left disabled:cursor-not-allowed disabled:text-gray-400"
-              >
-                {isSavingAccount ? "Saving..." : "Save changes"}
-              </button>
-            </div>
+            <h2 className="text-lg font-semibold text-gray-900">My account</h2>
           </div>
 
           <div className="py-5">
@@ -344,6 +335,16 @@ function SettingsPage() {
               </div>
             </div>
           </div>
+
+          <div className="flex justify-end pb-4">
+            <button
+              type="submit"
+              disabled={isSavingAccount || !isAccountDirty}
+              className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:bg-gray-300"
+            >
+              {isSavingAccount ? "Saving..." : "Save changes"}
+            </button>
+          </div>
         </form>
 
         <form
@@ -352,24 +353,13 @@ function SettingsPage() {
           className="border-t border-gray-200"
         >
           <div className="py-4">
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-lg font-semibold text-gray-900">Office information</h2>
-              <div className="flex items-center gap-3">
-                {!canEditOffice && (
-                  <span className="text-sm text-gray-500">
-                    Read-only mode
-                  </span>
-                )}
-                {canEditOffice && (
-                  <button
-                    type="submit"
-                    disabled={isSaving || !isDirty}
-                    className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-left disabled:cursor-not-allowed disabled:text-gray-400"
-                  >
-                    {isSaving ? "Saving..." : "Save changes"}
-                  </button>
-                )}
-              </div>
+              {!canEditOffice && (
+                <span className="text-sm text-gray-500">
+                  Read-only mode
+                </span>
+              )}
             </div>
           </div>
 
@@ -464,11 +454,23 @@ function SettingsPage() {
               </p>
             </div>
           )}
+
+          {canEditOffice && (
+            <div className="flex justify-end pb-4">
+              <button
+                type="submit"
+                disabled={isSaving || !isDirty}
+                className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:bg-gray-300"
+              >
+                {isSaving ? "Saving..." : "Save changes"}
+              </button>
+            </div>
+          )}
         </form>
 
         <section className="border-t border-gray-200" aria-labelledby="addons-heading">
           <div className="py-4">
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 id="addons-heading" className="text-lg font-semibold text-gray-900">
                 Plan &amp; add-ons
               </h2>

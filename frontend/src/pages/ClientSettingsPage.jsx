@@ -211,8 +211,8 @@ function ClientSettingsPage() {
 
     if (isLoading) {
         return (
-            <section className="w-full p-8">
-                <div>
+            <section className="w-full p-4 sm:p-6 lg:p-8">
+                <div className="mx-auto max-w-5xl">
                     <p className="text-sm text-gray-500">Loading client…</p>
                 </div>
             </section>
@@ -221,8 +221,8 @@ function ClientSettingsPage() {
 
     if (!client) {
         return (
-            <section className="w-full p-8">
-                <div>
+            <section className="w-full p-4 sm:p-6 lg:p-8">
+                <div className="mx-auto max-w-5xl">
                     <p className="text-sm text-gray-500">Client not found.</p>
                     <button
                         type="button"
@@ -237,8 +237,8 @@ function ClientSettingsPage() {
     }
 
     return (
-        <section className="w-full p-8">
-            <div className="flex flex-col gap-6">
+        <section className="w-full p-4 sm:p-6 lg:p-8">
+            <div className="mx-auto flex max-w-5xl flex-col gap-4 sm:gap-6">
                 <header>
                     <h1 className="text-2xl font-semibold">{client.name || "Client"}</h1>
                     <p className="mt-1 text-sm text-gray-500">
@@ -248,18 +248,9 @@ function ClientSettingsPage() {
 
                 <form
                     onSubmit={handleSave}
-                    className="flex flex-col gap-5 rounded-2xl border border-gray-200 bg-white p-5"
+                    className="flex flex-col gap-5 rounded-2xl border border-gray-200 bg-white p-4 sm:p-5"
                 >
-                    <div className="flex items-center justify-between">
-                        <h2 className="text-base font-semibold text-gray-900">Client information</h2>
-                        <button
-                            type="submit"
-                            disabled={isSaving || !isDirty}
-                            className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:bg-gray-300"
-                        >
-                            {isSaving ? "Saving…" : "Save changes"}
-                        </button>
-                    </div>
+                    <h2 className="text-base font-semibold text-gray-900">Client information</h2>
 
                     <div className="grid gap-4 md:grid-cols-2">
                         <label className="flex flex-col gap-1.5 md:col-span-2">
@@ -341,20 +332,20 @@ function ClientSettingsPage() {
                         </div>
                         <div className="flex flex-col gap-3">
                             {draft.owners.map((owner, index) => (
-                                <div key={index} className="grid grid-cols-1 gap-2 rounded-lg border border-gray-200 bg-white p-3 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
+                                <div key={index} className="grid grid-cols-[1fr_auto] gap-2 rounded-lg border border-gray-200 bg-white p-3 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-center">
                                     <input
                                         type="text"
                                         placeholder="Name"
                                         value={owner.name}
                                         onChange={(e) => updateOwner(index, "name", e.target.value)}
-                                        className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-gray-400"
+                                        className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-gray-400 max-md:col-span-2"
                                     />
                                     <input
                                         type="email"
                                         placeholder="Email"
                                         value={owner.email}
                                         onChange={(e) => updateOwner(index, "email", e.target.value)}
-                                        className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-gray-400"
+                                        className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-gray-400 max-md:col-span-2"
                                     />
                                     <input
                                         type="tel"
@@ -381,9 +372,19 @@ function ClientSettingsPage() {
                             ))}
                         </div>
                     </div>
+
+                    <div className="flex justify-end border-t border-gray-100 pt-4">
+                        <button
+                            type="submit"
+                            disabled={isSaving || !isDirty}
+                            className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:bg-gray-300"
+                        >
+                            {isSaving ? "Saving…" : "Save changes"}
+                        </button>
+                    </div>
                 </form>
 
-                <section className="rounded-2xl border border-rose-200 bg-rose-50 p-5">
+                <section className="rounded-2xl border border-rose-200 bg-rose-50 p-4 sm:p-5">
                     <h2 className="text-base font-semibold text-rose-900">Danger zone</h2>
                     <p className="mt-1 text-sm text-rose-700">
                         Deleting a client removes its transactions, accounts, categories, and history. This cannot be undone.
