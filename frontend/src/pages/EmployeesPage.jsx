@@ -179,6 +179,36 @@ function EmployeesPage() {
             return acc
         }, {})
     }, [permissionCatalog])
+    // Nested view: module → group → items. Preserves the order in which each
+    // module and group first appear in the catalog so the UI stays predictable.
+    const modulesPermissionCatalog = useMemo(() => {
+        const modules = []
+        const moduleIndex = new Map()
+        const groupIndexByModule = new Map()
+
+        for (const item of permissionCatalog) {
+            const moduleName = String(item.module || "Other")
+            const groupName = String(item.group || "General")
+
+            if (!moduleIndex.has(moduleName)) {
+                moduleIndex.set(moduleName, modules.length)
+                modules.push({ name: moduleName, groups: [] })
+                groupIndexByModule.set(moduleName, new Map())
+            }
+
+            const moduleEntry = modules[moduleIndex.get(moduleName)]
+            const groupIndex = groupIndexByModule.get(moduleName)
+
+            if (!groupIndex.has(groupName)) {
+                groupIndex.set(groupName, moduleEntry.groups.length)
+                moduleEntry.groups.push({ name: groupName, items: [] })
+            }
+
+            moduleEntry.groups[groupIndex.get(groupName)].items.push(item)
+        }
+
+        return modules
+    }, [permissionCatalog])
     const currentRolePermissions = useMemo(() => {
         const currentRoleKey = String(currentUserProfile?.role || "").toLowerCase()
         if (!currentRoleKey) return []
@@ -562,6 +592,35 @@ function EmployeesPage() {
                 permissions: hasKey
                     ? current.permissions.filter((item) => item !== key)
                     : [...current.permissions, key],
+            }
+        })
+    }
+
+    const toggleRolePermissionGroup = (groupName, shouldEnable) => {
+        const groupItems = groupedPermissionCatalog[groupName] || []
+        const groupKeys = groupItems.map((item) => item.key)
+        if (groupKeys.length === 0) return
+
+        setRoleDraft((current) => {
+            const without = current.permissions.filter((key) => !groupKeys.includes(key))
+            return {
+                ...current,
+                permissions: shouldEnable ? [...without, ...groupKeys] : without,
+            }
+        })
+    }
+
+    const toggleRolePermissionModule = (moduleName, shouldEnable) => {
+        const moduleEntry = modulesPermissionCatalog.find((mod) => mod.name === moduleName)
+        if (!moduleEntry) return
+        const moduleKeys = moduleEntry.groups.flatMap((group) => group.items.map((item) => item.key))
+        if (moduleKeys.length === 0) return
+
+        setRoleDraft((current) => {
+            const without = current.permissions.filter((key) => !moduleKeys.includes(key))
+            return {
+                ...current,
+                permissions: shouldEnable ? [...without, ...moduleKeys] : without,
             }
         })
     }
@@ -1073,39 +1132,146 @@ function EmployeesPage() {
                             <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
                                 Permissions
                             </p>
-                            <div className="flex flex-col gap-4">
-                                {Object.entries(groupedPermissionCatalog).map(([groupName, items]) => (
-                                    <div key={groupName} className="flex flex-col gap-2">
-                                        <p className="text-sm font-semibold text-gray-800">{groupName}</p>
-                                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                            {items.map((permissionItem) => {
-                                                const checked = roleDraft.permissions.includes(permissionItem.key)
-                                                return (
-                                                    <button
-                                                        key={permissionItem.key}
-                                                        type="button"
-                                                        className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 text-left hover:bg-gray-100"
-                                                        onClick={() => toggleRolePermission(permissionItem.key)}
+                            <div className="flex flex-col gap-5">
+                                {modulesPermissionCatalog.map((moduleEntry) => {
+                                    const moduleKeys = moduleEntry.groups.flatMap((group) =>
+                                        group.items.map((item) => item.key)
+                                    )
+                                    const enabledInModule = moduleKeys.filter((key) =>
+                                        roleDraft.permissions.includes(key)
+                                    ).length
+                                    const allModuleEnabled = enabledInModule === moduleKeys.length
+                                    const noneModuleEnabled = enabledInModule === 0
+                                    const moduleIsPartial = !allModuleEnabled && !noneModuleEnabled
+
+                                    return (
+                                        <section key={moduleEntry.name} className="flex flex-col gap-2">
+                                            <div className="flex items-center justify-between gap-3 px-1">
+                                                <div className="flex min-w-0 items-baseline gap-2">
+                                                    <h3 className="text-sm font-bold uppercase tracking-wider text-gray-700">
+                                                        {moduleEntry.name}
+                                                    </h3>
+                                                    <span className="text-[11px] uppercase tracking-wide text-gray-400">
+                                                        {enabledInModule}/{moduleKeys.length}
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    className="inline-flex shrink-0 items-center gap-2 rounded-full px-1 py-1 text-[11px] font-medium uppercase tracking-wide text-gray-500 hover:text-gray-700"
+                                                    onClick={() => toggleRolePermissionModule(moduleEntry.name, !allModuleEnabled)}
+                                                    aria-pressed={allModuleEnabled}
+                                                    title={allModuleEnabled ? `Disable all in ${moduleEntry.name}` : `Enable all in ${moduleEntry.name}`}
+                                                >
+                                                    <span className="hidden sm:inline">
+                                                        {allModuleEnabled ? "All on" : moduleIsPartial ? "Partial" : "All off"}
+                                                    </span>
+                                                    <span
+                                                        className={`relative inline-flex h-5 w-10 items-center rounded-full transition ${
+                                                            allModuleEnabled
+                                                                ? "bg-emerald-500"
+                                                                : moduleIsPartial
+                                                                    ? "bg-amber-400"
+                                                                    : "bg-gray-300"
+                                                        }`}
+                                                        aria-hidden="true"
                                                     >
-                                                        <span className="text-sm text-gray-700">{permissionItem.label}</span>
                                                         <span
-                                                            className={`relative inline-flex h-5 w-10 items-center rounded-full transition ${
-                                                                checked ? "bg-emerald-500" : "bg-gray-300"
+                                                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
+                                                                allModuleEnabled ? "translate-x-5" : moduleIsPartial ? "translate-x-3" : "translate-x-1"
                                                             }`}
-                                                            aria-hidden="true"
+                                                        />
+                                                    </span>
+                                                </button>
+                                            </div>
+                                            <div className="h-px bg-gray-200" />
+                                            <div className="flex flex-col gap-3">
+                                                {moduleEntry.groups.map((groupEntry) => {
+                                                    const items = groupEntry.items
+                                                    const groupName = groupEntry.name
+                                                    const groupKeys = items.map((item) => item.key)
+                                                    const enabledInGroup = groupKeys.filter((key) => roleDraft.permissions.includes(key)).length
+                                                    const allEnabled = enabledInGroup === groupKeys.length
+                                                    const noneEnabled = enabledInGroup === 0
+                                                    const partial = !allEnabled && !noneEnabled
+
+                                                    return (
+                                                        <section
+                                                            key={`${moduleEntry.name}-${groupName}`}
+                                                            className="overflow-hidden rounded-xl border border-gray-200 bg-white"
                                                         >
-                                                            <span
-                                                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
-                                                                    checked ? "translate-x-5" : "translate-x-1"
-                                                                }`}
-                                                            />
-                                                        </span>
-                                                    </button>
-                                                )
-                                            })}
-                                        </div>
-                                    </div>
-                                ))}
+                                                            <div className="flex items-center justify-between gap-3 border-b border-gray-100 bg-gray-50/60 px-3 py-2">
+                                                                <div className="flex min-w-0 items-baseline gap-2">
+                                                                    <h4 className="text-sm font-semibold text-gray-800">{groupName}</h4>
+                                                                    <span className="text-[11px] uppercase tracking-wide text-gray-400">
+                                                                        {enabledInGroup}/{groupKeys.length}
+                                                                    </span>
+                                                                </div>
+                                                                <button
+                                                                    type="button"
+                                                                    className="inline-flex shrink-0 items-center gap-2 rounded-full px-1 py-1 text-[11px] font-medium uppercase tracking-wide text-gray-500 hover:text-gray-700"
+                                                                    onClick={() => toggleRolePermissionGroup(groupName, !allEnabled)}
+                                                                    aria-pressed={allEnabled}
+                                                                    title={allEnabled ? "Disable all in this group" : "Enable all in this group"}
+                                                                >
+                                                                    <span className="hidden sm:inline">
+                                                                        {allEnabled ? "All on" : partial ? "Partial" : "All off"}
+                                                                    </span>
+                                                                    <span
+                                                                        className={`relative inline-flex h-5 w-10 items-center rounded-full transition ${
+                                                                            allEnabled
+                                                                                ? "bg-emerald-500"
+                                                                                : partial
+                                                                                    ? "bg-amber-400"
+                                                                                    : "bg-gray-300"
+                                                                        }`}
+                                                                        aria-hidden="true"
+                                                                    >
+                                                                        <span
+                                                                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
+                                                                                allEnabled ? "translate-x-5" : partial ? "translate-x-3" : "translate-x-1"
+                                                                            }`}
+                                                                        />
+                                                                    </span>
+                                                                </button>
+                                                            </div>
+                                                            <div className="grid grid-cols-1 gap-2 p-3 sm:grid-cols-2">
+                                                                {items.map((permissionItem) => {
+                                                                    const checked = roleDraft.permissions.includes(permissionItem.key)
+                                                                    return (
+                                                                        <button
+                                                                            key={permissionItem.key}
+                                                                            type="button"
+                                                                            className={`flex items-center justify-between rounded-lg border px-3 py-2 text-left transition ${
+                                                                                checked
+                                                                                    ? "border-emerald-200 bg-emerald-50/40 hover:bg-emerald-50"
+                                                                                    : "border-gray-200 bg-white hover:bg-gray-50"
+                                                                            }`}
+                                                                            onClick={() => toggleRolePermission(permissionItem.key)}
+                                                                        >
+                                                                            <span className="text-sm text-gray-700">{permissionItem.label}</span>
+                                                                            <span
+                                                                                className={`relative inline-flex h-5 w-10 shrink-0 items-center rounded-full transition ${
+                                                                                    checked ? "bg-emerald-500" : "bg-gray-300"
+                                                                                }`}
+                                                                                aria-hidden="true"
+                                                                            >
+                                                                                <span
+                                                                                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
+                                                                                        checked ? "translate-x-5" : "translate-x-1"
+                                                                                    }`}
+                                                                                />
+                                                                            </span>
+                                                                        </button>
+                                                                    )
+                                                                })}
+                                                            </div>
+                                                        </section>
+                                                    )
+                                                })}
+                                            </div>
+                                        </section>
+                                    )
+                                })}
                             </div>
                         </div>
 
