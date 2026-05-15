@@ -3,6 +3,8 @@ import {
     updateOfficeByIdService,
     getOfficeByIdService,
     getOfficeDashboardByIdService,
+    getOfficeDashboardCustomRangeByIdService,
+    getOfficeDashboardFeedByIdService,
     setOfficeFeaturesService,
 } from "../services/office.service.js"
 import { deleteOfficeTagService, listOfficeTagsService } from "../services/tag.service.js"
@@ -72,6 +74,37 @@ export async function getOfficeDashboardByIdController(req, res) {
         const dashboard = await getOfficeDashboardByIdService(id, {
             month: req.query?.month,
             actorId: req.query?.actorId,
+            clientId: req.query?.clientId,
+            actorOfficeId: req.userProfile?.officeId,
+        })
+        return res.status(200).json(dashboard)
+    } catch (error) {
+        return sendErrorResponse(res, error)
+    }
+}
+
+export async function getOfficeDashboardFeedController(req, res) {
+    try {
+        const { id } = req.params
+        const feed = await getOfficeDashboardFeedByIdService(id, {
+            actorId: req.query?.actorId,
+            clientId: req.query?.clientId,
+            actorOfficeId: req.userProfile?.officeId,
+        })
+        return res.status(200).json(feed)
+    } catch (error) {
+        return sendErrorResponse(res, error)
+    }
+}
+
+export async function getOfficeDashboardCustomRangeController(req, res) {
+    try {
+        const { id } = req.params
+        const dashboard = await getOfficeDashboardCustomRangeByIdService(id, {
+            from: req.query?.from,
+            to: req.query?.to,
+            actorId: req.query?.actorId,
+            clientId: req.query?.clientId,
             actorOfficeId: req.userProfile?.officeId,
         })
         return res.status(200).json(dashboard)

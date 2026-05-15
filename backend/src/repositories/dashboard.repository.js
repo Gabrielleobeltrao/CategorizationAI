@@ -272,9 +272,31 @@ function normalizeQueueStatus(jobs = []) {
   return statuses[0] || "idle"
 }
 
-function buildCategorizedMonthFilter(clientIdList, start, end) {
+function buildCategorizedAllFilter(clientIdList, extra = {}) {
   return {
     clientId: { $in: clientIdList },
+    ...extra,
+    $or: [
+      { categorizedAt: { $exists: true, $ne: null } },
+      {
+        $and: [
+          {
+            $or: [
+              { categorizedAt: null },
+              { categorizedAt: { $exists: false } },
+            ],
+          },
+          { llmStatus: "suggested" },
+        ],
+      },
+    ],
+  }
+}
+
+function buildCategorizedMonthFilter(clientIdList, start, end, extra = {}) {
+  return {
+    clientId: { $in: clientIdList },
+    ...extra,
     $or: [
       {
         categorizedAt: { $gte: start, $lte: end },
@@ -299,25 +321,441 @@ function buildCategorizedMonthFilter(clientIdList, start, end) {
   }
 }
 
+function parseIsoDate(value, fallback) {
+  const safe = String(value || "").trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(safe)) return fallback
+  const [y, m, d] = safe.split("-").map(Number)
+  const parsed = new Date(Date.UTC(y, m - 1, d))
+  if (Number.isNaN(parsed.getTime())) return fallback
+  return parsed
+}
+
+function formatRangeLabel(start, end) {
+  const opts = { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }
+  return `${start.toLocaleString("en-US", opts)} – ${end.toLocaleString("en-US", opts)}`
+}
+
+export async function getOfficeDashboardCustomRange(officeId, options = {}) {
+  const db = getDB()
+  const now = new Date()
+  const defaultFrom = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+  const fromDate = parseIsoDate(options.from, defaultFrom)
+  const toCandidate = parseIsoDate(options.to, now)
+  const toDate = new Date(Date.UTC(
+    toCandidate.getUTCFullYear(),
+    toCandidate.getUTCMonth(),
+    toCandidate.getUTCDate(),
+    23, 59, 59, 999
+  ))
+  const start = fromDate <= toDate ? fromDate : toDate
+  const end = fromDate <= toDate ? toDate : new Date(Date.UTC(
+    fromDate.getUTCFullYear(), fromDate.getUTCMonth(), fromDate.getUTCDate(), 23, 59, 59, 999
+  ))
+
+  const actorId = String(options?.actorId || "").trim()
+  const scopeClientId = String(options?.clientId || "").trim()
+  const actorMatch = actorId ? { createdBy: actorId } : {}
+
+  const allOfficeClients = await db
+    .collection("clients")
+    .find({ officeId }, { projection: { _id: 1 } })
+    .toArray()
+
+  const clients = scopeClientId
+    ? allOfficeClients.filter((client) => String(client._id) === scopeClientId)
+    : allOfficeClients
+  const clientIdList = clients.map((client) => String(client._id))
+
+  const emptyKpis = [
+    { id: "imported_custom", label: "Transactions Imported", value: "0", trend: "Selected range" },
+    { id: "categorized_custom", label: "Transactions Categorized", value: "0", trend: "0.0% of imported" },
+    { id: "ai_processed_custom", label: "AI Processed", value: "0", trend: "0.0% of imported" },
+    { id: "ai_categorized_custom", label: "Auto-Categorized by AI", value: "0", trend: "0.0% of AI processed" },
+  ]
+
+  if (clientIdList.length === 0) {
+    return {
+      rangeLabel: formatRangeLabel(start, end),
+      kpis: emptyKpis,
+      trend: [],
+    }
+  }
+
+  const transactionsCollection = db.collection("transactions")
+  const diffDays = Math.floor((end.getTime() - start.getTime()) / 86400000) + 1
+  const useDailyBuckets = diffDays <= 31
+  const buckets = useDailyBuckets
+    ? buildDailyBuckets(start, end).map((bucket) => ({
+        ...bucket,
+        label: bucket.date.toLocaleString("en-US", {
+          month: "short",
+          day: "numeric",
+          timeZone: "UTC",
+        }),
+      }))
+    : buildWeeklyBuckets(start, end)
+
+  const [
+    importedCount,
+    categorizedCount,
+    aiProcessedCount,
+    aiCategorizedCount,
+    importedTrend,
+    aiProcessedTrend,
+    categorizedTrend,
+  ] = await Promise.all([
+    transactionsCollection.countDocuments({
+      clientId: { $in: clientIdList },
+      ...actorMatch,
+      createdAt: { $gte: start, $lte: end },
+    }),
+    transactionsCollection.countDocuments(
+      buildCategorizedMonthFilter(clientIdList, start, end, actorMatch)
+    ),
+    transactionsCollection.countDocuments({
+      clientId: { $in: clientIdList },
+      ...actorMatch,
+      llmProcessedAt: { $gte: start, $lte: end },
+    }),
+    transactionsCollection.countDocuments({
+      clientId: { $in: clientIdList },
+      ...actorMatch,
+      llmStatus: "suggested",
+      llmProcessedAt: { $gte: start, $lte: end },
+    }),
+    transactionsCollection
+      .find(
+        {
+          clientId: { $in: clientIdList },
+          ...actorMatch,
+          createdAt: { $gte: start, $lte: end },
+        },
+        { projection: { createdAt: 1, categoryId: 1, category: 1, splits: 1 } }
+      )
+      .toArray(),
+    transactionsCollection
+      .find(
+        {
+          clientId: { $in: clientIdList },
+          ...actorMatch,
+          llmProcessedAt: { $gte: start, $lte: end },
+        },
+        { projection: { llmProcessedAt: 1, llmStatus: 1 } }
+      )
+      .toArray(),
+    transactionsCollection
+      .find(
+        buildCategorizedMonthFilter(clientIdList, start, end, actorMatch),
+        { projection: { categorizedAt: 1, llmProcessedAt: 1 } }
+      )
+      .toArray(),
+  ])
+
+  const findBucketIndex = (dateValue) => {
+    if (useDailyBuckets) return getDailyBucketIndex(dateValue, start, buckets.length)
+    const safe = toUtcDayStart(dateValue)
+    if (!safe) return -1
+    const diff = Math.floor((safe.getTime() - start.getTime()) / 86400000)
+    const idx = Math.floor(diff / 7)
+    if (idx < 0 || idx >= buckets.length) return -1
+    return idx
+  }
+
+  for (const transaction of importedTrend) {
+    const index = findBucketIndex(transaction.createdAt)
+    if (index === -1) continue
+    const bucket = buckets[index]
+    bucket.imported += 1
+    if (!isTransactionCategorized(transaction)) bucket.pending += 1
+  }
+  for (const transaction of aiProcessedTrend) {
+    const index = findBucketIndex(transaction.llmProcessedAt)
+    if (index === -1) continue
+    const bucket = buckets[index]
+    bucket.aiProcessed += 1
+    if (String(transaction.llmStatus || "").toLowerCase() === "suggested") {
+      bucket.aiCategorized += 1
+    }
+  }
+  for (const transaction of categorizedTrend) {
+    const ref = transaction.categorizedAt || transaction.llmProcessedAt
+    const index = findBucketIndex(ref)
+    if (index === -1) continue
+    buckets[index].categorized += 1
+  }
+
+  const categorizedPct = importedCount > 0 ? (categorizedCount / importedCount) * 100 : 0
+  const aiProcessedPct = importedCount > 0 ? (aiProcessedCount / importedCount) * 100 : 0
+  const aiSharePct = aiProcessedCount > 0 ? (aiCategorizedCount / aiProcessedCount) * 100 : 0
+
+  return {
+    rangeLabel: formatRangeLabel(start, end),
+    kpis: [
+      {
+        id: "imported_custom",
+        label: "Transactions Imported",
+        value: Number(importedCount || 0).toLocaleString("en-US"),
+        trend: "Selected range",
+      },
+      {
+        id: "categorized_custom",
+        label: "Transactions Categorized",
+        value: Number(categorizedCount || 0).toLocaleString("en-US"),
+        trend: `${categorizedPct.toFixed(1)}% of imported`,
+      },
+      {
+        id: "ai_processed_custom",
+        label: "AI Processed",
+        value: Number(aiProcessedCount || 0).toLocaleString("en-US"),
+        trend: `${aiProcessedPct.toFixed(1)}% of imported`,
+      },
+      {
+        id: "ai_categorized_custom",
+        label: "Auto-Categorized by AI",
+        value: Number(aiCategorizedCount || 0).toLocaleString("en-US"),
+        trend: `${aiSharePct.toFixed(1)}% of AI processed`,
+      },
+    ],
+    trend: buckets.map((bucket) => ({
+      bucket: bucket.label,
+      imported: bucket.imported,
+      categorized: bucket.categorized,
+      aiProcessed: bucket.aiProcessed,
+      aiCategorized: bucket.aiCategorized,
+      pending: bucket.pending,
+    })),
+  }
+}
+
+export async function getOfficeDashboardFeed(officeId, options = {}) {
+  const db = getDB()
+  const retentionCutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
+  const actorId = String(options?.actorId || "").trim()
+  const scopeClientId = String(options?.clientId || "").trim()
+  const actorMatch = actorId ? { createdBy: actorId } : {}
+
+  const office = await db
+    .collection("offices")
+    .findOne({ _id: new ObjectId(officeId) }, { projection: { name: 1 } })
+  const officeName = String(office?.name || "Office").trim() || "Office"
+
+  const allOfficeClients = await db
+    .collection("clients")
+    .find({ officeId }, { projection: { _id: 1, name: 1, createdAt: 1, createdBy: 1 } })
+    .sort({ createdAt: -1 })
+    .toArray()
+
+  const clients = scopeClientId
+    ? allOfficeClients.filter((client) => String(client._id) === scopeClientId)
+    : allOfficeClients
+  const clientIdList = clients.map((client) => String(client._id))
+  const clientNameById = new Map(
+    allOfficeClients.map((client) => [String(client._id), client.name || "Unknown client"])
+  )
+
+  if (clientIdList.length === 0) {
+    return {
+      header: { officeName, lastSyncAt: "-", queueStatus: "idle" },
+      recentActivities: [],
+      jobsQueue: [],
+    }
+  }
+
+  const transactionsCollection = db.collection("transactions")
+  const jobsCollection = db.collection("categorization_jobs")
+
+  const recentClientsForActivity = clients
+    .filter((client) => client?.createdAt instanceof Date && client.createdAt >= retentionCutoff)
+    .filter((client) => !actorId || String(client.createdBy || "") === actorId)
+    .slice(0, 4)
+
+  const [jobsRaw, latestTransaction, recentImportBatches, recentProfilesForActivity] = await Promise.all([
+    jobsCollection
+      .find(
+        { clientId: { $in: clientIdList }, ...actorMatch },
+        {
+          projection: {
+            _id: 1,
+            clientId: 1,
+            status: 1,
+            processed: 1,
+            total: 1,
+            progressPct: 1,
+            updatedAt: 1,
+            errorMessage: 1,
+            createdAt: 1,
+            createdBy: 1,
+          },
+        }
+      )
+      .sort({ updatedAt: -1, createdAt: -1 })
+      .limit(200)
+      .toArray(),
+    transactionsCollection.findOne(
+      { clientId: { $in: clientIdList }, ...actorMatch },
+      { projection: { updatedAt: 1 }, sort: { updatedAt: -1 } }
+    ),
+    transactionsCollection
+      .aggregate([
+        {
+          $match: {
+            clientId: { $in: clientIdList },
+            ...actorMatch,
+            createdAt: { $gte: retentionCutoff, $type: "date" },
+          },
+        },
+        {
+          $project: {
+            clientId: 1,
+            createdAt: 1,
+            importBucket: {
+              $dateToString: { format: "%Y-%m-%dT%H:%M", date: "$createdAt", timezone: "UTC" },
+            },
+          },
+        },
+        {
+          $group: {
+            _id: { clientId: "$clientId", importBucket: "$importBucket" },
+            count: { $sum: 1 },
+            lastCreatedAt: { $max: "$createdAt" },
+          },
+        },
+        { $sort: { lastCreatedAt: -1 } },
+        { $limit: 6 },
+      ])
+      .toArray(),
+    db
+      .collection("user_profile")
+      .find(
+        scopeClientId
+          ? { officeId, createdAt: { $gte: new Date(0) }, _id: { $exists: false } }
+          : { officeId, createdAt: { $gte: retentionCutoff }, ...actorMatch },
+        { projection: { name: 1, email: 1, createdAt: 1, createdBy: 1 } }
+      )
+      .sort({ createdAt: -1 })
+      .limit(4)
+      .toArray(),
+  ])
+
+  const latestJob = jobsRaw[0] || null
+  const jobsQueueRaw = jobsRaw.filter((job) => {
+    const status = String(job?.status || "").toLowerCase()
+    if (status === "running" || status === "queued") return true
+    if (status === "done" || status === "completed" || status === "failed" || status === "error") {
+      const referenceDate = job?.updatedAt instanceof Date ? job.updatedAt : job?.createdAt
+      if (!(referenceDate instanceof Date) || Number.isNaN(referenceDate.getTime())) return false
+      return referenceDate >= retentionCutoff
+    }
+    return false
+  })
+
+  const queueStatus = normalizeQueueStatus(jobsQueueRaw)
+  const jobsQueue = jobsQueueRaw.map((job) => ({
+    id: String(job._id),
+    label: toFriendlyJobLabel(job._id),
+    client: clientNameById.get(String(job.clientId)) || "Unknown client",
+    progress: Number(job.progressPct || 0),
+    processed: Number(job.processed || 0),
+    total: Number(job.total || 0),
+    status: String(job.status || "queued").toLowerCase(),
+    updatedAt: formatRelativeTime(job.updatedAt),
+    error: job.errorMessage || null,
+  }))
+
+  const latestSyncDate = [latestTransaction?.updatedAt, latestJob?.updatedAt]
+    .filter((value) => value instanceof Date && !Number.isNaN(value.getTime()))
+    .sort((a, b) => b.getTime() - a.getTime())[0]
+
+  const recentActivitiesRaw = []
+  for (const item of recentImportBatches) {
+    const importClientId = String(item?._id?.clientId || "")
+    const importCount = Number(item?.count || 0)
+    recentActivitiesRaw.push({
+      at: item.lastCreatedAt,
+      title: "Transaction imported",
+      detail: `${clientNameById.get(importClientId) || "Unknown client"} • ${formatTransactionsCountLabel(importCount)}`,
+    })
+  }
+  for (const job of jobsRaw) {
+    recentActivitiesRaw.push({
+      at: job.updatedAt || job.createdAt,
+      title: statusToActivityLabel(job.status),
+      detail: `${toFriendlyJobLabel(job._id)} • ${clientNameById.get(String(job.clientId)) || "Unknown client"} • ${Number(job.processed || 0)}/${Number(job.total || 0)} transactions`,
+    })
+  }
+  for (const client of recentClientsForActivity) {
+    recentActivitiesRaw.push({
+      at: client.createdAt,
+      title: "Client created",
+      detail: client.name || "Unnamed client",
+    })
+  }
+  for (const profile of recentProfilesForActivity) {
+    const profileName = String(profile?.name || "").trim()
+    const profileEmail = String(profile?.email || "").trim()
+    recentActivitiesRaw.push({
+      at: profile.createdAt,
+      title: "Employee created",
+      detail: profileName || profileEmail || "Unknown employee",
+    })
+  }
+
+  const recentActivities = recentActivitiesRaw
+    .filter((item) => item.at instanceof Date && !Number.isNaN(item.at.getTime()) && item.at >= retentionCutoff)
+    .sort((a, b) => b.at.getTime() - a.at.getTime())
+    .slice(0, 120)
+    .map((item, index) => ({
+      id: `act_${index}_${item.at.getTime()}`,
+      time: formatRelativeTime(item.at),
+      title: item.title,
+      detail: item.detail,
+    }))
+
+  return {
+    header: {
+      officeName,
+      lastSyncAt: latestSyncDate
+        ? latestSyncDate.toLocaleString("en-US", {
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          })
+        : "-",
+      queueStatus,
+    },
+    recentActivities,
+    jobsQueue,
+  }
+}
+
 export async function getOfficeDashboardSnapshot(officeId, options = {}) {
   const db = getDB()
   const range = buildMonthRange(options.month)
   const previousRange = buildPreviousRange(range)
   const retentionCutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
   const actorId = String(options?.actorId || "").trim()
+  const scopeClientId = String(options?.clientId || "").trim()
+  const actorMatch = actorId ? { createdBy: actorId } : {}
   const office = await db
     .collection("offices")
     .findOne({ _id: new ObjectId(officeId) }, { projection: { name: 1 } })
   const officeName = String(office?.name || "Office").trim() || "Office"
 
-  const clients = await db
+  const allOfficeClients = await db
     .collection("clients")
     .find({ officeId }, { projection: { _id: 1, name: 1, createdAt: 1, createdBy: 1 } })
     .sort({ createdAt: -1 })
     .toArray()
 
+  const clients = scopeClientId
+    ? allOfficeClients.filter((client) => String(client._id) === scopeClientId)
+    : allOfficeClients
+
   const clientIdList = clients.map((client) => String(client._id))
-  const clientNameById = new Map(clients.map((client) => [String(client._id), client.name || "Unknown client"]))
+  const clientNameById = new Map(allOfficeClients.map((client) => [String(client._id), client.name || "Unknown client"]))
 
   if (clientIdList.length === 0) {
     return {
@@ -341,6 +779,13 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
         { id: "ai_categorized_week", label: "Auto-Categorized by AI (Week)", value: "0", trend: "0.0% of AI processed" },
         { id: "pending_week", label: "Pending Categorization (Week)", value: "0", trend: "0.0% of imported" },
       ],
+      allKpis: [
+        { id: "imported_all", label: "Transactions Imported (All)", value: "0", trend: "All time" },
+        { id: "categorized_all", label: "Transactions Categorized (All)", value: "0", trend: "0.0% of imported" },
+        { id: "ai_processed_all", label: "AI Processed (All)", value: "0", trend: "0.0% of imported" },
+        { id: "ai_categorized_all", label: "Auto-Categorized by AI (All)", value: "0", trend: "0.0% of AI processed" },
+        { id: "pending_now", label: "Pending Categorization (Now)", value: "0", trend: "0.0% of office transactions" },
+      ],
       weeklyTrend: [],
       dailyTrend: [],
       jobsQueue: [],
@@ -363,6 +808,9 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
     categorizedCurrentCount,
     aiProcessedCurrentCount,
     aiCategorizedCurrentCount,
+    categorizedAllCount,
+    aiProcessedAllCount,
+    aiCategorizedAllCount,
     importedTrendTransactions,
     aiProcessedTrendTransactions,
     categorizedTrendTransactions,
@@ -373,17 +821,21 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
   ] = await Promise.all([
     transactionsCollection.countDocuments({
       clientId: { $in: clientIdList },
+      ...actorMatch,
       createdAt: { $gte: range.start, $lte: range.end },
     }),
     transactionsCollection.countDocuments({
       clientId: { $in: clientIdList },
+      ...actorMatch,
       createdAt: { $gte: previousRange.start, $lte: previousRange.end },
     }),
     transactionsCollection.countDocuments({
       clientId: { $in: clientIdList },
+      ...actorMatch,
     }),
     transactionsCollection.countDocuments({
       clientId: { $in: clientIdList },
+      ...actorMatch,
       $or: [
         { categoryId: null },
         { categoryId: "" },
@@ -398,21 +850,40 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
       ],
     }),
     transactionsCollection.countDocuments(
-      buildCategorizedMonthFilter(clientIdList, range.start, range.end)
+      buildCategorizedMonthFilter(clientIdList, range.start, range.end, actorMatch)
     ),
     transactionsCollection.countDocuments({
       clientId: { $in: clientIdList },
+      ...actorMatch,
       llmProcessedAt: { $gte: range.start, $lte: range.end },
     }),
     transactionsCollection.countDocuments({
       clientId: { $in: clientIdList },
+      ...actorMatch,
       llmStatus: "suggested",
       llmProcessedAt: { $gte: range.start, $lte: range.end },
+    }),
+    transactionsCollection.countDocuments(
+      buildCategorizedAllFilter(clientIdList, actorMatch)
+    ),
+    transactionsCollection.countDocuments({
+      clientId: { $in: clientIdList },
+      ...actorMatch,
+      $or: [
+        { llmProcessed: true },
+        { llmProcessedAt: { $exists: true, $ne: null } },
+      ],
+    }),
+    transactionsCollection.countDocuments({
+      clientId: { $in: clientIdList },
+      ...actorMatch,
+      llmStatus: "suggested",
     }),
     transactionsCollection
       .find(
         {
           clientId: { $in: clientIdList },
+          ...actorMatch,
           createdAt: { $gte: range.start, $lte: range.monthEnd },
         },
         {
@@ -431,6 +902,7 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
       .find(
         {
           clientId: { $in: clientIdList },
+          ...actorMatch,
           llmProcessedAt: { $gte: range.start, $lte: range.monthEnd },
         },
         {
@@ -444,7 +916,7 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
       .toArray(),
     transactionsCollection
       .find(
-        buildCategorizedMonthFilter(clientIdList, range.start, range.monthEnd),
+        buildCategorizedMonthFilter(clientIdList, range.start, range.monthEnd, actorMatch),
         {
           projection: {
             _id: 1,
@@ -456,9 +928,7 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
       .toArray(),
     jobsCollection
       .find(
-        actorId
-          ? { clientId: { $in: clientIdList }, createdBy: actorId }
-          : { clientId: { $in: clientIdList } },
+        { clientId: { $in: clientIdList }, ...actorMatch },
         {
           projection: {
             _id: 1,
@@ -478,7 +948,7 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
       .limit(200)
       .toArray(),
     transactionsCollection.findOne(
-      { clientId: { $in: clientIdList } },
+      { clientId: { $in: clientIdList }, ...actorMatch },
       {
         projection: { updatedAt: 1 },
         sort: { updatedAt: -1 },
@@ -489,11 +959,11 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
         {
           $match: {
             clientId: { $in: clientIdList },
+            ...actorMatch,
             createdAt: {
               $gte: retentionCutoff,
               $type: "date",
             },
-            ...(actorId ? { createdBy: actorId } : {}),
           },
         },
         {
@@ -526,11 +996,9 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
     db
       .collection("user_profile")
       .find(
-        {
-          officeId,
-          createdAt: { $gte: retentionCutoff },
-          ...(actorId ? { createdBy: actorId } : {}),
-        },
+        scopeClientId
+          ? { officeId, createdAt: { $gte: new Date(0) }, _id: { $exists: false } }
+          : { officeId, createdAt: { $gte: retentionCutoff }, ...actorMatch },
         { projection: { name: 1, email: 1, createdAt: 1, createdBy: 1 } }
       )
       .sort({ createdAt: -1 })
@@ -877,6 +1345,47 @@ export async function getOfficeDashboardSnapshot(officeId, options = {}) {
         trend: `${pendingWeekPct.toFixed(1)}% of imported`,
       },
     ],
+    allKpis: (() => {
+      const importedAll = Number(allOfficeTransactionsCount || 0)
+      const categorizedAll = Number(categorizedAllCount || 0)
+      const aiProcessedAll = Number(aiProcessedAllCount || 0)
+      const aiCategorizedAll = Number(aiCategorizedAllCount || 0)
+      const categorizedAllPct = importedAll > 0 ? (categorizedAll / importedAll) * 100 : 0
+      const aiProcessedAllPct = importedAll > 0 ? (aiProcessedAll / importedAll) * 100 : 0
+      const aiCategorizedAllPct = aiProcessedAll > 0 ? (aiCategorizedAll / aiProcessedAll) * 100 : 0
+      return [
+        {
+          id: "imported_all",
+          label: "Transactions Imported (All)",
+          value: importedAll.toLocaleString("en-US"),
+          trend: "All time",
+        },
+        {
+          id: "categorized_all",
+          label: "Transactions Categorized (All)",
+          value: categorizedAll.toLocaleString("en-US"),
+          trend: `${categorizedAllPct.toFixed(1)}% of imported`,
+        },
+        {
+          id: "ai_processed_all",
+          label: "AI Processed (All)",
+          value: aiProcessedAll.toLocaleString("en-US"),
+          trend: `${aiProcessedAllPct.toFixed(1)}% of imported`,
+        },
+        {
+          id: "ai_categorized_all",
+          label: "Auto-Categorized by AI (All)",
+          value: aiCategorizedAll.toLocaleString("en-US"),
+          trend: `${aiCategorizedAllPct.toFixed(1)}% of AI processed`,
+        },
+        {
+          id: "pending_now",
+          label: "Pending Categorization (Now)",
+          value: Number(pendingNowCount || 0).toLocaleString("en-US"),
+          trend: `${pendingNowPct.toFixed(1)}% of office transactions`,
+        },
+      ]
+    })(),
     weeklyTrend: weeklyBuckets.map((bucket) => ({
       week: bucket.label,
       imported: bucket.imported,

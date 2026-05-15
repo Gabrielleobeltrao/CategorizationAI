@@ -6,7 +6,11 @@ import {
   setOfficeFeatures,
   normalizeOfficeFeatures,
 } from "../repositories/office.repository.js"
-import { getOfficeDashboardSnapshot } from "../repositories/dashboard.repository.js"
+import {
+  getOfficeDashboardSnapshot,
+  getOfficeDashboardCustomRange,
+  getOfficeDashboardFeed,
+} from "../repositories/dashboard.repository.js"
 import { OPEN_TEST_ENABLED } from "../config/openTest.js"
 import { resolveOpenTestMarkerService } from "./openTest.service.js"
 
@@ -134,5 +138,36 @@ export async function getOfficeDashboardByIdService(officeId, options = {}) {
   return getOfficeDashboardSnapshot(officeId, {
     month: options?.month,
     actorId: options?.actorId,
+    clientId: options?.clientId,
+  })
+}
+
+export async function getOfficeDashboardFeedByIdService(officeId, options = {}) {
+  if (!officeId) throw new Error("officeId is required")
+
+  const actorOfficeId = String(options?.actorOfficeId || "").trim()
+  if (actorOfficeId && actorOfficeId !== officeId) {
+    throw new Error("Forbidden for this office")
+  }
+
+  return getOfficeDashboardFeed(officeId, {
+    actorId: options?.actorId,
+    clientId: options?.clientId,
+  })
+}
+
+export async function getOfficeDashboardCustomRangeByIdService(officeId, options = {}) {
+  if (!officeId) throw new Error("officeId is required")
+
+  const actorOfficeId = String(options?.actorOfficeId || "").trim()
+  if (actorOfficeId && actorOfficeId !== officeId) {
+    throw new Error("Forbidden for this office")
+  }
+
+  return getOfficeDashboardCustomRange(officeId, {
+    from: options?.from,
+    to: options?.to,
+    actorId: options?.actorId,
+    clientId: options?.clientId,
   })
 }

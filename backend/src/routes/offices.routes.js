@@ -5,6 +5,8 @@ import {
   updateOfficeByIdController,
   getOfficeByIdController,
   getOfficeDashboardByIdController,
+  getOfficeDashboardCustomRangeController,
+  getOfficeDashboardFeedController,
   listOfficeTagsController,
   setOfficeFeaturesController,
 } from "../controllers/office.controller.js"
@@ -51,6 +53,24 @@ router.get(
   validateObjectIdParam("id"),
   ensureResourceExists({ collection: "offices", from: "params", field: "id", assignKey: "office" }),
   getOfficeDashboardByIdController
+)
+
+router.get(
+  "/offices/:id/dashboard/feed",
+  requireAuth,
+  requirePermission("offices:read"),
+  validateObjectIdParam("id"),
+  ensureResourceExists({ collection: "offices", from: "params", field: "id", assignKey: "office" }),
+  getOfficeDashboardFeedController
+)
+
+router.get(
+  "/offices/:id/dashboard/custom-range",
+  requireAuth,
+  requirePermission("offices:read"),
+  validateObjectIdParam("id"),
+  ensureResourceExists({ collection: "offices", from: "params", field: "id", assignKey: "office" }),
+  getOfficeDashboardCustomRangeController
 )
 
 router.get(
