@@ -10,6 +10,7 @@ const PRIVATE_BETA_REVIEW_EVENT = "app:private-beta-review-required"
 
 function AppShell() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true)
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
   const [isOpenTestModalOpen, setIsOpenTestModalOpen] = useState(false)
   const [isOpenTestBannerVisible, setIsOpenTestBannerVisible] = useState(true)
   const contentScrollRef = useRef(null)
@@ -36,7 +37,7 @@ function AppShell() {
   return (
     <div className="h-dvh overflow-hidden bg-white">
       <div className="flex h-full flex-col">
-        <Header />
+        <Header onOpenNav={() => setIsMobileNavOpen(true)} />
         {openTestConfig?.enabled && (
           isOpenTestBannerVisible && (
             <div className="border-b border-amber-200 bg-amber-50 px-6 py-3 text-sm text-amber-950">
@@ -75,6 +76,8 @@ function AppShell() {
           <Sidebar
             isCollapsed={isSidebarCollapsed}
             onToggleCollapse={() => setIsSidebarCollapsed((value) => !value)}
+            isMobileOpen={isMobileNavOpen}
+            onCloseMobile={() => setIsMobileNavOpen(false)}
           />
           <div
             ref={contentScrollRef}

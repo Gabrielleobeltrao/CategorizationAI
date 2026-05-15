@@ -97,7 +97,10 @@ const settingsNavItem = {
   ),
 }
 
-function Sidebar({ isCollapsed, onToggleCollapse }) {
+function Sidebar({ isCollapsed: rawCollapsed, onToggleCollapse, isMobileOpen = false, onCloseMobile }) {
+  // The mobile drawer is wide enough to always show labels, regardless of the
+  // collapse state used on desktop.
+  const isCollapsed = isMobileOpen ? false : rawCollapsed
   const location = useLocation()
   const navigate = useNavigate()
   const { success, error } = useNotification()
@@ -204,29 +207,61 @@ function Sidebar({ isCollapsed, onToggleCollapse }) {
   }, [clientId])
 
   return (
-    <aside
-      className={`flex h-full flex-col border-r border-gray-200 bg-white p-3 transition-all duration-200 ${
-        isCollapsed ? "w-16" : "w-60"
-      }`}
-    >
-      <div className="mb-2">
+    <>
+      {isMobileOpen && (
         <button
           type="button"
-          className="flex items-center justify-center rounded-lg px-2 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-          onClick={onToggleCollapse}
-          title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >
-          <svg
-            viewBox="0 0 24 24"
-            className={`h-5 w-5 transition-transform ${isCollapsed ? "rotate-180" : ""}`}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
+          className="fixed inset-0 z-40 bg-slate-900/40 md:hidden"
+          aria-label="Close navigation"
+          onClick={onCloseMobile}
+        />
+      )}
+      <aside
+        className={`flex h-full flex-col border-r border-gray-200 bg-white p-3 transition-all duration-200 ${
+          isMobileOpen
+            ? "fixed inset-y-0 left-0 z-50 w-72 md:static md:z-auto"
+            : "fixed inset-y-0 left-0 z-50 w-72 -translate-x-full md:static md:z-auto md:translate-x-0"
+        } md:flex ${isCollapsed ? "md:w-16" : "md:w-60"}`}
+        onClick={(event) => {
+          if (!onCloseMobile) return
+          const target = event.target.closest("a")
+          if (target && window.matchMedia("(max-width: 767px)").matches) {
+            onCloseMobile()
+          }
+        }}
+      >
+        <div className="mb-2 flex items-center justify-between">
+          <button
+            type="button"
+            className="hidden items-center justify-center rounded-lg px-2 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 md:flex"
+            onClick={onToggleCollapse}
+            title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
-            <path d="m15 18-6-6 6-6" />
-          </svg>
-        </button>
-      </div>
+            <svg
+              viewBox="0 0 24 24"
+              className={`h-5 w-5 transition-transform ${isCollapsed ? "rotate-180" : ""}`}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="m15 18-6-6 6-6" />
+            </svg>
+          </button>
+          {onCloseMobile && (
+            <button
+              type="button"
+              onClick={onCloseMobile}
+              className="rounded-md p-2 text-gray-500 hover:bg-gray-100 md:hidden"
+              aria-label="Close navigation"
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 6 6 18" />
+                <path d="m6 6 12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto pr-1">
         <nav className="flex flex-col gap-2">
@@ -407,7 +442,8 @@ function Sidebar({ isCollapsed, onToggleCollapse }) {
           {!isCollapsed && <span>Logout</span>}
         </button>
       </div>
-    </aside>
+      </aside>
+    </>
   )
 }
 
