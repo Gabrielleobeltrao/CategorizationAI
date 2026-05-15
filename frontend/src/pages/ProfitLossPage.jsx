@@ -10,6 +10,7 @@ import {
 } from "../services/profitLoss.service"
 import { useNotification } from "../contexts/notification.context"
 import { downloadProfitLossPdf } from "../utils/pdf"
+import DateRangePicker from "../components/ui/DateRangePicker"
 import { trackClientOpened } from "../utils/recentClients"
 import {
   formatAbsoluteCurrency,
@@ -476,12 +477,12 @@ function ProfitLossPage() {
   }
 
   return (
-    <section className="w-full p-8">
-      <div className="w-full flex flex-col gap-3">
+    <section className="w-full p-4 sm:p-6 lg:p-8">
+      <div className="flex w-full flex-col gap-3">
         <header className="rounded-xl border border-gray-200 bg-white p-4">
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
-              <h1 className="text-3xl font-bold">Profit & Loss</h1>
+              <h1 className="text-2xl font-bold sm:text-3xl">Profit & Loss</h1>
               <p className="text-sm text-gray-500 mt-1">
                 {client ? client.name : "Unknown client"}
               </p>
@@ -579,27 +580,14 @@ function ProfitLossPage() {
                 )}
 
                 {filter.mode === "RANGE" && (
-                  <div className="w-full overflow-x-auto">
-                    <div className="flex h-8 min-w-max items-center gap-2">
-                      <span className="text-xs text-gray-500">From</span>
-                      <input
-                        type="date"
-                        aria-label="From date"
-                        className="h-8 rounded-md border border-gray-200 bg-white px-2 text-sm"
-                        value={filter.fromDate}
-                        onChange={(e) => setRangeField("fromDate", e.target.value)}
-                      />
-
-                      <span className="text-xs text-gray-500">To</span>
-                      <input
-                        type="date"
-                        aria-label="To date"
-                        className="h-8 rounded-md border border-gray-200 bg-white px-2 text-sm"
-                        value={filter.toDate}
-                        onChange={(e) => setRangeField("toDate", e.target.value)}
-                      />
-                    </div>
-                  </div>
+                  <DateRangePicker
+                    value={{ from: filter.fromDate, to: filter.toDate }}
+                    onChange={(next) => {
+                      setRangeField("fromDate", next.from)
+                      setRangeField("toDate", next.to)
+                    }}
+                    align="start"
+                  />
                 )}
               </div>
             </div>
@@ -631,24 +619,24 @@ function ProfitLossPage() {
           <div className="relative">
             <section className="w-full pb-3">
               <article className="rounded-xl border border-gray-200 bg-white p-4">
-                <div className="m-3 w-full overflow-x-auto">
-                  <div className="grid min-w-[900px] grid-cols-[minmax(170px,1fr)_32px_minmax(220px,1fr)_32px_minmax(220px,1fr)_32px_minmax(180px,1fr)] items-end gap-x-2">
-                    <div className="text-center">
-                      <p className="text-xs text-gray-500 uppercase tracking-wide">Income</p>
+                <div className="m-3">
+                  <div className="flex flex-col gap-2 lg:grid lg:grid-cols-[minmax(170px,1fr)_32px_minmax(220px,1fr)_32px_minmax(220px,1fr)_32px_minmax(180px,1fr)] lg:items-end lg:gap-x-2 lg:gap-y-0">
+                    <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 lg:block lg:border-0 lg:bg-transparent lg:px-0 lg:py-0 lg:text-center">
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Income</p>
                       <p className={`text-xl font-semibold ${getProfitLossKpiPresentation({ amount: formula.income, kind: "income" }).className}`}>{formatAbsoluteCurrency(formula.income)}</p>
                     </div>
-                    <span className="flex h-10 w-8 items-end justify-center pb-1 text-lg text-gray-500">-</span>
-                    <div className="text-center">
-                      <p className="text-xs text-gray-500 uppercase tracking-wide">Cost Of Goods Sold</p>
+                    <span className="flex w-full justify-center text-lg text-gray-400 lg:h-10 lg:w-8 lg:items-end lg:justify-center lg:pb-1 lg:text-gray-500">-</span>
+                    <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 lg:block lg:border-0 lg:bg-transparent lg:px-0 lg:py-0 lg:text-center">
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Cost Of Goods Sold</p>
                       <p className={`text-xl font-semibold ${getProfitLossKpiPresentation({ amount: formula.costOfGoodsSold, kind: "expense" }).className}`}>{formatAbsoluteCurrency(formula.costOfGoodsSold)}</p>
                     </div>
-                    <span className="flex h-10 w-8 items-end justify-center pb-1 text-lg text-gray-500">-</span>
-                    <div className="text-center">
-                      <p className="text-xs text-gray-500 uppercase tracking-wide">Operating Expenses</p>
+                    <span className="flex w-full justify-center text-lg text-gray-400 lg:h-10 lg:w-8 lg:items-end lg:justify-center lg:pb-1 lg:text-gray-500">-</span>
+                    <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 lg:block lg:border-0 lg:bg-transparent lg:px-0 lg:py-0 lg:text-center">
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Operating Expenses</p>
                       <p className={`text-xl font-semibold ${getProfitLossKpiPresentation({ amount: formula.operatingExpenses, kind: "expense" }).className}`}>{formatAbsoluteCurrency(formula.operatingExpenses)}</p>
                     </div>
-                    <span className="flex h-10 w-8 items-end justify-center pb-1 text-lg text-gray-500">=</span>
-                    <div className="text-center">
+                    <span className="flex w-full justify-center text-lg font-semibold text-gray-500 lg:h-10 lg:w-8 lg:items-end lg:justify-center lg:pb-1 lg:font-normal">=</span>
+                    <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2 lg:block lg:border-0 lg:bg-transparent lg:px-0 lg:py-0 lg:text-center">
                       <p className={`text-xs uppercase tracking-wide ${netIncomeColorClass}`}>Net Income</p>
                       <p className={`text-xl font-bold ${netIncomeColorClass}`}>{formatAbsoluteCurrency(formula.netIncome)}</p>
                     </div>
