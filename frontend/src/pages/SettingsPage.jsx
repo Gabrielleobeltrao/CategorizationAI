@@ -67,6 +67,7 @@ function SettingsPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [isTogglingCrm, setIsTogglingCrm] = useState(false)
   const [isTogglingOperationalStatus, setIsTogglingOperationalStatus] = useState(false)
+  const [isTogglingBookkeepingLlm, setIsTogglingBookkeepingLlm] = useState(false)
   const { success, error } = useNotification()
 
   const permissions = useMemo(() => profile?.permissions || [], [profile?.permissions])
@@ -170,6 +171,30 @@ function SettingsPage() {
       error(err.message || "Failed to update account")
     } finally {
       setIsSavingAccount(false)
+    }
+  }
+
+  const handleToggleBookkeepingLlm = async (nextEnabled) => {
+    if (!office?._id) {
+      error("Office not found")
+      return
+    }
+    if (!canEditOffice) {
+      error("You do not have permission to manage add-ons")
+      return
+    }
+    try {
+      setIsTogglingBookkeepingLlm(true)
+      const updatedOffice = await updateOfficeFeatures(office._id, {
+        bookkeepingLlm: Boolean(nextEnabled),
+      })
+      setOffice(updatedOffice || null)
+      await refreshAuth({ force: true })
+      success(nextEnabled ? "AI categorization enabled" : "AI categorization disabled")
+    } catch (err) {
+      error(err.message || "Failed to update add-on")
+    } finally {
+      setIsTogglingBookkeepingLlm(false)
     }
   }
 
@@ -504,7 +529,7 @@ function SettingsPage() {
               </span>
             </div>
             <p className="mt-1 text-sm text-gray-500">
-              Bookkeeping Core is always included. Operations CRM is an add-on you can toggle while billing is not connected yet.
+              Bookkeeping is always included. Operations CRM is an add-on you can toggle while billing is not connected yet.
             </p>
           </div>
 
@@ -512,9 +537,9 @@ function SettingsPage() {
             <article className="flex flex-col gap-2 rounded-2xl border border-gray-200 bg-white p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-900">Bookkeeping Core</h3>
+                  <h3 className="text-sm font-semibold text-gray-900">Bookkeeping</h3>
                   <p className="mt-1 text-xs text-gray-500">
-                    Clients, accounts, transactions, categories, ledger, P&amp;L, AI categorization.
+                    Clients, accounts, transactions, categories, ledger, P&amp;L.
                   </p>
                 </div>
                 <span className="shrink-0 rounded-full bg-gray-900 px-2.5 py-0.5 text-[11px] font-medium text-white">
@@ -524,6 +549,37 @@ function SettingsPage() {
               <p className="mt-2 text-[11px] text-gray-400">
                 Always active on every office.
               </p>
+
+              <div className="mt-3 border-t border-gray-100 pt-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                  Sub-features
+                </p>
+                <div className="mt-2 flex items-start justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900">AI categorization</p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Enables the &quot;Categorize with AI&quot; button, the AI suggestion icon column
+                      on transactions, and the memory system that learns from past categorizations.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={Boolean(office?.features?.bookkeepingLlm)}
+                    disabled={!canEditOffice || isTogglingBookkeepingLlm}
+                    onClick={() => handleToggleBookkeepingLlm(!office?.features?.bookkeepingLlm)}
+                    className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                      office?.features?.bookkeepingLlm ? "bg-gray-900" : "bg-gray-300"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                        office?.features?.bookkeepingLlm ? "translate-x-5" : "translate-x-0.5"
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
             </article>
 
             <article className="flex flex-col gap-2 rounded-2xl border border-gray-200 bg-white p-4">

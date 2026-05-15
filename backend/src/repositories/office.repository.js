@@ -4,16 +4,25 @@ import { getDB } from "../db.js"
 export const DEFAULT_OFFICE_FEATURES = Object.freeze({
     crm: false,
     crmOperationalStatus: false,
+    // Bookkeeping itself is always-on (core product) — its sub-features are flagged.
+    bookkeepingLlm: true,
 })
 
 export function normalizeOfficeFeatures(features) {
     const safeCrm = Boolean(features?.crm)
+    const rawBookkeepingLlm = features?.bookkeepingLlm
+    // Bookkeeping LLM defaults to ON so existing offices keep their behavior;
+    // only explicit `false` disables it.
+    const safeBookkeepingLlm = rawBookkeepingLlm === undefined || rawBookkeepingLlm === null
+        ? true
+        : Boolean(rawBookkeepingLlm)
     return {
         ...DEFAULT_OFFICE_FEATURES,
         ...(features && typeof features === "object" ? features : {}),
         crm: safeCrm,
         // Sub-flag stays off whenever the parent CRM add-on is disabled.
         crmOperationalStatus: safeCrm && Boolean(features?.crmOperationalStatus),
+        bookkeepingLlm: safeBookkeepingLlm,
     }
 }
 
