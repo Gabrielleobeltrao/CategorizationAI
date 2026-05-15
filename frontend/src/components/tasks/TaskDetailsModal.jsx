@@ -1,3 +1,83 @@
+import { useState } from "react"
+
+function ClientDetails({ client }) {
+    return (
+        <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
+            {client.businessType && (
+                <div>
+                    <dt className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Business Type</dt>
+                    <dd className="text-sm text-gray-800">{client.businessType}</dd>
+                </div>
+            )}
+            {client.state && (
+                <div>
+                    <dt className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">State</dt>
+                    <dd className="text-sm text-gray-800">{client.state}</dd>
+                </div>
+            )}
+            {client.mainActivity && (
+                <div className="sm:col-span-2">
+                    <dt className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Main Activity</dt>
+                    <dd className="text-sm text-gray-800">{client.mainActivity}</dd>
+                </div>
+            )}
+            {client.description && (
+                <div className="sm:col-span-2">
+                    <dt className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Description</dt>
+                    <dd className="text-sm text-gray-700">{client.description}</dd>
+                </div>
+            )}
+            {Array.isArray(client.owners) && client.owners.length > 0 && (
+                <div className="sm:col-span-2">
+                    <dt className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Owners</dt>
+                    <dd>
+                        <ul className="mt-1 space-y-2">
+                            {client.owners.map((owner, idx) => (
+                                <li key={idx} className="flex flex-col gap-0.5 text-sm">
+                                    <span className="font-medium text-gray-900">{owner.name || "—"}</span>
+                                    {owner.email && <span className="text-xs text-gray-500">{owner.email}</span>}
+                                    {owner.phone && <span className="text-xs text-gray-500">{owner.phone}</span>}
+                                </li>
+                            ))}
+                        </ul>
+                    </dd>
+                </div>
+            )}
+        </dl>
+    )
+}
+
+function ClientRow({ client, collapsible, defaultOpen = false }) {
+    const [open, setOpen] = useState(defaultOpen)
+    const isOpen = !collapsible || open
+    return (
+        <div>
+            <button
+                type="button"
+                onClick={() => collapsible && setOpen((v) => !v)}
+                className={`flex w-full items-center justify-between gap-2 text-left ${collapsible ? "cursor-pointer" : "cursor-default"}`}
+                disabled={!collapsible}
+            >
+                <p className="truncate text-sm font-semibold text-gray-900">{client.name || "—"}</p>
+                {collapsible && (
+                    <svg
+                        className={`h-4 w-4 shrink-0 text-gray-500 transition-transform ${open ? "rotate-180" : ""}`}
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                    >
+                        <path d="m6 9 6 6 6-6" />
+                    </svg>
+                )}
+            </button>
+            {isOpen && <ClientDetails client={client} />}
+        </div>
+    )
+}
+
 function formatDate(value) {
     if (!value) return "—"
     const safe = String(value).trim()
@@ -10,9 +90,33 @@ function formatDate(value) {
     }).format(date)
 }
 
-function TaskDetailsModal({ task, client, assignee, onClose, onEdit, onToggleStatus }) {
+const STATUS_OPTIONS = [
+    { id: "open", label: "Open" },
+    { id: "in_progress", label: "In progress" },
+    { id: "done", label: "Done" },
+]
+
+const PRIORITY_LABELS = {
+    low: { label: "Low", textClass: "text-gray-700" },
+    medium: { label: "Medium", textClass: "text-sky-700" },
+    high: { label: "High", textClass: "text-amber-700" },
+    urgent: { label: "Urgent", textClass: "text-rose-700" },
+}
+
+function TaskDetailsModal({
+    task,
+    clientList = [],
+    assigneeList = [],
+    onClose,
+    onEdit,
+    onChangeStatus,
+    onDelete,
+}) {
     if (!task) return null
     const isDone = task.status === "done"
+    const currentStatus = task.status || "open"
+    const clients = Array.isArray(clientList) ? clientList.filter(Boolean) : []
+    const assignees = Array.isArray(assigneeList) ? assigneeList.filter(Boolean) : []
 
     return (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
@@ -22,19 +126,16 @@ function TaskDetailsModal({ task, client, assignee, onClose, onEdit, onToggleSta
                 aria-label="Close"
                 onClick={onClose}
             />
-            <div className="relative flex max-h-[88vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="relative flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
                 <header className="flex items-start justify-between gap-3 border-b border-gray-100 px-5 py-4">
                     <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-700">
-                                {isDone ? "Done" : "Open"}
-                            </span>
-                            {isDone && task.doneAt && (
+                        {isDone && task.doneAt && (
+                            <div className="flex flex-wrap items-center gap-2">
                                 <span className="text-[11px] text-gray-500">
                                     Completed on {formatDate(task.doneAt)}
                                 </span>
-                            )}
-                        </div>
+                            </div>
+                        )}
                         <h2 className="mt-2 truncate text-lg font-semibold text-gray-900">
                             {task.title || "(Untitled)"}
                         </h2>
@@ -59,11 +160,17 @@ function TaskDetailsModal({ task, client, assignee, onClose, onEdit, onToggleSta
                         <p className="text-sm italic text-gray-400">No description</p>
                     )}
 
-                    <dl className="mt-5 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                    <dl className="mt-5 grid grid-cols-2 gap-x-4 gap-y-3 text-xs sm:grid-cols-3">
                         <div>
                             <dt className="font-semibold uppercase tracking-wide text-gray-400">Due date</dt>
                             <dd className="mt-1 text-sm text-gray-800">
                                 {task.dueDate ? formatDate(task.dueDate) : "—"}
+                            </dd>
+                        </div>
+                        <div>
+                            <dt className="font-semibold uppercase tracking-wide text-gray-400">Priority</dt>
+                            <dd className={`mt-1 text-sm font-medium ${(PRIORITY_LABELS[task.priority] || PRIORITY_LABELS.low).textClass}`}>
+                                {(PRIORITY_LABELS[task.priority] || PRIORITY_LABELS.low).label}
                             </dd>
                         </div>
                         <div>
@@ -74,115 +181,74 @@ function TaskDetailsModal({ task, client, assignee, onClose, onEdit, onToggleSta
                         </div>
                     </dl>
 
-                    {client && (
+                    {clients.length > 0 && (
                         <section className="mt-5 rounded-xl border border-gray-200 bg-gray-50/60 p-4">
-                            <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Client</h3>
-                            <p className="mt-2 text-sm font-semibold text-gray-900">{client.name || "—"}</p>
-                            <dl className="mt-3 grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2">
-                                {client.businessType && (
-                                    <div>
-                                        <dt className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Business Type</dt>
-                                        <dd className="text-sm text-gray-800">{client.businessType}</dd>
-                                    </div>
-                                )}
-                                {client.state && (
-                                    <div>
-                                        <dt className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">State</dt>
-                                        <dd className="text-sm text-gray-800">{client.state}</dd>
-                                    </div>
-                                )}
-                                {client.mainActivity && (
-                                    <div className="sm:col-span-2">
-                                        <dt className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Main Activity</dt>
-                                        <dd className="text-sm text-gray-800">{client.mainActivity}</dd>
-                                    </div>
-                                )}
-                                {client.description && (
-                                    <div className="sm:col-span-2">
-                                        <dt className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Description</dt>
-                                        <dd className="text-sm text-gray-700">{client.description}</dd>
-                                    </div>
-                                )}
-                            </dl>
-                            {Array.isArray(client.owners) && client.owners.length > 0 && (
-                                <div className="mt-3 border-t border-gray-200 pt-3">
-                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Owners</p>
-                                    <ul className="mt-2 space-y-3">
-                                        {client.owners.map((owner, idx) => (
-                                            <li key={idx} className="flex flex-col gap-0.5 text-sm">
-                                                <span className="font-medium text-gray-900">{owner.name || "—"}</span>
-                                                {owner.email && <span className="text-gray-500">{owner.email}</span>}
-                                                {owner.phone && <span className="text-gray-500">{owner.phone}</span>}
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            )}
+                            <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                {clients.length === 1 ? "Client" : `Clients (${clients.length})`}
+                            </h3>
+                            <ul className="mt-3 flex flex-col gap-3">
+                                {clients.map((client, idx) => (
+                                    <li key={String(client._id || client.id || idx)} className={idx > 0 ? "border-t border-gray-200 pt-3" : ""}>
+                                        <ClientRow client={client} collapsible={clients.length > 1} />
+                                    </li>
+                                ))}
+                            </ul>
                         </section>
                     )}
 
-                    {assignee && (
+                    {assignees.length > 0 && (
                         <section className="mt-3 rounded-xl border border-gray-200 bg-gray-50/60 p-4">
-                            <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Assignee</h3>
-                            <p className="mt-2 text-sm font-semibold text-gray-900">
-                                {assignee.name || assignee.email || "—"}
-                            </p>
-                            <dl className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">
-                                {assignee.email && (
-                                    <div>
-                                        <dt className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Email</dt>
-                                        <dd className="text-sm text-gray-800">{assignee.email}</dd>
-                                    </div>
-                                )}
-                                {assignee.role && (
-                                    <div>
-                                        <dt className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Role</dt>
-                                        <dd className="text-sm text-gray-800 capitalize">{assignee.role}</dd>
-                                    </div>
-                                )}
-                            </dl>
+                            <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                {assignees.length === 1 ? "Assignee" : `Assignees (${assignees.length})`}
+                            </h3>
+                            <ul className="mt-3 flex flex-col gap-2">
+                                {assignees.map((assignee, idx) => (
+                                    <li key={String(assignee._id || assignee.id || idx)} className="flex flex-col gap-0.5 text-sm">
+                                        <span className="font-medium text-gray-900">{assignee.name || assignee.email || "—"}</span>
+                                        {assignee.name && assignee.email && (
+                                            <span className="text-xs text-gray-500">{assignee.email}</span>
+                                        )}
+                                        {assignee.role && (
+                                            <span className="text-[11px] uppercase tracking-wide text-gray-400">{assignee.role}</span>
+                                        )}
+                                    </li>
+                                ))}
+                            </ul>
                         </section>
                     )}
                 </div>
 
                 <footer className="flex items-center justify-between gap-2 border-t border-gray-100 bg-gray-50/60 px-5 py-3">
-                    {onToggleStatus ? (
-                        <button
-                            type="button"
-                            onClick={() => onToggleStatus(task)}
-                            className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
-                                isDone
-                                    ? "border-gray-200 text-gray-700 hover:bg-gray-100"
-                                    : "border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700"
-                            }`}
-                        >
-                            {isDone ? (
-                                <>
-                                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M3 12a9 9 0 1 0 9-9" />
-                                        <path d="M3 4v8h8" />
-                                    </svg>
-                                    Reopen
-                                </>
-                            ) : (
-                                <>
-                                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M20 6 9 17l-5-5" />
-                                    </svg>
-                                    Mark done
-                                </>
-                            )}
-                        </button>
+                    {onChangeStatus ? (
+                        <div className="inline-flex rounded-md border border-gray-200 p-0.5">
+                            {STATUS_OPTIONS.map((option) => {
+                                const isActive = option.id === currentStatus
+                                return (
+                                    <button
+                                        key={option.id}
+                                        type="button"
+                                        onClick={() => onChangeStatus(task, option.id)}
+                                        className={`rounded px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                                            isActive ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
+                                        }`}
+                                    >
+                                        {option.label}
+                                    </button>
+                                )
+                            })}
+                        </div>
                     ) : <span />}
 
                     <div className="flex items-center gap-2">
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                        >
-                            Close
-                        </button>
+                        {onDelete && (
+                            <button
+                                type="button"
+                                onClick={() => onDelete(task)}
+                                className="rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+                            >
+                                Delete
+                            </button>
+                        )}
                         {onEdit && (
                             <button
                                 type="button"

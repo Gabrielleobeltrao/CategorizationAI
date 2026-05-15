@@ -1,13 +1,22 @@
 import { api } from "../lib/api"
 
+function sanitizeIdList(value) {
+  if (!Array.isArray(value)) return []
+  const cleaned = value
+    .map((entry) => String(entry || "").trim())
+    .filter(Boolean)
+  return Array.from(new Set(cleaned))
+}
+
 function sanitizePayload(input = {}) {
   const payload = {}
   if (input.title !== undefined) payload.title = String(input.title || "")
   if (input.description !== undefined) payload.description = String(input.description || "")
-  if (input.clientId !== undefined) payload.clientId = input.clientId || null
-  if (input.assigneeId !== undefined) payload.assigneeId = input.assigneeId || null
+  if (input.clientIds !== undefined) payload.clientIds = sanitizeIdList(input.clientIds)
+  if (input.assigneeIds !== undefined) payload.assigneeIds = sanitizeIdList(input.assigneeIds)
   if (input.dueDate !== undefined) payload.dueDate = input.dueDate || null
   if (input.status !== undefined) payload.status = input.status
+  if (input.priority !== undefined) payload.priority = input.priority || "low"
   return payload
 }
 
@@ -16,6 +25,9 @@ export async function listTasks(filters = {}) {
   if (filters.clientId) params.set("clientId", String(filters.clientId).trim())
   if (filters.assigneeId) params.set("assigneeId", String(filters.assigneeId).trim())
   if (filters.status) params.set("status", String(filters.status).trim())
+  if (filters.priority) params.set("priority", String(filters.priority).trim())
+  if (filters.from) params.set("from", String(filters.from).trim())
+  if (filters.to) params.set("to", String(filters.to).trim())
 
   const qs = params.toString()
   const payload = await api(`/api/tasks${qs ? `?${qs}` : ""}`)

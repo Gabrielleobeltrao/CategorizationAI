@@ -172,18 +172,28 @@ function TasksCalendar({ tasks = [], onSelectTask, defaultMode = "month" }) {
               </span>
               <ul className="flex min-h-0 flex-col gap-0.5 overflow-y-auto">
                 {dayTasks.slice(0, mode === "month" ? 3 : 8).map((task) => {
-                  const isDone = task.status === "done"
+                  const status = task.status || "open"
+                  const isDone = status === "done"
+                  const priority = task.priority || "low"
+                  let className
+                  if (isDone) {
+                    className = "bg-gray-100 text-gray-500 line-through hover:bg-gray-200"
+                  } else if (priority === "urgent") {
+                    className = "bg-rose-600 text-white hover:bg-rose-700"
+                  } else if (priority === "high") {
+                    className = "bg-amber-500 text-white hover:bg-amber-600"
+                  } else if (priority === "medium") {
+                    className = "bg-sky-600 text-white hover:bg-sky-700"
+                  } else {
+                    className = "bg-gray-700 text-white hover:bg-gray-900"
+                  }
                   return (
                     <li key={task._id || task.id}>
                       <button
                         type="button"
                         onClick={() => onSelectTask?.(task)}
-                        className={`w-full truncate rounded px-1.5 py-0.5 text-left text-[10px] font-medium transition-colors ${
-                          isDone
-                            ? "bg-gray-100 text-gray-500 line-through hover:bg-gray-200"
-                            : "bg-gray-900 text-white hover:bg-black"
-                        }`}
-                        title={task.title || "(Untitled)"}
+                        className={`w-full truncate rounded px-1.5 py-0.5 text-left text-[10px] font-medium transition-colors ${className}`}
+                        title={`${task.title || "(Untitled)"}${priority !== "low" ? ` — ${priority}` : ""}`}
                       >
                         {task.title || "(Untitled)"}
                       </button>

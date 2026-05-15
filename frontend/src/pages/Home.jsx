@@ -16,7 +16,9 @@ import FeatureGate from "../components/auth/FeatureGate"
 import { listTasks, updateTaskById as updateTask } from "../services/tasks.service"
 import { listClientsByOfficeId } from "../services/clients.service"
 import { listEmployeesByOfficeId } from "../services/employees.service"
+import TaskCard from "../components/tasks/TaskCard"
 import TaskDetailsModal from "../components/tasks/TaskDetailsModal"
+import TaskEditModal from "../components/tasks/TaskEditModal"
 import TasksCalendar from "../components/tasks/TasksCalendar"
 
 function formatOpenedAt(value) {
@@ -67,86 +69,6 @@ function normalizeDashboardPayload(payload = {}) {
   }
 }
 
-function formatTaskDueBadge(dateStr) {
-  if (!dateStr) return null
-  const due = new Date(`${dateStr}T00:00:00`)
-  if (Number.isNaN(due.getTime())) return null
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const diffDays = Math.round((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-
-  let label
-  if (diffDays < 0) label = `Overdue ${Math.abs(diffDays)}d`
-  else if (diffDays === 0) label = "Due today"
-  else if (diffDays === 1) label = "Tomorrow"
-  else if (diffDays <= 7) label = `In ${diffDays}d`
-  else {
-    label = new Intl.DateTimeFormat("en-US", { month: "short", day: "2-digit" }).format(due)
-  }
-
-  return { label, tone: "bg-gray-100 text-gray-700" }
-}
-
-function HomeTaskItem({ task, clientsById, employeesById, showAssignee, onSelect, onMarkDone }) {
-  const due = formatTaskDueBadge(task.dueDate)
-  const client = task.clientId ? clientsById.get(String(task.clientId)) : null
-  const assignee = showAssignee && task.assigneeId
-    ? employeesById.get(String(task.assigneeId))
-    : null
-  const description = String(task.description || "").trim()
-
-  return (
-    <li className="flex items-start gap-3 rounded-lg border border-gray-100 bg-gray-50 p-3 hover:bg-gray-100">
-      <button type="button" onClick={() => onSelect?.(task)} className="flex min-w-0 flex-1 flex-col gap-1.5 text-left">
-        <div className="flex items-start justify-between gap-3">
-          <p className="truncate text-sm font-medium text-gray-900">
-            {task.title || "(Untitled)"}
-          </p>
-          {due && (
-            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${due.tone}`}>
-              {due.label}
-            </span>
-          )}
-        </div>
-        {description && (
-          <p className="line-clamp-2 text-xs text-gray-500">{description}</p>
-        )}
-        {(client || assignee) && (
-          <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-            {client && (
-              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-700">
-                {client.name || "Client"}
-              </span>
-            )}
-            {assignee && (
-              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-700">
-                {assignee.name || assignee.email || "Member"}
-              </span>
-            )}
-          </div>
-        )}
-      </button>
-      {onMarkDone && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation()
-            onMarkDone(task)
-          }}
-          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-emerald-600 bg-emerald-600 px-2 py-1 text-[11px] font-medium text-white hover:bg-emerald-700"
-          aria-label="Mark task as done"
-          title="Mark task as done"
-        >
-          <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M20 6 9 17l-5-5" />
-          </svg>
-          Done
-        </button>
-      )}
-    </li>
-  )
-}
-
 function HomeTasksCard({
   title,
   subtitle,
@@ -155,10 +77,8 @@ function HomeTasksCard({
   emptyLabel,
   clientsById,
   employeesById,
-  showAssignee,
   onOpenTasks,
   onSelectTask,
-  onMarkDone,
 }) {
   return (
     <article className="rounded-xl border border-gray-200 bg-white p-4">
@@ -187,14 +107,12 @@ function HomeTasksCard({
           </li>
         ) : (
           tasks.slice(0, 6).map((task) => (
-            <HomeTaskItem
+            <TaskCard
               key={task._id || task.id}
               task={task}
-              clientsById={clientsById}
-              employeesById={employeesById}
-              showAssignee={showAssignee}
+              clientById={clientsById}
+              employeeById={employeesById}
               onSelect={onSelectTask}
-              onMarkDone={onMarkDone}
             />
           ))
         )}
@@ -213,6 +131,9 @@ function Home() {
   const [taskEmployeesById, setTaskEmployeesById] = useState(() => new Map())
   const [isLoadingTasks, setIsLoadingTasks] = useState(false)
   const [viewingTask, setViewingTask] = useState(null)
+  const [editingTask, setEditingTask] = useState(null)
+  const [isEditOpen, setIsEditOpen] = useState(false)
+  const [isSavingTask, setIsSavingTask] = useState(false)
   const [recentClients, setRecentClients] = useState(() => getRecentOpenedClients())
   const [employee, setEmployee] = useState({
     id: "",
@@ -256,48 +177,63 @@ function Home() {
   }, [error, profile?._id, profile?.id])
 
   const currentProfileId = String(profile?._id || profile?.id || "").trim()
+  const getTaskAssigneeIds = (task) => {
+    if (Array.isArray(task?.assigneeIds) && task.assigneeIds.length > 0) {
+      return task.assigneeIds.map(String)
+    }
+    return task?.assigneeId ? [String(task.assigneeId)] : []
+  }
   const tasksForMe = useMemo(
-    () => openTasks.filter(
-      (task) => task.status !== "done"
-        && String(task.assigneeId || "") === currentProfileId
-        && currentProfileId
-    ),
+    () => openTasks.filter((task) => {
+      if (task.status === "done" || !currentProfileId) return false
+      return getTaskAssigneeIds(task).includes(currentProfileId)
+    }),
     [openTasks, currentProfileId]
   )
   const tasksForTeam = useMemo(
-    () => openTasks.filter((task) => task.status !== "done" && !task.assigneeId),
+    () => openTasks.filter((task) => task.status !== "done" && getTaskAssigneeIds(task).length === 0),
     [openTasks]
   )
 
   const calendarTasks = useMemo(
     () => openTasks.filter((task) => {
       if (!task?.dueDate) return false
-      if (!task.assigneeId) return true
-      return currentProfileId && String(task.assigneeId) === currentProfileId
+      const ids = getTaskAssigneeIds(task)
+      if (ids.length === 0) return true
+      return currentProfileId && ids.includes(currentProfileId)
     }),
     [openTasks, currentProfileId]
   )
 
-  const handleHomeTaskMarkDone = async (task) => {
-    if (!task?._id && !task?.id) return
-    const id = String(task._id || task.id)
+  const handleHomeTaskEdit = (task) => {
+    setEditingTask(task)
+    setIsEditOpen(true)
+  }
+
+  const handleHomeTaskEditSave = async (draft) => {
+    if (!editingTask?._id && !editingTask?.id) return
+    const id = String(editingTask._id || editingTask.id)
     try {
-      const updated = await updateTask(id, { status: "done" })
+      setIsSavingTask(true)
+      const updated = await updateTask(id, draft)
       setOpenTasks((current) =>
         current.map((t) => (String(t._id || t.id) === id ? updated : t))
       )
       setViewingTask((current) =>
         current && String(current._id || current.id) === id ? updated : current
       )
+      setIsEditOpen(false)
+      setEditingTask(null)
     } catch (err) {
       error(err.message || "Failed to update task")
+    } finally {
+      setIsSavingTask(false)
     }
   }
 
-  const handleHomeTaskToggleStatus = async (task) => {
+  const handleHomeTaskChangeStatus = async (task, nextStatus) => {
     if (!task?._id && !task?.id) return
     const id = String(task._id || task.id)
-    const nextStatus = task.status === "done" ? "open" : "done"
     try {
       const updated = await updateTask(id, { status: nextStatus })
       setOpenTasks((current) =>
@@ -322,7 +258,7 @@ function Home() {
     let active = true
     setIsLoadingTasks(true)
     Promise.all([
-      listTasks({ status: "open" }).catch(() => []),
+      listTasks({ status: "active" }).catch(() => []),
       listClientsByOfficeId(officeId, { limit: 500 }).catch(() => null),
       listEmployeesByOfficeId(officeId).catch(() => null),
     ])
@@ -434,10 +370,8 @@ function Home() {
               emptyLabel="Nothing assigned to you yet."
               clientsById={taskClientsById}
               employeesById={taskEmployeesById}
-              showAssignee={false}
               onOpenTasks={() => navigate("/crm/tasks")}
               onSelectTask={setViewingTask}
-              onMarkDone={handleHomeTaskMarkDone}
             />
             <HomeTasksCard
               title="Open for the team"
@@ -447,10 +381,8 @@ function Home() {
               emptyLabel="No unassigned tasks."
               clientsById={taskClientsById}
               employeesById={taskEmployeesById}
-              showAssignee={false}
               onOpenTasks={() => navigate("/crm/tasks")}
               onSelectTask={setViewingTask}
-              onMarkDone={handleHomeTaskMarkDone}
             />
           </section>
         </FeatureGate>
@@ -525,15 +457,41 @@ function Home() {
       </div>
 
       <TaskDetailsModal
-        task={viewingTask}
-        client={viewingTask?.clientId ? taskClientsById.get(String(viewingTask.clientId)) : null}
-        assignee={viewingTask?.assigneeId ? taskEmployeesById.get(String(viewingTask.assigneeId)) : null}
+        task={isEditOpen ? null : viewingTask}
+        clientList={
+          viewingTask
+            ? (Array.isArray(viewingTask.clientIds) && viewingTask.clientIds.length > 0
+                ? viewingTask.clientIds
+                : (viewingTask.clientId ? [viewingTask.clientId] : []))
+                .map((id) => taskClientsById.get(String(id)))
+                .filter(Boolean)
+            : []
+        }
+        assigneeList={
+          viewingTask
+            ? (Array.isArray(viewingTask.assigneeIds) && viewingTask.assigneeIds.length > 0
+                ? viewingTask.assigneeIds
+                : (viewingTask.assigneeId ? [viewingTask.assigneeId] : []))
+                .map((id) => taskEmployeesById.get(String(id)))
+                .filter(Boolean)
+            : []
+        }
         onClose={() => setViewingTask(null)}
-        onEdit={() => {
-          setViewingTask(null)
-          navigate("/crm/tasks")
+        onEdit={(task) => handleHomeTaskEdit(task)}
+        onChangeStatus={handleHomeTaskChangeStatus}
+      />
+
+      <TaskEditModal
+        isOpen={isEditOpen}
+        task={editingTask}
+        clients={Array.from(taskClientsById.values())}
+        employees={Array.from(taskEmployeesById.values())}
+        isSaving={isSavingTask}
+        onCancel={() => {
+          setIsEditOpen(false)
+          setEditingTask(null)
         }}
-        onToggleStatus={handleHomeTaskToggleStatus}
+        onSubmit={handleHomeTaskEditSave}
       />
     </section>
   )
