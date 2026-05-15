@@ -246,75 +246,18 @@ function Sidebar({ isCollapsed, onToggleCollapse }) {
           </NavLink>
         </nav>
 
-        <div className="mt-4 border-t border-gray-100 pt-4">
-          {isCrmEnabled && !isCollapsed && (
-            <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
-              Bookkeeping
-            </p>
-          )}
-          <nav className="flex flex-col gap-2">
-            {bookkeepingNavItems.map((item) => (
-              <div key={item.to}>
-                <NavLink
-                  to={item.to}
-                  end
-                  className={({ isActive }) =>
-                    `flex items-center rounded-lg py-2 text-sm font-medium transition-colors ${
-                      isCollapsed ? "justify-center px-2" : "gap-3 px-3"
-                    } ${
-                      isActive ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
-                    }`
-                  }
-                  title={isCollapsed ? item.label : undefined}
-                >
-                  <span>{item.icon}</span>
-                  {!isCollapsed && <span>{item.label}</span>}
-                </NavLink>
-
-                {item.to === "/clients" && clientMenuItems.length > 0 && (
-                  <div className={`mt-1 flex flex-col gap-1 ${isCollapsed ? "items-center" : "ml-3 border-l border-gray-100 pl-3"}`}>
-                    {!isCollapsed && (
-                      <p className="px-2 pb-0.5 pt-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
-                        {selectedClient ? selectedClient.name : "Client"}
-                      </p>
-                    )}
-                    {clientMenuItems.map((clientItem) => (
-                      <NavLink
-                        key={clientItem.to}
-                        to={clientItem.to}
-                        end
-                        className={({ isActive }) =>
-                          `flex items-center rounded-md py-1.5 text-xs font-medium transition-colors ${
-                            isCollapsed ? "justify-center px-2" : "gap-2 px-2"
-                          } ${
-                            isActive ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-100 hover:text-gray-800"
-                          }`
-                        }
-                        title={isCollapsed ? clientItem.label : undefined}
-                      >
-                        <span>{clientItem.icon}</span>
-                        {!isCollapsed && <span>{clientItem.label}</span>}
-                      </NavLink>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </nav>
-        </div>
-
-        {isCrmEnabled && (
+        {clientId ? (
           <div className="mt-4 border-t border-gray-100 pt-4">
             {!isCollapsed && (
-              <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                CRM Operacional
+              <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+                {selectedClient ? selectedClient.name : "Client"}
               </p>
             )}
-            <nav className="flex flex-col gap-2">
-              {crmNavItems.map((item) => (
+            <nav className="flex flex-col gap-1">
+              {clientMenuItems.map((clientItem) => (
                 <NavLink
-                  key={item.to}
-                  to={item.to}
+                  key={clientItem.to}
+                  to={clientItem.to}
                   end
                   className={({ isActive }) =>
                     `flex items-center rounded-lg py-2 text-sm font-medium transition-colors ${
@@ -323,50 +266,128 @@ function Sidebar({ isCollapsed, onToggleCollapse }) {
                       isActive ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
                     }`
                   }
-                  title={isCollapsed ? item.label : undefined}
+                  title={isCollapsed ? clientItem.label : undefined}
                 >
-                  <span>{item.icon}</span>
-                  {!isCollapsed && <span>{item.label}</span>}
+                  <span>{clientItem.icon}</span>
+                  {!isCollapsed && <span>{clientItem.label}</span>}
                 </NavLink>
               ))}
             </nav>
           </div>
+        ) : (
+          <>
+            <div className="mt-4 border-t border-gray-100 pt-4">
+              {isCrmEnabled && !isCollapsed && (
+                <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  Bookkeeping
+                </p>
+              )}
+              <nav className="flex flex-col gap-2">
+                {bookkeepingNavItems.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end
+                    className={({ isActive }) =>
+                      `flex items-center rounded-lg py-2 text-sm font-medium transition-colors ${
+                        isCollapsed ? "justify-center px-2" : "gap-3 px-3"
+                      } ${
+                        isActive ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
+                      }`
+                    }
+                    title={isCollapsed ? item.label : undefined}
+                  >
+                    <span>{item.icon}</span>
+                    {!isCollapsed && <span>{item.label}</span>}
+                  </NavLink>
+                ))}
+              </nav>
+            </div>
+
+            {isCrmEnabled && (
+              <div className="mt-4 border-t border-gray-100 pt-4">
+                {!isCollapsed && (
+                  <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                    CRM Operacional
+                  </p>
+                )}
+                <nav className="flex flex-col gap-2">
+                  {crmNavItems.map((item) => (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      end
+                      className={({ isActive }) =>
+                        `flex items-center rounded-lg py-2 text-sm font-medium transition-colors ${
+                          isCollapsed ? "justify-center px-2" : "gap-3 px-3"
+                        } ${
+                          isActive ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
+                        }`
+                      }
+                      title={isCollapsed ? item.label : undefined}
+                    >
+                      <span>{item.icon}</span>
+                      {!isCollapsed && <span>{item.label}</span>}
+                    </NavLink>
+                  ))}
+                </nav>
+              </div>
+            )}
+          </>
         )}
 
       </div>
 
-      <NavLink
-        to={employeesNavItem.to}
-        end
-        className={({ isActive }) =>
-          `mt-4 flex items-center rounded-lg py-2 text-sm font-medium transition-colors ${
+      {clientId ? (
+        <button
+          type="button"
+          onClick={() => navigate("/clients")}
+          className={`mt-4 flex items-center rounded-lg py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 ${
             isCollapsed ? "justify-center px-2" : "gap-3 px-3"
-          } ${
-            isActive ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
-          }`
-        }
-        title={isCollapsed ? employeesNavItem.label : undefined}
-      >
-        <span>{employeesNavItem.icon}</span>
-        {!isCollapsed && <span>{employeesNavItem.label}</span>}
-      </NavLink>
-
-      {canReadSettings && (
-        <NavLink
-          to={settingsNavItem.to}
-          end
-          className={({ isActive }) =>
-            `mt-2 flex items-center rounded-lg py-2 text-sm font-medium transition-colors ${
-              isCollapsed ? "justify-center px-2" : "gap-3 px-3"
-            } ${
-              isActive ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
-            }`
-          }
-          title={isCollapsed ? settingsNavItem.label : undefined}
+          }`}
+          title={isCollapsed ? "Back to Clients" : undefined}
         >
-          <span>{settingsNavItem.icon}</span>
-          {!isCollapsed && <span>{settingsNavItem.label}</span>}
-        </NavLink>
+          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m15 18-6-6 6-6" />
+          </svg>
+          {!isCollapsed && <span>Back to Clients</span>}
+        </button>
+      ) : (
+        <>
+          <NavLink
+            to={employeesNavItem.to}
+            end
+            className={({ isActive }) =>
+              `mt-4 flex items-center rounded-lg py-2 text-sm font-medium transition-colors ${
+                isCollapsed ? "justify-center px-2" : "gap-3 px-3"
+              } ${
+                isActive ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
+              }`
+            }
+            title={isCollapsed ? employeesNavItem.label : undefined}
+          >
+            <span>{employeesNavItem.icon}</span>
+            {!isCollapsed && <span>{employeesNavItem.label}</span>}
+          </NavLink>
+
+          {canReadSettings && (
+            <NavLink
+              to={settingsNavItem.to}
+              end
+              className={({ isActive }) =>
+                `mt-2 flex items-center rounded-lg py-2 text-sm font-medium transition-colors ${
+                  isCollapsed ? "justify-center px-2" : "gap-3 px-3"
+                } ${
+                  isActive ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
+                }`
+              }
+              title={isCollapsed ? settingsNavItem.label : undefined}
+            >
+              <span>{settingsNavItem.icon}</span>
+              {!isCollapsed && <span>{settingsNavItem.label}</span>}
+            </NavLink>
+          )}
+        </>
       )}
 
       <div className="mt-4 border-t border-gray-100 pt-3">
