@@ -1,13 +1,19 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import PopupModal from "../components/ui/PopupModal"
 import ConfirmModal from "../components/ui/ConfirmModal"
 import TagsInput from "../components/ui/TagsInput"
 import TagRulesHelp from "../components/ui/TagRulesHelp"
+import OperationalStatusBadge from "../components/crm/OperationalStatusBadge"
+import OperationalStatusHelp from "../components/crm/OperationalStatusHelp"
+import OperationalStatusFilter from "../components/crm/OperationalStatusFilter"
 import { useNotification } from "../contexts/notification.context"
 import { useOfficeTags } from "../hooks/useOfficeTags"
 import { useResolvedOfficeContext } from "../hooks/useResolvedOfficeContext"
+import { useFeature } from "../hooks/useFeature"
 import { trackClientOpened } from "../utils/recentClients"
+import { DEFAULT_OPERATIONAL_STATUS } from "../constants/operationalStatuses"
+import { listOperationalStatusesByOfficeId } from "../services/operationalStatus.service"
 import {
     clearClientsListCache,
     createClient,
@@ -176,6 +182,9 @@ function ClientsPage() {
     const [expandedClientIds, setExpandedClientIds] = useState([])
 
     const { officeId, isResolvingOfficeContext } = useResolvedOfficeContext()
+    const isOperationalStatusEnabled = useFeature("crmOperationalStatus")
+    const [operationalStatusMap, setOperationalStatusMap] = useState({})
+    const [statusFilter, setStatusFilter] = useState("")
     const handleOfficeTagError = useCallback((err) => {
         error(err.message || "Failed to delete tag")
     }, [error])
@@ -262,6 +271,37 @@ function ClientsPage() {
             active = false
         }
     }, [officeId, refreshKey, page, limit, debouncedSearchTerm, error])
+
+    useEffect(() => {
+        if (!officeId || !isOperationalStatusEnabled) {
+            setOperationalStatusMap({})
+            return undefined
+        }
+        let active = true
+        listOperationalStatusesByOfficeId(officeId)
+            .then((items) => {
+                if (!active) return
+                const map = {}
+                for (const item of items) {
+                    if (item?.clientId) map[String(item.clientId)] = item
+                }
+                setOperationalStatusMap(map)
+            })
+            .catch(() => {
+                if (active) setOperationalStatusMap({})
+            })
+        return () => { active = false }
+    }, [officeId, isOperationalStatusEnabled])
+
+    const getEffectiveStatus = useMemo(() => (clientId) => {
+        const entry = operationalStatusMap[String(clientId)]
+        return entry?.effectiveStatus || DEFAULT_OPERATIONAL_STATUS
+    }, [operationalStatusMap])
+
+    const displayedClients = useMemo(() => {
+        if (!isOperationalStatusEnabled || !statusFilter) return clients
+        return clients.filter((client) => getEffectiveStatus(client.id) === statusFilter)
+    }, [clients, statusFilter, isOperationalStatusEnabled, getEffectiveStatus])
 
     const handleCreateClient = async (e) => {
         e.preventDefault()
@@ -486,140 +526,92 @@ function ClientsPage() {
                     </button>
                 </header>
 
-                <div className="relative">
-                    <input
-                        type="text"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        placeholder="Search clients"
-                        className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-10 pr-3 text-sm outline-none focus:border-gray-500"
-                    />
-                    <svg
-                        className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                    >
-                        <circle cx="11" cy="11" r="7" />
-                        <path d="m20 20-3.5-3.5" />
-                    </svg>
+                <div className="flex flex-wrap items-center gap-2">
+                    <div className="relative min-w-0 flex-1">
+                        <input
+                            type="text"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            placeholder="Search clients"
+                            className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-10 pr-3 text-sm outline-none focus:border-gray-500"
+                        />
+                        <svg
+                            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                        >
+                            <circle cx="11" cy="11" r="7" />
+                            <path d="m20 20-3.5-3.5" />
+                        </svg>
+                    </div>
+                    {isOperationalStatusEnabled && (
+                        <OperationalStatusFilter
+                            value={statusFilter}
+                            onChange={setStatusFilter}
+                        />
+                    )}
                 </div>
 
                 <section>
-                    <div className="grid grid-cols-[1fr_auto] gap-3 border-b border-gray-200 px-1 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600">
+                    <div
+                        className={`hidden border-b border-gray-200 px-1 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600 sm:grid ${
+                            isOperationalStatusEnabled
+                                ? "sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]"
+                                : "sm:grid-cols-[minmax(0,1fr)_72px]"
+                        } sm:items-center sm:gap-3`}
+                    >
                         <span>Client</span>
+                        {isOperationalStatusEnabled && (
+                            <span className="inline-flex items-center justify-center gap-1.5 text-center">
+                                <span>Status</span>
+                                <OperationalStatusHelp />
+                            </span>
+                        )}
                         <span className="text-right">Actions</span>
                     </div>
                     <div className="divide-y divide-gray-100">
-                        {clients.map((client) => {
+                        {displayedClients.map((client) => {
                             const isExpanded = expandedClientIds.includes(client.id)
 
                             return (
                                 <div key={client.id}>
                                     <div
-                                        className="grid w-full cursor-pointer grid-cols-[1fr_auto] gap-3 px-1 py-3 hover:bg-gray-50"
+                                        className={`flex w-full cursor-pointer flex-col gap-2 px-1 py-3 hover:bg-gray-50 sm:grid sm:gap-3 ${
+                                            isOperationalStatusEnabled
+                                                ? "sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]"
+                                                : "sm:grid-cols-[minmax(0,1fr)_72px]"
+                                        } sm:items-center`}
                                         onClick={() => openClientLedger(client)}
                                     >
-                                        <div className="flex min-w-0 flex-col gap-2">
-                                            <button
-                                                type="button"
-                                                className="w-full max-w-full truncate text-left font-medium text-gray-900"
-                                                onClick={(e) => {
-                                                    e.stopPropagation()
-                                                    openClientLedger(client)
-                                                }}
-                                                title={client.name}
-                                            >
-                                                {client.name}
-                                            </button>
+                                        <button
+                                            type="button"
+                                            className="min-w-0 max-w-full truncate text-left font-medium text-gray-900"
+                                            onClick={(e) => {
+                                                e.stopPropagation()
+                                                openClientLedger(client)
+                                            }}
+                                            title={client.name}
+                                        >
+                                            {client.name}
+                                        </button>
 
-                                            {isExpanded && (
-                                                <div className="mt-3 border-t border-gray-200 pt-3">
-                                                    <dl className="grid grid-cols-2 gap-x-6 gap-y-3 md:grid-cols-4">
-                                                        <div>
-                                                            <dt className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Business Type</dt>
-                                                            <dd className="mt-0.5 text-sm text-gray-800">{client.businessType || "-"}</dd>
-                                                        </div>
-                                                        <div>
-                                                            <dt className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">State</dt>
-                                                            <dd className="mt-0.5 text-sm text-gray-800">{client.state || "-"}</dd>
-                                                        </div>
-                                                        <div>
-                                                            <dt className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Main Activity</dt>
-                                                            <dd className="mt-0.5 text-sm text-gray-800">{client.mainActivity || "-"}</dd>
-                                                        </div>
-                                                        <div>
-                                                            <dt className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Created</dt>
-                                                            <dd className="mt-0.5 text-sm text-gray-800">{formatClientDate(client.createdAt)}</dd>
-                                                        </div>
-                                                    </dl>
-
-                                                    {client.description && (
-                                                        <section className="mt-3">
-                                                            <h3 className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Description</h3>
-                                                            <p className="mt-0.5 text-sm leading-5 text-gray-700">{client.description}</p>
-                                                        </section>
-                                                    )}
-
-                                                    <section className="mt-3">
-                                                        <h3 className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Owners</h3>
-                                                        <div className="mt-1.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                                            {Array.isArray(client.owners) && client.owners.some(hasOwnerContactInfo) ? (
-                                                                client.owners.map((owner, index) => (
-                                                                    <div
-                                                                        key={`owner-display-${client.id}-${index}`}
-                                                                        className="flex flex-col gap-0.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2"
-                                                                    >
-                                                                        <p className="text-sm font-semibold text-gray-900">
-                                                                            {String(owner?.name || "").trim() || `Owner ${index + 1}`}
-                                                                        </p>
-                                                                        {String(owner?.email || "").trim() && (
-                                                                            <p className="text-xs text-gray-600">{String(owner.email).trim()}</p>
-                                                                        )}
-                                                                        {String(owner?.phone || "").trim() && (
-                                                                            <p className="text-xs text-gray-600">{String(owner.phone).trim()}</p>
-                                                                        )}
-                                                                    </div>
-                                                                ))
-                                                            ) : hasLegacyOwnerContact(client) ? (
-                                                                <div className="flex flex-col gap-0.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
-                                                                    <p className="text-sm font-semibold text-gray-900">Owner</p>
-                                                                    {String(client.ownerEmail || "").trim() && (
-                                                                        <p className="text-xs text-gray-600">{String(client.ownerEmail).trim()}</p>
-                                                                    )}
-                                                                    {String(client.ownerPhone || "").trim() && (
-                                                                        <p className="text-xs text-gray-600">{String(client.ownerPhone).trim()}</p>
-                                                                    )}
-                                                                </div>
-                                                            ) : (
-                                                                <p className="text-sm text-gray-500">No owner details added yet</p>
-                                                            )}
-                                                        </div>
-                                                    </section>
-
-                                                    {Array.isArray(client.tags) && client.tags.length > 0 && (
-                                                        <section className="mt-3">
-                                                            <h3 className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Tags</h3>
-                                                            <div className="mt-1 flex flex-wrap gap-1.5">
-                                                                {client.tags.map((tag) => (
-                                                                    <span
-                                                                        key={`${client.id}-tag-${tag}`}
-                                                                        className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-xs font-medium text-gray-700"
-                                                                    >
-                                                                        {tag}
-                                                                    </span>
-                                                                ))}
-                                                            </div>
-                                                        </section>
-                                                    )}
+                                        {/*
+                                            Mobile: status badge + eye button share a row (flex).
+                                            Desktop: `sm:contents` flattens this wrapper so each
+                                            child sits in its own grid cell.
+                                        */}
+                                        <div className="flex items-center justify-between gap-2 sm:contents">
+                                            {isOperationalStatusEnabled && (
+                                                <div className="flex min-w-0 justify-start sm:justify-center">
+                                                    <OperationalStatusBadge status={getEffectiveStatus(client.id)} />
                                                 </div>
                                             )}
-                                        </div>
 
-                                        <div className="flex items-start justify-end gap-2">
+                                            <div className="flex items-center justify-end gap-2">
                                             <button
                                                 type="button"
                                                 className="rounded-md p-2 text-gray-500 hover:bg-gray-200 hover:text-gray-800"
@@ -636,7 +628,90 @@ function ClientsPage() {
                                                 </svg>
                                             </button>
                                         </div>
+                                        </div>
                                     </div>
+
+                                    {isExpanded && (
+                                        <div className="border-t border-gray-200 px-1 py-3">
+                                            <dl className="grid grid-cols-2 gap-x-6 gap-y-3 md:grid-cols-4">
+                                                <div>
+                                                    <dt className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Business Type</dt>
+                                                    <dd className="mt-0.5 text-sm text-gray-800">{client.businessType || "-"}</dd>
+                                                </div>
+                                                <div>
+                                                    <dt className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">State</dt>
+                                                    <dd className="mt-0.5 text-sm text-gray-800">{client.state || "-"}</dd>
+                                                </div>
+                                                <div>
+                                                    <dt className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Main Activity</dt>
+                                                    <dd className="mt-0.5 text-sm text-gray-800">{client.mainActivity || "-"}</dd>
+                                                </div>
+                                                <div>
+                                                    <dt className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Created</dt>
+                                                    <dd className="mt-0.5 text-sm text-gray-800">{formatClientDate(client.createdAt)}</dd>
+                                                </div>
+                                            </dl>
+
+                                            {client.description && (
+                                                <section className="mt-3">
+                                                    <h3 className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Description</h3>
+                                                    <p className="mt-0.5 text-sm leading-5 text-gray-700">{client.description}</p>
+                                                </section>
+                                            )}
+
+                                            <section className="mt-3">
+                                                <h3 className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Owners</h3>
+                                                <div className="mt-1.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                                    {Array.isArray(client.owners) && client.owners.some(hasOwnerContactInfo) ? (
+                                                        client.owners.map((owner, index) => (
+                                                            <div
+                                                                key={`owner-display-${client.id}-${index}`}
+                                                                className="flex flex-col gap-0.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2"
+                                                            >
+                                                                <p className="text-sm font-semibold text-gray-900">
+                                                                    {String(owner?.name || "").trim() || `Owner ${index + 1}`}
+                                                                </p>
+                                                                {String(owner?.email || "").trim() && (
+                                                                    <p className="text-xs text-gray-600">{String(owner.email).trim()}</p>
+                                                                )}
+                                                                {String(owner?.phone || "").trim() && (
+                                                                    <p className="text-xs text-gray-600">{String(owner.phone).trim()}</p>
+                                                                )}
+                                                            </div>
+                                                        ))
+                                                    ) : hasLegacyOwnerContact(client) ? (
+                                                        <div className="flex flex-col gap-0.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                                                            <p className="text-sm font-semibold text-gray-900">Owner</p>
+                                                            {String(client.ownerEmail || "").trim() && (
+                                                                <p className="text-xs text-gray-600">{String(client.ownerEmail).trim()}</p>
+                                                            )}
+                                                            {String(client.ownerPhone || "").trim() && (
+                                                                <p className="text-xs text-gray-600">{String(client.ownerPhone).trim()}</p>
+                                                            )}
+                                                        </div>
+                                                    ) : (
+                                                        <p className="text-sm text-gray-500">No owner details added yet</p>
+                                                    )}
+                                                </div>
+                                            </section>
+
+                                            {Array.isArray(client.tags) && client.tags.length > 0 && (
+                                                <section className="mt-3">
+                                                    <h3 className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Tags</h3>
+                                                    <div className="mt-1 flex flex-wrap gap-1.5">
+                                                        {client.tags.map((tag) => (
+                                                            <span
+                                                                key={`${client.id}-tag-${tag}`}
+                                                                className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-xs font-medium text-gray-700"
+                                                            >
+                                                                {tag}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </section>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             )
                         })}
@@ -652,6 +727,12 @@ function ClientsPage() {
                 {!isLoading && clients.length === 0 && (
                     <p className="text-sm text-gray-500">
                         No clients found
+                    </p>
+                )}
+
+                {!isLoading && clients.length > 0 && displayedClients.length === 0 && (
+                    <p className="text-sm text-gray-500">
+                        No clients match the selected status on this page.
                     </p>
                 )}
 
