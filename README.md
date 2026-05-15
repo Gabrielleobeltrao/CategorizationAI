@@ -12,6 +12,7 @@ SaaS de contabilidade para escritórios contábeis com:
 - Profit & Loss por client e período
 - cache/bootstrap para reduzir carregamentos de páginas
 - dashboard operacional do office
+- UI responsiva: sidebar vira drawer no mobile, tabelas viram cards onde faz sentido (transactions, employees, etc) e filtros usam date-picker compartilhado
 
 ## Stack
 
