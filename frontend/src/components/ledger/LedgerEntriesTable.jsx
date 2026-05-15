@@ -3,6 +3,7 @@ import { createPortal } from "react-dom"
 import LedgerEntryRow from "./LedgerEntryRow"
 import ConfirmModal from "../ui/ConfirmModal"
 import PopupModal from "../ui/PopupModal"
+import DateRangePicker from "../ui/DateRangePicker"
 import { getTransactionAmountPresentation } from "../../utils/amountPresentation"
 import { CATEGORY_TYPE_OPTIONS } from "../../constants/categoryTypes"
 import { getCategoryDisplayName } from "../../utils/categoryPresentation"
@@ -41,7 +42,7 @@ const ICON_TYPE_OPTIONS = [
     { id: "memory", label: "Memory icon" },
     { id: "none", label: "No icon" },
 ]
-const LEDGER_TABLE_GRID_CLASS = "grid grid-cols-[24px_minmax(92px,0.8fr)_minmax(180px,2fr)_minmax(112px,1fr)_minmax(152px,1.2fr)_20px_minmax(84px,0.7fr)_88px] items-center gap-4"
+const LEDGER_TABLE_GRID_CLASS = "grid grid-cols-[1fr_auto_auto] gap-2 md:grid-cols-[24px_minmax(92px,0.8fr)_minmax(180px,2fr)_minmax(112px,1fr)_minmax(152px,1.2fr)_20px_minmax(84px,0.7fr)_88px] md:items-center md:gap-4"
 
 function renderIconFilterOption(optionId = "") {
     if (optionId === "ai") {
@@ -441,6 +442,7 @@ function LedgerEntriesTable({
     })
     const [categoryPickerState, setCategoryPickerState] = useState({
         entryId: "",
+        splitRowLocalId: "",
         isEditing: false,
         search: "",
         isCreating: false,
@@ -704,6 +706,7 @@ function LedgerEntriesTable({
         categoryPickerAnchorRef.current = null
         setCategoryPickerState({
             entryId: "",
+            splitRowLocalId: "",
             isEditing: false,
             search: "",
             isCreating: false,
@@ -774,7 +777,9 @@ function LedgerEntriesTable({
         const entryId = String(payload?.entryId || "").trim()
         if (!entryId || !payload?.anchorElement) return
 
+        const splitRowLocalId = String(payload?.splitRowLocalId || "").trim()
         const isSameEntryOpen = categoryPickerState.entryId === entryId
+            && categoryPickerState.splitRowLocalId === splitRowLocalId
         if (isSameEntryOpen) {
             closeCategoryPicker()
             return
@@ -790,6 +795,7 @@ function LedgerEntriesTable({
 
         setCategoryPickerState({
             entryId,
+            splitRowLocalId,
             isEditing: Boolean(payload?.isEditing),
             search: "",
             isCreating: false,
@@ -801,7 +807,7 @@ function LedgerEntriesTable({
             type: defaultType,
             description: "",
         })
-    }, [categoryPickerState.entryId, closeCategoryPicker])
+    }, [categoryPickerState.entryId, categoryPickerState.splitRowLocalId, closeCategoryPicker])
 
     const categoryPickerOptions = useMemo(() => {
         const normalizedSearch = String(categoryPickerState.search || "").trim().toLowerCase()
@@ -1519,6 +1525,15 @@ function LedgerEntriesTable({
     const selectCategoryFromPicker = (categoryName) => {
         if (!categoryPickerState.entryId) return
 
+        if (categoryPickerState.splitRowLocalId) {
+            const matched = categories.find((cat) => cat.name === categoryName)
+            updateSplitRow(categoryPickerState.splitRowLocalId, {
+                categoryId: matched?.id || "",
+            })
+            closeCategoryPicker()
+            return
+        }
+
         if (categoryPickerState.isEditing) {
             setEditingDraft((current) => ({
                 ...current,
@@ -1775,7 +1790,7 @@ function LedgerEntriesTable({
                 <div className="relative h-full min-h-0 min-w-0 flex flex-col">
                     <div className={`sticky top-0 relative bg-white ${showFilterModal ? "z-[130]" : "z-10"}`}>
                     <div className="pointer-events-none absolute inset-x-0 -top-4 h-4 bg-white" aria-hidden="true" />
-                    <div className="grid min-w-0 grid-cols-[minmax(140px,max-content)_1fr] items-center gap-4 rounded-t-lg bg-gray-100 px-3 py-2.5 shadow-sm">
+                    <div className="flex min-w-0 flex-col gap-2 rounded-t-lg bg-gray-100 px-3 py-2.5 shadow-sm md:grid md:grid-cols-[minmax(140px,max-content)_1fr] md:items-center md:gap-4">
                             <div className="flex items-center gap-2 text-sm">
                                 <input
                                     ref={selectAllRef}
@@ -1791,8 +1806,8 @@ function LedgerEntriesTable({
                                         : ""}
                                 </h4>
                             </div>
-                        <div className="relative flex items-center gap-3">
-                            <div className="relative min-w-[220px] flex-1">
+                        <div className="relative flex flex-wrap items-center gap-2 md:flex-nowrap md:gap-3">
+                            <div className="relative w-full flex-1 md:min-w-[220px]">
                                 <input
                                     type="text"
                                     placeholder="Search"
@@ -1825,7 +1840,7 @@ function LedgerEntriesTable({
 
                             <button
                                 type="button"
-                                className={`inline-flex items-center gap-1.5 rounded-md border bg-white px-2.5 py-2 text-sm font-medium hover:bg-gray-50 ${
+                                className={`inline-flex shrink-0 items-center gap-1.5 rounded-md border bg-white px-2.5 py-2 text-sm font-medium hover:bg-gray-50 ${
                                     activeFiltersCount > 0
                                         ? "border-gray-900 text-gray-900"
                                         : "border-gray-200 text-gray-700"
@@ -1844,7 +1859,7 @@ function LedgerEntriesTable({
 
                             <button
                                 type="button"
-                                className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-2 text-sm font-medium ${
+                                className={`inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-2 text-sm font-medium ${
                                     isCategorizingWithLlm
                                         ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
                                         : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
@@ -1856,14 +1871,15 @@ function LedgerEntriesTable({
                                     <path d="M12 3v18" />
                                     <path d="M3 12h18" />
                                 </svg>
-                                <span>{isCategorizingWithLlm ? "Categorizing..." : "Categorize with AI"}</span>
+                                <span className="hidden sm:inline">{isCategorizingWithLlm ? "Categorizing..." : "Categorize with AI"}</span>
+                                <span className="sm:hidden">{isCategorizingWithLlm ? "AI..." : "AI"}</span>
                             </button>
 
                         </div>
                     </div>
                     </div>
 
-                    <div className={`${LEDGER_TABLE_GRID_CLASS} bg-white px-2 py-3 text-sm font-semibold`}>
+                    <div className={`${LEDGER_TABLE_GRID_CLASS} hidden bg-white px-2 py-3 text-sm font-semibold md:grid`}>
                         <span className="block h-4 w-4" aria-hidden="true" />
                         <h4>Date</h4>
                         <h4>Description</h4>
@@ -1954,40 +1970,52 @@ function LedgerEntriesTable({
                                                         : "bg-zinc-50"
                                             }`}
                                         >
-                                            <span className="block h-4 w-4" />
-                                            <span />
-                                            <span />
-                                            <span />
-                                            <div className="relative w-full">
-                                                <select
-                                                    className="w-full rounded-full border-3 border-gray-100 bg-white p-2 pl-3 pr-8 text-sm appearance-none"
-                                                    value={row.categoryId}
-                                                    onChange={(e) => updateSplitRow(row.localId, { categoryId: e.target.value })}
-                                                >
-                                                    <option value="">Uncategorized</option>
-                                                    {categories.map((category) => (
-                                                        <option key={category.id} value={category.id}>
-                                                            {category.name}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                                <svg
-                                                    className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
-                                                    viewBox="0 0 24 24"
-                                                    fill="none"
-                                                    stroke="currentColor"
-                                                    strokeWidth="2.5"
-                                                    strokeLinecap="round"
-                                                    strokeLinejoin="round"
-                                                >
-                                                    <path d="M6 9l6 6 6-6" />
-                                                </svg>
-                                            </div>
-                                            <span />
+                                            <span className="hidden h-4 w-4 md:block" />
+                                            <span className="hidden md:block" />
+                                            <span className="hidden md:block" />
+                                            <span className="hidden md:block" />
+                                            {(() => {
+                                                const selectedCategory = categories.find((cat) => cat.id === row.categoryId)
+                                                const splitAmount = Number(row.amount || 0)
+                                                const displayedSplitCategory = selectedCategory?.name
+                                                    || (splitAmount >= 0 ? "Uncategorized income" : "Uncategorized expenses")
+                                                const isSplitPickerOpen = categoryPickerState.entryId === entry.id
+                                                    && categoryPickerState.splitRowLocalId === row.localId
+                                                return (
+                                                    <div className="relative w-full">
+                                                        <button
+                                                            type="button"
+                                                            className={`w-full rounded-full border-3 bg-white p-2 pl-3 pr-8 text-left text-sm ${isSplitPickerOpen ? "border-gray-300" : "border-gray-100"}`}
+                                                            onClick={(event) => openCategoryPicker({
+                                                                entryId: entry.id,
+                                                                splitRowLocalId: row.localId,
+                                                                anchorElement: event.currentTarget,
+                                                                isEditing: false,
+                                                                currentCategory: displayedSplitCategory,
+                                                                amount: splitAmount,
+                                                            })}
+                                                        >
+                                                            <span className="block truncate">{displayedSplitCategory}</span>
+                                                        </button>
+                                                        <svg
+                                                            className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
+                                                            viewBox="0 0 24 24"
+                                                            fill="none"
+                                                            stroke="currentColor"
+                                                            strokeWidth="2.5"
+                                                            strokeLinecap="round"
+                                                            strokeLinejoin="round"
+                                                        >
+                                                            <path d="M6 9l6 6 6-6" />
+                                                        </svg>
+                                                    </div>
+                                                )
+                                            })()}
+                                            <span className="hidden md:block" />
                                             <input
                                                 type="number"
                                                 step="0.01"
-                                                className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-right text-sm"
+                                                className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-right text-sm max-md:w-24"
                                                 value={row.amount}
                                                 onChange={(e) => updateSplitRow(row.localId, { amount: e.target.value })}
                                             />
@@ -2016,11 +2044,11 @@ function LedgerEntriesTable({
                                             index % 2 === 0 ? "bg-gray-100" : "bg-white"
                                         }`}
                                     >
-                                        <span className="block h-4 w-4" />
-                                        <span />
-                                        <span />
-                                        <span />
-                                        <div className="flex items-center justify-between gap-2">
+                                        <span className="hidden h-4 w-4 md:block" />
+                                        <span className="hidden md:block" />
+                                        <span className="hidden md:block" />
+                                        <span className="hidden md:block" />
+                                        <div className="flex items-center justify-between gap-2 max-md:col-span-2 md:col-auto">
                                             <div className="flex items-center gap-2">
                                                 <button
                                                     type="button"
@@ -2078,6 +2106,36 @@ function LedgerEntriesTable({
                                             <span />
                                         </div>
                                     )}
+
+                                    <div
+                                        className={`flex items-center justify-end gap-2 border-t border-gray-200 px-2 py-3 ${
+                                            index % 2 === 0 ? "bg-gray-100" : "bg-white"
+                                        }`}
+                                    >
+                                        <button
+                                            type="button"
+                                            className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                                            onClick={() => cancelSplitEntry()}
+                                            disabled={isSavingSplit}
+                                        >
+                                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M18 6 6 18" />
+                                                <path d="m6 6 12 12" />
+                                            </svg>
+                                            Cancel
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="inline-flex items-center gap-1.5 rounded-md bg-gray-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:bg-gray-300"
+                                            onClick={() => saveSplitEntry(entry)}
+                                            disabled={isSavingSplit}
+                                        >
+                                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="m20 6-11 11-5-5" />
+                                            </svg>
+                                            {isSavingSplit ? "Saving…" : "Save split"}
+                                        </button>
+                                    </div>
                                 </>
                             )}
 
@@ -2362,26 +2420,15 @@ function LedgerEntriesTable({
 
                                     <section className="flex flex-col gap-2 rounded-lg border border-gray-200 bg-white p-3.5 md:col-span-2">
                                         <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Date range</p>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <label className="flex flex-col gap-1 text-xs text-gray-600">
-                                                From
-                                                <input
-                                                    type="date"
-                                                    className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm"
-                                                    value={draftFilters.fromDate}
-                                                    onChange={(e) => setDraftFilters((current) => ({ ...current, fromDate: e.target.value }))}
-                                                />
-                                            </label>
-                                            <label className="flex flex-col gap-1 text-xs text-gray-600">
-                                                To
-                                                <input
-                                                    type="date"
-                                                    className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm"
-                                                    value={draftFilters.toDate}
-                                                    onChange={(e) => setDraftFilters((current) => ({ ...current, toDate: e.target.value }))}
-                                                />
-                                            </label>
-                                        </div>
+                                        <DateRangePicker
+                                            value={{ from: draftFilters.fromDate, to: draftFilters.toDate }}
+                                            onChange={(next) => setDraftFilters((current) => ({
+                                                ...current,
+                                                fromDate: next.from || "",
+                                                toDate: next.to || "",
+                                            }))}
+                                            align="start"
+                                        />
                                     </section>
 
                                     <section className="flex flex-col gap-2 rounded-lg border border-gray-200 bg-white p-3.5">
@@ -3285,48 +3332,47 @@ function LedgerEntriesTable({
                                             </div>
                                         ) : null}
 
-                                        <div className="mt-4 overflow-x-auto rounded-xl border border-gray-200 bg-white">
-                                            <table className="min-w-[760px] w-max border-collapse">
+                                        <div className="mt-4 -mx-4 overflow-x-auto rounded-xl border-y border-gray-200 bg-white sm:mx-0 sm:rounded-xl sm:border">
+                                            <table className="w-max min-w-full border-collapse text-xs sm:text-sm">
                                                 <thead>
                                                     <tr className="border-b border-gray-200 bg-gray-100">
                                                         {uploadedFile.columns.map((column) => (
-                                                            <th key={column} className="min-w-[150px] px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-600">
-                                                            {uploadedFile.isEditingMapping ? (
-                                                                <>
-                                                                    <select
-                                                                        className={`w-full rounded-full border-3 bg-white p-2 pl-3 pr-8 text-xs font-medium appearance-none outline-none ${
-                                                                            hasDuplicateInFile &&
-                                                                            uploadedFile.columnRoles[column] !== "ignore" &&
-                                                                            duplicatedTargets.includes(uploadedFile.columnRoles[column])
-                                                                                ? "border-rose-300 text-rose-700"
-                                                                                : "border-gray-100 text-gray-700"
-                                                                        }`}
-                                                                        value={uploadedFile.columnRoles[column] || "ignore"}
-                                                                        onChange={(e) =>
-                                                                            updateFileColumnRole(uploadedFile.id, column, e.target.value)
-                                                                        }
-                                                                    >
-                                                                        {CSV_TARGET_FIELDS.map((targetField) => (
-                                                                            <option key={targetField.value} value={targetField.value}>
-                                                                                {targetField.label}
-                                                                            </option>
-                                                                        ))}
-                                                                    </select>
-                                                                    <svg
-                                                                        className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
-                                                                        viewBox="0 0 24 24"
-                                                                        fill="none"
-                                                                        stroke="currentColor"
-                                                                        strokeWidth="2.5"
-                                                                        strokeLinecap="round"
-                                                                        strokeLinejoin="round"
-                                                                    >
-                                                                        <path d="M6 9l6 6 6-6" />
-                                                                    </svg>
-                                                                </>
-                                                            ) : (
-                                                                <span>{getTargetFieldLabel(uploadedFile.columnRoles[column])}</span>
-                                                            )}
+                                                            <th key={column} className="min-w-[140px] border-r border-gray-200 px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-gray-600 last:border-r-0 sm:min-w-[160px] sm:px-3 sm:text-[11px]">
+                                                                <div className="mb-1.5 truncate text-gray-500" title={column}>{column}</div>
+                                                                {uploadedFile.isEditingMapping ? (
+                                                                    <div className="relative">
+                                                                        <select
+                                                                            className={`w-full appearance-none rounded-md border bg-white px-2 py-1.5 pr-7 text-xs font-medium outline-none ${
+                                                                                hasDuplicateInFile &&
+                                                                                uploadedFile.columnRoles[column] !== "ignore" &&
+                                                                                duplicatedTargets.includes(uploadedFile.columnRoles[column])
+                                                                                    ? "border-rose-300 text-rose-700"
+                                                                                    : "border-gray-300 text-gray-700"
+                                                                            }`}
+                                                                            value={uploadedFile.columnRoles[column] || "ignore"}
+                                                                            onChange={(e) => updateFileColumnRole(uploadedFile.id, column, e.target.value)}
+                                                                        >
+                                                                            {CSV_TARGET_FIELDS.map((targetField) => (
+                                                                                <option key={targetField.value} value={targetField.value}>
+                                                                                    {targetField.label}
+                                                                                </option>
+                                                                            ))}
+                                                                        </select>
+                                                                        <svg
+                                                                            className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-500"
+                                                                            viewBox="0 0 24 24"
+                                                                            fill="none"
+                                                                            stroke="currentColor"
+                                                                            strokeWidth="2.5"
+                                                                            strokeLinecap="round"
+                                                                            strokeLinejoin="round"
+                                                                        >
+                                                                            <path d="M6 9l6 6 6-6" />
+                                                                        </svg>
+                                                                    </div>
+                                                                ) : (
+                                                                    <span className="text-gray-700">{getTargetFieldLabel(uploadedFile.columnRoles[column])}</span>
+                                                                )}
                                                             </th>
                                                         ))}
                                                     </tr>
@@ -3335,12 +3381,12 @@ function LedgerEntriesTable({
                                                     {uploadedFile.previewRows.map((row, index) => (
                                                         <tr
                                                             key={`${uploadedFile.id}-row-${index}`}
-                                                            className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}
+                                                            className={`border-b border-gray-100 last:border-b-0 ${index % 2 === 0 ? "bg-white" : "bg-gray-50"}`}
                                                         >
                                                             {uploadedFile.columns.map((column) => (
                                                                 <td
                                                                     key={`${uploadedFile.id}-row-${index}-${column}`}
-                                                                    className="max-w-[260px] px-3 py-2 text-sm text-gray-700"
+                                                                    className="max-w-[160px] border-r border-gray-100 px-2 py-1.5 text-xs text-gray-700 last:border-r-0 sm:max-w-[220px] sm:px-3 sm:py-2 sm:text-sm"
                                                                     title={String(row[column] || "")}
                                                                 >
                                                                     <span className="block truncate">

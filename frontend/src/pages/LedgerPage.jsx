@@ -1524,13 +1524,13 @@ function LedgerPage() {
                     />
                 </Suspense>
 
-                <section className={`min-h-[460px] min-w-0 rounded-lg border border-gray-200 bg-white p-4 flex flex-col ${activeSection === "ledger" ? "overflow-visible" : "overflow-hidden"}`}>
+                <section className={`min-h-[460px] min-w-0 rounded-lg border border-gray-200 bg-white p-3 flex flex-col sm:p-4 ${activeSection === "ledger" ? "overflow-visible" : "overflow-hidden"}`}>
                     {activeSection === "ledger" && (
                         <section className="min-h-0 min-w-0 h-full p-1 flex flex-col gap-3">
-                            <div className="relative z-20 flex items-center justify-between bg-white">
-                                <div>
+                            <div className="relative z-20 flex flex-wrap items-start justify-between gap-2 bg-white">
+                                <div className="min-w-0">
                                     <h3 className="text-base font-bold">Transactions</h3>
-                                    <p className="mt-1 text-sm text-gray-600">
+                                    <p className="mt-1 text-xs text-gray-600 sm:text-sm">
                                         {isLoadingTransactionsSummary ? (
                                             <span className="inline-flex items-center gap-1.5">
                                                 <span className="h-3 w-3 animate-spin rounded-full border-2 border-gray-300 border-t-gray-700" aria-hidden="true" />
@@ -1545,7 +1545,7 @@ function LedgerPage() {
                                 </div>
                                 <button
                                     type="button"
-                                    className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                                    className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
                                     onClick={() => setShowUploadModal(true)}
                                 >
                                     <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
@@ -1553,7 +1553,8 @@ function LedgerPage() {
                                         <path d="m7 9 5-5 5 5" />
                                         <path d="M20 16v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-3" />
                                     </svg>
-                                    <span>Upload Files</span>
+                                    <span className="hidden sm:inline">Upload Files</span>
+                                    <span className="sm:hidden">Upload</span>
                                 </button>
                             </div>
                             <div className="min-h-0 min-w-0 flex-1">
