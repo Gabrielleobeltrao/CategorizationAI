@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import MultiSelect from "../ui/MultiSelect"
+import TaskPrioritySelect from "./TaskPrioritySelect"
 
 const EMPTY_DRAFT = {
     title: "",
@@ -9,13 +10,6 @@ const EMPTY_DRAFT = {
     dueDate: "",
     priority: "low",
 }
-
-const PRIORITY_OPTIONS = [
-    { value: "low", label: "Low" },
-    { value: "medium", label: "Medium" },
-    { value: "high", label: "High" },
-    { value: "urgent", label: "Urgent" },
-]
 
 function buildDraftFromTask(task) {
     if (!task) return { ...EMPTY_DRAFT }
@@ -149,15 +143,11 @@ function TaskEditModal({
 
                     <label className="flex flex-col gap-1 text-xs text-gray-600">
                         Priority
-                        <select
+                        <TaskPrioritySelect
                             value={draft.priority}
-                            onChange={(e) => setDraft((d) => ({ ...d, priority: e.target.value }))}
-                            className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none"
-                        >
-                            {PRIORITY_OPTIONS.map((opt) => (
-                                <option key={opt.value} value={opt.value}>{opt.label}</option>
-                            ))}
-                        </select>
+                            onChange={(next) => setDraft((d) => ({ ...d, priority: next }))}
+                            disabled={isSaving}
+                        />
                     </label>
                 </div>
 
