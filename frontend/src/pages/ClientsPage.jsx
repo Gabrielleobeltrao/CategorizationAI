@@ -566,7 +566,7 @@ function ClientsPage() {
                     >
                         <span>Client</span>
                         {isOperationalStatusEnabled && (
-                            <span className="inline-flex items-center justify-center gap-1.5 text-center">
+                            <span className="inline-flex items-center justify-start gap-1.5 text-left">
                                 <span>Status</span>
                                 <OperationalStatusHelp />
                             </span>
@@ -606,7 +606,7 @@ function ClientsPage() {
                                         */}
                                         <div className="flex items-center justify-between gap-2 sm:contents">
                                             {isOperationalStatusEnabled && (
-                                                <div className="flex min-w-0 justify-start sm:justify-center">
+                                                <div className="flex min-w-0 justify-start">
                                                     <OperationalStatusBadge status={getEffectiveStatus(client.id)} />
                                                 </div>
                                             )}

@@ -69,19 +69,7 @@ function AiIconLegend({ align = "right" }) {
     const anchorClass = align === "left" ? "left-0" : "right-0"
 
     return (
-        <span ref={containerRef} className="relative inline-flex items-center gap-1.5">
-            <span className="inline-flex items-center gap-1">
-                {LEGEND_ITEMS.map((item) => (
-                    <span
-                        key={item.id}
-                        className={`inline-flex h-4 w-4 items-center justify-center rounded-full p-0.5 ${item.toneClass}`}
-                        title={item.label}
-                        aria-label={item.label}
-                    >
-                        {item.icon}
-                    </span>
-                ))}
-            </span>
+        <span ref={containerRef} className="relative inline-flex items-center">
             <button
                 type="button"
                 className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-gray-300 text-[10px] font-bold text-gray-500 transition hover:border-gray-400 hover:text-gray-700"

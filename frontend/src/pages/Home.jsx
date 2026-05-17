@@ -353,7 +353,7 @@ function Home() {
 
   return (
     <section className="w-full p-4 sm:p-6 lg:p-8">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 sm:gap-5">
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 sm:gap-5">
         <header className="rounded-xl border border-gray-200 bg-white p-4">
           <h1 className="text-2xl font-bold sm:text-3xl">
             {dashboard.header.officeName || "Office"}
