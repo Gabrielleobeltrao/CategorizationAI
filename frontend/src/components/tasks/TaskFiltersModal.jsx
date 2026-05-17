@@ -119,7 +119,6 @@ function TaskFiltersModal({
                     <DateRangePicker
                         value={range}
                         onChange={(next) => setDraft((d) => ({ ...d, from: next.from, to: next.to }))}
-                        align="start"
                     />
                 </div>
 

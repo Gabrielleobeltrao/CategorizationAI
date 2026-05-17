@@ -2432,7 +2432,6 @@ function LedgerEntriesTable({
                                                 fromDate: next.from || "",
                                                 toDate: next.to || "",
                                             }))}
-                                            align="start"
                                         />
                                     </section>
 

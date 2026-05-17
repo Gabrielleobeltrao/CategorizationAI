@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { DayPicker } from "react-day-picker"
 import "react-day-picker/style.css"
 
@@ -73,13 +74,27 @@ const PRESETS = [
   },
 ]
 
-function DateRangePicker({ value, onChange, isLoading = false, align = "end", className = "" }) {
+// Layout constants kept in sync with the JSX width classes below. If you bump
+// the popover width, update DESIRED_POPOVER_WIDTH too so positioning math is
+// consistent.
+const DESIRED_POPOVER_WIDTH = 480 // 30rem
+const VIEWPORT_PADDING = 16 // 1rem on each side
+const POPOVER_GAP = 4 // space between trigger and popover edge
+
+function DateRangePicker({ value, onChange, isLoading = false, className = "" }) {
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState(() => ({
     from: fromIsoDate(value?.from),
     to: fromIsoDate(value?.to),
   }))
+  // Position the popover with viewport coordinates and render it via a portal
+  // attached to document.body. That sidesteps any "ancestor with overflow or
+  // transform" caveats — the popover is always positioned against the viewport
+  // and clamped horizontally + vertically before being shown.
+  const [popoverStyle, setPopoverStyle] = useState({ top: 0, left: 0, width: DESIRED_POPOVER_WIDTH })
+  const [isMeasured, setIsMeasured] = useState(false)
   const wrapperRef = useRef(null)
+  const popoverRef = useRef(null)
 
   useEffect(() => {
     setDraft({ from: fromIsoDate(value?.from), to: fromIsoDate(value?.to) })
@@ -88,9 +103,9 @@ function DateRangePicker({ value, onChange, isLoading = false, align = "end", cl
   useEffect(() => {
     if (!open) return undefined
     function onDocPointerDown(event) {
-      if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
-        setOpen(false)
-      }
+      if (wrapperRef.current?.contains(event.target)) return
+      if (popoverRef.current?.contains(event.target)) return
+      setOpen(false)
     }
     function onKey(event) {
       if (event.key === "Escape") setOpen(false)
@@ -102,6 +117,70 @@ function DateRangePicker({ value, onChange, isLoading = false, align = "end", cl
       document.removeEventListener("keydown", onKey)
     }
   }, [open])
+
+  const measurePopover = useCallback(() => {
+    if (typeof window === "undefined") return
+    const trigger = wrapperRef.current?.querySelector("button[type='button']")
+    if (!trigger) return
+
+    const triggerRect = trigger.getBoundingClientRect()
+    const viewportW = window.innerWidth
+    const viewportH = window.innerHeight
+    const maxWidth = Math.max(160, viewportW - VIEWPORT_PADDING * 2)
+    const width = Math.min(DESIRED_POPOVER_WIDTH, maxWidth)
+
+    // Use the popover's actual rendered height when we have it; otherwise fall
+    // back to a conservative estimate so the first frame still picks a sensible
+    // placement.
+    const measuredHeight = popoverRef.current?.getBoundingClientRect().height || 0
+    const popoverHeight = measuredHeight > 0 ? measuredHeight : 420
+
+    // Horizontal: anchor to trigger.left (extends right). Flip to right-aligned
+    // if it would overflow the viewport, then clamp on both sides.
+    let viewportLeft = triggerRect.left
+    if (viewportLeft + width > viewportW - VIEWPORT_PADDING) {
+      viewportLeft = triggerRect.right - width
+    }
+    if (viewportLeft < VIEWPORT_PADDING) viewportLeft = VIEWPORT_PADDING
+    if (viewportLeft + width > viewportW - VIEWPORT_PADDING) {
+      viewportLeft = viewportW - VIEWPORT_PADDING - width
+    }
+
+    // Vertical: prefer below trigger. If the popover would spill past the
+    // viewport bottom, flip above. Last resort, clamp to the bottom edge.
+    let viewportTop = triggerRect.bottom + POPOVER_GAP
+    if (viewportTop + popoverHeight > viewportH - VIEWPORT_PADDING) {
+      const aboveTop = triggerRect.top - POPOVER_GAP - popoverHeight
+      if (aboveTop >= VIEWPORT_PADDING) {
+        viewportTop = aboveTop
+      } else {
+        viewportTop = Math.max(VIEWPORT_PADDING, viewportH - VIEWPORT_PADDING - popoverHeight)
+      }
+    }
+
+    setPopoverStyle({ top: viewportTop, left: viewportLeft, width })
+    setIsMeasured(true)
+  }, [])
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setIsMeasured(false)
+      return undefined
+    }
+    measurePopover()
+    return undefined
+  }, [open, measurePopover])
+
+  useEffect(() => {
+    if (!open) return undefined
+    const handleResize = () => measurePopover()
+    window.addEventListener("resize", handleResize)
+    window.addEventListener("scroll", handleResize, true)
+    return () => {
+      window.removeEventListener("resize", handleResize)
+      window.removeEventListener("scroll", handleResize, true)
+    }
+  }, [open, measurePopover])
 
   const handleApply = () => {
     if (!draft.from || !draft.to) return
@@ -140,8 +219,21 @@ function DateRangePicker({ value, onChange, isLoading = false, align = "end", cl
         </svg>
       </button>
 
-      {open && (
-        <div className={`absolute left-0 right-0 z-50 mt-1 flex max-w-[calc(100vw-1rem)] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-[0_18px_48px_-12px_rgba(15,23,42,0.25)] md:right-auto md:w-[30rem] md:flex-row ${align === "end" ? "md:left-auto md:right-0" : "md:left-0"}`}>
+      {open && typeof document !== "undefined" && createPortal(
+        <div
+          ref={popoverRef}
+          className="fixed z-[260] flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-[0_18px_48px_-12px_rgba(15,23,42,0.25)] md:flex-row"
+          style={{
+            top: `${popoverStyle.top}px`,
+            left: `${popoverStyle.left}px`,
+            width: `${popoverStyle.width}px`,
+            // Hidden until measurePopover has clamped both horizontal and
+            // vertical position to the viewport. Stays in layout so we can
+            // read its actual height for the vertical flip.
+            visibility: isMeasured ? "visible" : "hidden",
+            pointerEvents: isMeasured ? "auto" : "none",
+          }}
+        >
           <div className="flex shrink-0 flex-col gap-0.5 border-b border-gray-100 p-3 md:w-40 md:border-b-0 md:border-r">
             {PRESETS.map((preset) => (
               <button
@@ -191,7 +283,8 @@ function DateRangePicker({ value, onChange, isLoading = false, align = "end", cl
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )

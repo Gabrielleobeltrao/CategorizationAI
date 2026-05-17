@@ -586,7 +586,6 @@ function ProfitLossPage() {
                       setRangeField("fromDate", next.from)
                       setRangeField("toDate", next.to)
                     }}
-                    align="start"
                   />
                 )}
               </div>
