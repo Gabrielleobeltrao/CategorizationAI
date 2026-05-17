@@ -96,6 +96,25 @@ const STATUS_OPTIONS = [
     { id: "done", label: "Done" },
 ]
 
+const STATUS_LOG_META = {
+    open: { label: "Open", dotClass: "bg-gray-400", textClass: "text-gray-700" },
+    in_progress: { label: "In progress", dotClass: "bg-amber-500", textClass: "text-amber-700" },
+    done: { label: "Done", dotClass: "bg-emerald-500", textClass: "text-emerald-700" },
+}
+
+function formatLogTimestamp(value) {
+    if (!value) return "—"
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return "—"
+    return new Intl.DateTimeFormat("en-US", {
+        month: "short",
+        day: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+    }).format(date)
+}
+
 const PRIORITY_LABELS = {
     low: { label: "Low", textClass: "text-gray-700" },
     medium: { label: "Medium", textClass: "text-sky-700" },
@@ -111,12 +130,16 @@ function TaskDetailsModal({
     onEdit,
     onChangeStatus,
     onDelete,
+    canViewStatusHistory = false,
 }) {
+    const [isStatusHistoryOpen, setIsStatusHistoryOpen] = useState(false)
     if (!task) return null
     const isDone = task.status === "done"
     const currentStatus = task.status || "open"
     const clients = Array.isArray(clientList) ? clientList.filter(Boolean) : []
     const assignees = Array.isArray(assigneeList) ? assigneeList.filter(Boolean) : []
+    const statusHistory = Array.isArray(task.statusHistory) ? task.statusHistory : []
+    const showStatusHistory = canViewStatusHistory && statusHistory.length > 0
 
     return (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
@@ -214,6 +237,57 @@ function TaskDetailsModal({
                                     </li>
                                 ))}
                             </ul>
+                        </section>
+                    )}
+
+                    {showStatusHistory && (
+                        <section className="mt-3 overflow-hidden rounded-xl border border-gray-200 bg-gray-50/60">
+                            <button
+                                type="button"
+                                onClick={() => setIsStatusHistoryOpen((current) => !current)}
+                                className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left transition hover:bg-gray-100/60"
+                                aria-expanded={isStatusHistoryOpen}
+                            >
+                                <span className="flex items-center gap-2">
+                                    <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Status history</span>
+                                    <span className="text-[11px] text-gray-400">({statusHistory.length})</span>
+                                </span>
+                                <svg
+                                    className={`h-4 w-4 shrink-0 text-gray-500 transition-transform ${isStatusHistoryOpen ? "rotate-180" : ""}`}
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2.2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    aria-hidden="true"
+                                >
+                                    <path d="m6 9 6 6 6-6" />
+                                </svg>
+                            </button>
+                            {isStatusHistoryOpen && (
+                                <ol className="flex flex-col gap-2 border-t border-gray-100 px-4 py-3">
+                                    {[...statusHistory]
+                                        .sort((a, b) => new Date(a?.at || 0).getTime() - new Date(b?.at || 0).getTime())
+                                        .map((entry, idx) => {
+                                            const meta = STATUS_LOG_META[entry?.status] || STATUS_LOG_META.open
+                                            const actor = assigneeList.find((profile) => String(profile?._id || profile?.id) === String(entry?.by || ""))
+                                            const actorLabel = actor?.name || actor?.email || ""
+                                            return (
+                                                <li key={`${entry?.status}-${idx}`} className="flex items-start gap-3">
+                                                    <span className={`mt-1 inline-block h-2 w-2 shrink-0 rounded-full ${meta.dotClass}`} aria-hidden="true" />
+                                                    <div className="flex min-w-0 flex-1 flex-col">
+                                                        <span className={`text-sm font-medium ${meta.textClass}`}>{meta.label}</span>
+                                                        <span className="text-[11px] text-gray-500">
+                                                            {formatLogTimestamp(entry?.at)}
+                                                            {actorLabel ? ` · ${actorLabel}` : ""}
+                                                        </span>
+                                                    </div>
+                                                </li>
+                                            )
+                                        })}
+                                </ol>
+                            )}
                         </section>
                     )}
                 </div>

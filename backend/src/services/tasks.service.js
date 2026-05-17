@@ -61,7 +61,9 @@ export async function updateTaskByIdService(id, patch, context = {}) {
     if (!existing) throw new Error("Task not found")
     ensureSameOffice(existing, context?.actorOfficeId)
 
-    return updateTaskById(id, patch || {})
+    return updateTaskById(id, patch || {}, {
+        actorProfileId: String(context?.actorProfileId || "").trim(),
+    })
 }
 
 export async function deleteTaskByIdService(id, context = {}) {

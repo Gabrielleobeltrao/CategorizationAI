@@ -13,6 +13,7 @@ import {
     updateTaskById,
     deleteTaskById,
 } from "../services/tasks.service"
+import { hasPermission } from "../utils/permissions"
 
 function toIdArray(task, plural, singular) {
     if (Array.isArray(task?.[plural])) return task[plural].map(String).filter(Boolean)
@@ -26,6 +27,7 @@ function TasksPage() {
     const { success, error } = useNotification()
 
     const officeId = String(profile?.officeId || "").trim()
+    const canViewStatusHistory = hasPermission(profile?.permissions, "tasks:readStatusHistory")
 
     const [tasks, setTasks] = useState([])
     const [clients, setClients] = useState([])
@@ -368,6 +370,7 @@ function TasksPage() {
                 onEdit={(task) => openEdit(task)}
                 onChangeStatus={handleChangeStatus}
                 onDelete={handleDelete}
+                canViewStatusHistory={canViewStatusHistory}
             />
 
             <TaskFiltersModal

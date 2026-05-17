@@ -20,6 +20,7 @@ import TaskCard from "../components/tasks/TaskCard"
 import TaskDetailsModal from "../components/tasks/TaskDetailsModal"
 import TaskEditModal from "../components/tasks/TaskEditModal"
 import TasksCalendar from "../components/tasks/TasksCalendar"
+import { hasPermission } from "../utils/permissions"
 
 function formatOpenedAt(value) {
   const date = new Date(value)
@@ -481,6 +482,7 @@ function Home() {
         onClose={() => setViewingTask(null)}
         onEdit={(task) => handleHomeTaskEdit(task)}
         onChangeStatus={handleHomeTaskChangeStatus}
+        canViewStatusHistory={hasPermission(profile?.permissions, "tasks:readStatusHistory")}
       />
 
       <TaskEditModal

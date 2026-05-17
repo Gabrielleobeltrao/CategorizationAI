@@ -42,6 +42,7 @@ export const PERMISSION_DEFINITIONS = [
   { key: "tasks:create", module: "Operations CRM", group: "Tasks", label: "Create tasks" },
   { key: "tasks:update", module: "Operations CRM", group: "Tasks", label: "Update tasks" },
   { key: "tasks:delete", module: "Operations CRM", group: "Tasks", label: "Delete tasks" },
+  { key: "tasks:readStatusHistory", module: "Operations CRM", group: "Tasks", label: "View task status history" },
 ]
 
 export const PERMISSION_KEYS = PERMISSION_DEFINITIONS.map((item) => item.key)
@@ -62,6 +63,7 @@ export const ROLE_DEFINITIONS = [
       "userProfiles:read",
       "roles:read",
       "tasks:read",
+      "tasks:readStatusHistory",
       "overview:readOwn",
       "overview:read",
     ],

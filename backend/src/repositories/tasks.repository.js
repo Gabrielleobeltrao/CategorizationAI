@@ -49,12 +49,27 @@ function decorateTask(task) {
     const assigneeIds = Array.isArray(task.assigneeIds) && task.assigneeIds.length > 0
         ? task.assigneeIds
         : (task.assigneeId ? [String(task.assigneeId)] : [])
+    // Synthesize a minimal status history for legacy tasks that predate the
+    // log field, so the UI never has to handle a missing array.
+    let statusHistory = Array.isArray(task.statusHistory) ? task.statusHistory : null
+    if (!statusHistory || statusHistory.length === 0) {
+        statusHistory = []
+        if (task.createdAt) {
+            statusHistory.push({ status: "open", at: task.createdAt, by: task.createdBy || "" })
+        }
+        if (task.status === "done" && task.doneAt) {
+            statusHistory.push({ status: "done", at: task.doneAt, by: "" })
+        } else if (task.status === "in_progress") {
+            statusHistory.push({ status: "in_progress", at: task.updatedAt || task.createdAt, by: "" })
+        }
+    }
     return {
         ...task,
         clientIds,
         assigneeIds,
         clientId: clientIds[0] || null,
         assigneeId: assigneeIds[0] || null,
+        statusHistory,
     }
 }
 
@@ -100,6 +115,7 @@ export async function createTask(input) {
     const clientIds = normalizeIdArray(input.clientIds, input.clientId)
     const assigneeIds = normalizeIdArray(input.assigneeIds, input.assigneeId)
 
+    const createdBy = String(input.createdBy || "").trim()
     const doc = {
         officeId: String(input.officeId || "").trim(),
         clientIds,
@@ -112,7 +128,8 @@ export async function createTask(input) {
         status,
         priority,
         doneAt: status === "done" ? now : null,
-        createdBy: String(input.createdBy || "").trim(),
+        statusHistory: [{ status, at: now, by: createdBy }],
+        createdBy,
         createdAt: now,
         updatedAt: now,
     }
@@ -189,11 +206,12 @@ export async function getTaskById(id) {
     return doc ? decorateTask(doc) : null
 }
 
-export async function updateTaskById(id, patch) {
+export async function updateTaskById(id, patch, { actorProfileId } = {}) {
     const db = getDB()
     const now = new Date()
 
     const $set = { updatedAt: now }
+    const operations = { $set }
 
     if (patch.clientIds !== undefined || patch.clientId !== undefined) {
         const clientIds = normalizeIdArray(
@@ -221,17 +239,29 @@ export async function updateTaskById(id, patch) {
         $set.status = nextStatus
 
         const existing = await db.collection(COLLECTION).findOne({ _id: new ObjectId(id) })
-        const prevStatus = existing?.status === "done" ? "done" : "open"
+        const prevStatus = normalizeStatus(existing?.status || "open")
         if (nextStatus === "done" && prevStatus !== "done") {
             $set.doneAt = now
         } else if (nextStatus !== "done" && prevStatus === "done") {
             $set.doneAt = null
         }
+
+        // Append a history entry only when the status actually changes — avoids
+        // noisy duplicates if the client PATCHes the same value.
+        if (nextStatus !== prevStatus) {
+            operations.$push = {
+                statusHistory: {
+                    status: nextStatus,
+                    at: now,
+                    by: String(actorProfileId || "").trim(),
+                },
+            }
+        }
     }
 
     const updated = await db.collection(COLLECTION).findOneAndUpdate(
         { _id: new ObjectId(id) },
-        { $set },
+        operations,
         { returnDocument: "after" }
     )
     return updated ? decorateTask(updated) : updated
