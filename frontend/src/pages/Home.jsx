@@ -364,7 +364,7 @@ function Home() {
         </header>
 
         <FeatureGate flag="crm">
-          <TasksCalendar tasks={calendarTasks} onSelectTask={setViewingTask} defaultMode="week" />
+          <TasksCalendar tasks={calendarTasks} onSelectTask={setViewingTask} defaultMode="day" />
 
           <HomeTasksCard
             title="Your tasks"

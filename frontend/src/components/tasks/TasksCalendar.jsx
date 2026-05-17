@@ -38,6 +38,12 @@ function addWeeks(date, n) {
   return d
 }
 
+function addDays(date, n) {
+  const d = new Date(date)
+  d.setDate(d.getDate() + n)
+  return d
+}
+
 function isSameDay(a, b) {
   return (
     a.getFullYear() === b.getFullYear() &&
@@ -65,8 +71,10 @@ function getWeekGrid(cursor) {
   })
 }
 
-function TasksCalendar({ tasks = [], onSelectTask, defaultMode = "month" }) {
-  const [mode, setMode] = useState(defaultMode === "week" ? "week" : "month")
+const ALLOWED_MODES = new Set(["day", "week", "month"])
+
+function TasksCalendar({ tasks = [], onSelectTask, defaultMode = "day" }) {
+  const [mode, setMode] = useState(ALLOWED_MODES.has(defaultMode) ? defaultMode : "day")
   const [cursor, setCursor] = useState(() => new Date())
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches
@@ -80,7 +88,9 @@ function TasksCalendar({ tasks = [], onSelectTask, defaultMode = "month" }) {
     return () => query.removeEventListener("change", onChange)
   }, [])
 
-  const effectiveMode = isMobile ? "week" : mode
+  // On mobile, "month" collapses to "week" to avoid the cramped grid; "day"
+  // works fine on mobile so it's preserved as-is.
+  const effectiveMode = isMobile && mode === "month" ? "week" : mode
 
   const tasksByDate = useMemo(() => {
     const map = new Map()
@@ -93,15 +103,25 @@ function TasksCalendar({ tasks = [], onSelectTask, defaultMode = "month" }) {
     return map
   }, [tasks])
 
-  const grid = effectiveMode === "month" ? getMonthGrid(cursor) : getWeekGrid(cursor)
+  const grid = effectiveMode === "month"
+    ? getMonthGrid(cursor)
+    : effectiveMode === "week"
+      ? getWeekGrid(cursor)
+      : [startOfDay(cursor)]
   const today = useMemo(() => startOfDay(new Date()), [])
 
   const headerLabel = effectiveMode === "month"
     ? new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" }).format(cursor)
-    : `${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(grid[0])} – ${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(grid[6])}`
+    : effectiveMode === "week"
+      ? `${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(grid[0])} – ${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(grid[6])}`
+      : new Intl.DateTimeFormat("en-US", { weekday: "long", month: "short", day: "numeric", year: "numeric" }).format(grid[0])
 
   const navigate = (direction) => {
-    setCursor((current) => (effectiveMode === "month" ? addMonths(current, direction) : addWeeks(current, direction)))
+    setCursor((current) => {
+      if (effectiveMode === "month") return addMonths(current, direction)
+      if (effectiveMode === "week") return addWeeks(current, direction)
+      return addDays(current, direction)
+    })
   }
 
   return (
@@ -138,16 +158,17 @@ function TasksCalendar({ tasks = [], onSelectTask, defaultMode = "month" }) {
           </button>
         </div>
 
-        <div className="hidden rounded-md border border-gray-200 p-0.5 md:inline-flex">
+        <div className="inline-flex rounded-md border border-gray-200 p-0.5">
           {[
-            { id: "month", label: "Month" },
+            { id: "day", label: "Day" },
             { id: "week", label: "Week" },
+            { id: "month", label: "Month", desktopOnly: true },
           ].map((option) => (
             <button
               key={option.id}
               type="button"
               onClick={() => setMode(option.id)}
-              className={`rounded px-3 py-1 text-xs font-medium transition-colors ${
+              className={`rounded px-3 py-1 text-xs font-medium transition-colors ${option.desktopOnly ? "hidden md:inline-block" : ""} ${
                 mode === option.id ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
               }`}
             >
