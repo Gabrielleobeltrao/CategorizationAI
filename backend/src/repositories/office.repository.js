@@ -4,6 +4,9 @@ import { getDB } from "../db.js"
 export const DEFAULT_OFFICE_FEATURES = Object.freeze({
     crm: false,
     crmOperationalStatus: false,
+    // Tasks ship enabled by default on offices that turn CRM on, but can be
+    // disabled per office for teams that don't want the Tasks workflow.
+    crmTasks: true,
     // Bookkeeping itself is always-on (core product) — its sub-features are flagged.
     bookkeepingLlm: true,
 })
@@ -16,12 +19,18 @@ export function normalizeOfficeFeatures(features) {
     const safeBookkeepingLlm = rawBookkeepingLlm === undefined || rawBookkeepingLlm === null
         ? true
         : Boolean(rawBookkeepingLlm)
+    // Tasks default to ON within CRM unless explicitly disabled.
+    const rawCrmTasks = features?.crmTasks
+    const wantsCrmTasks = rawCrmTasks === undefined || rawCrmTasks === null
+        ? true
+        : Boolean(rawCrmTasks)
     return {
         ...DEFAULT_OFFICE_FEATURES,
         ...(features && typeof features === "object" ? features : {}),
         crm: safeCrm,
         // Sub-flag stays off whenever the parent CRM add-on is disabled.
         crmOperationalStatus: safeCrm && Boolean(features?.crmOperationalStatus),
+        crmTasks: safeCrm && wantsCrmTasks,
         bookkeepingLlm: safeBookkeepingLlm,
     }
 }

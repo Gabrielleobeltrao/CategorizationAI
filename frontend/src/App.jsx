@@ -133,7 +133,7 @@ function App() {
                 <Route
                   path="/crm/tasks"
                   element={
-                    <FeatureGate flag="crm" fallback={<Navigate to="/home" replace />}>
+                    <FeatureGate flag="crmTasks" fallback={<Navigate to="/home" replace />}>
                       <TasksPage />
                     </FeatureGate>
                   }

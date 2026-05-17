@@ -67,6 +67,7 @@ function SettingsPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [isTogglingCrm, setIsTogglingCrm] = useState(false)
   const [isTogglingOperationalStatus, setIsTogglingOperationalStatus] = useState(false)
+  const [isTogglingCrmTasks, setIsTogglingCrmTasks] = useState(false)
   const [isTogglingBookkeepingLlm, setIsTogglingBookkeepingLlm] = useState(false)
   const { success, error } = useNotification()
 
@@ -195,6 +196,30 @@ function SettingsPage() {
       error(err.message || "Failed to update add-on")
     } finally {
       setIsTogglingBookkeepingLlm(false)
+    }
+  }
+
+  const handleToggleCrmTasks = async (nextEnabled) => {
+    if (!office?._id) {
+      error("Office not found")
+      return
+    }
+    if (!canEditOffice) {
+      error("You do not have permission to manage add-ons")
+      return
+    }
+    try {
+      setIsTogglingCrmTasks(true)
+      const updatedOffice = await updateOfficeFeatures(office._id, {
+        crmTasks: Boolean(nextEnabled),
+      })
+      setOffice(updatedOffice || null)
+      await refreshAuth({ force: true })
+      success(nextEnabled ? "Tasks enabled" : "Tasks disabled")
+    } catch (err) {
+      error(err.message || "Failed to update add-on")
+    } finally {
+      setIsTogglingCrmTasks(false)
     }
   }
 
@@ -636,30 +661,58 @@ function SettingsPage() {
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
                     Sub-features
                   </p>
-                  <div className="mt-2 flex items-start justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-900">Operational Status</p>
-                      <p className="mt-1 text-xs text-gray-500">
-                        Automatic per-client status driven by bookkeeping data (onboarding,
-                        importing, needs review, etc). A few states can be manually overridden.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={Boolean(office?.features?.crmOperationalStatus)}
-                      disabled={!canEditOffice || isTogglingOperationalStatus}
-                      onClick={() => handleToggleOperationalStatus(!office?.features?.crmOperationalStatus)}
-                      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-60 ${
-                        office?.features?.crmOperationalStatus ? "bg-gray-900" : "bg-gray-300"
-                      }`}
-                    >
-                      <span
-                        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
-                          office?.features?.crmOperationalStatus ? "translate-x-5" : "translate-x-0.5"
+                  <div className="mt-2 flex flex-col gap-2">
+                    <div className="flex items-start justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900">Tasks</p>
+                        <p className="mt-1 text-xs text-gray-500">
+                          Team-wide task board with assignees, due dates, priorities and
+                          status tracking. Turn off to hide the Tasks menu and pages.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={Boolean(office?.features?.crmTasks)}
+                        disabled={!canEditOffice || isTogglingCrmTasks}
+                        onClick={() => handleToggleCrmTasks(!office?.features?.crmTasks)}
+                        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                          office?.features?.crmTasks ? "bg-gray-900" : "bg-gray-300"
                         }`}
-                      />
-                    </button>
+                      >
+                        <span
+                          className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                            office?.features?.crmTasks ? "translate-x-5" : "translate-x-0.5"
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    <div className="flex items-start justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900">Operational Status</p>
+                        <p className="mt-1 text-xs text-gray-500">
+                          Automatic per-client status driven by bookkeeping data (onboarding,
+                          importing, needs review, etc). A few states can be manually overridden.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={Boolean(office?.features?.crmOperationalStatus)}
+                        disabled={!canEditOffice || isTogglingOperationalStatus}
+                        onClick={() => handleToggleOperationalStatus(!office?.features?.crmOperationalStatus)}
+                        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                          office?.features?.crmOperationalStatus ? "bg-gray-900" : "bg-gray-300"
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                            office?.features?.crmOperationalStatus ? "translate-x-5" : "translate-x-0.5"
+                          }`}
+                        />
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}

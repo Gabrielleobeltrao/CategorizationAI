@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useAuth } from "../contexts/auth.context"
 import { useNotification } from "../contexts/notification.context"
+import { useFeature } from "../hooks/useFeature"
 import { listTasks, updateTaskById, deleteTaskById } from "../services/tasks.service"
 import { listClientsByOfficeId } from "../services/clients.service"
 import { listEmployeesByOfficeId } from "../services/employees.service"
@@ -107,6 +108,7 @@ function buildCrmCustomData(tasks, range) {
 function CrmDashboardPage() {
   const { profile, office } = useAuth()
   const { error, success } = useNotification()
+  const isCrmTasksEnabled = useFeature("crmTasks")
   const officeId = String(profile?.officeId || "").trim()
   const officeName = String(office?.name || "").trim()
 
@@ -169,6 +171,14 @@ function CrmDashboardPage() {
     if (!officeId) return undefined
     let active = true
 
+    if (!isCrmTasksEnabled) {
+      // Tasks sub-feature is off — skip the API call entirely so we don't trip
+      // the 402 from requireFeature("crmTasks"). KPIs/charts render as empty.
+      setTasks([])
+      setIsLoading(false)
+      return () => { active = false }
+    }
+
     listTasks(taskFilters)
       .then((list) => {
         if (active) setTasks(Array.isArray(list) ? list : [])
@@ -181,7 +191,7 @@ function CrmDashboardPage() {
       })
 
     return () => { active = false }
-  }, [error, officeId, taskFilters])
+  }, [error, officeId, taskFilters, isCrmTasksEnabled])
 
   const { kpis: customKpis, trend: customTrend } = useMemo(
     () => buildCrmCustomData(tasks, customRange),
@@ -258,7 +268,9 @@ function CrmDashboardPage() {
           <div>
             <h1 className="text-2xl font-bold sm:text-3xl">CRM Operacional Overview</h1>
             <p className="mt-2 text-sm text-gray-500">
-              Task metrics across the selected scope.
+              {isCrmTasksEnabled
+                ? "Task metrics across the selected scope."
+                : "Enable a CRM sub-feature in Settings to populate this dashboard."}
             </p>
           </div>
           <OverviewScopeFilter
@@ -274,6 +286,7 @@ function CrmDashboardPage() {
           />
         </header>
 
+        {isCrmTasksEnabled ? (
         <PerformanceOverview
           title="Task Overview"
           subtitle="Task metrics for the selected range"
@@ -319,6 +332,7 @@ function CrmDashboardPage() {
             </div>
           }
         />
+        ) : null}
       </div>
 
       <TaskDetailsModal

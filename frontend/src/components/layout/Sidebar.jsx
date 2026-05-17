@@ -75,6 +75,7 @@ const crmNavItems = [
   {
     to: "/crm/tasks",
     label: "Tasks",
+    feature: "crmTasks",
     icon: (
       <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
         <rect x="4" y="5" width="16" height="15" rx="2" />
@@ -106,6 +107,9 @@ function Sidebar({ isCollapsed: rawCollapsed, onToggleCollapse, isMobileOpen = f
   const { success, error } = useNotification()
   const { profile: currentProfile, clearAuth } = useAuth()
   const isCrmEnabled = useFeature("crm")
+  const isCrmTasksEnabled = useFeature("crmTasks")
+  const featureFlagValues = { crm: isCrmEnabled, crmTasks: isCrmTasksEnabled }
+  const visibleCrmNavItems = crmNavItems.filter((item) => !item.feature || featureFlagValues[item.feature])
   const clientScopeMatch = matchPath("/clients/:clientId/*", location.pathname)
   const clientId = clientScopeMatch?.params?.clientId
   const [selectedClient, setSelectedClient] = useState(null)
@@ -339,7 +343,7 @@ function Sidebar({ isCollapsed: rawCollapsed, onToggleCollapse, isMobileOpen = f
               </nav>
             </div>
 
-            {isCrmEnabled && (
+            {isCrmEnabled && visibleCrmNavItems.length > 0 && (
               <div className="mt-4 border-t border-gray-100 pt-4">
                 {!isCollapsed && (
                   <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
@@ -347,7 +351,7 @@ function Sidebar({ isCollapsed: rawCollapsed, onToggleCollapse, isMobileOpen = f
                   </p>
                 )}
                 <nav className="flex flex-col gap-2">
-                  {crmNavItems.map((item) => (
+                  {visibleCrmNavItems.map((item) => (
                     <NavLink
                       key={item.to}
                       to={item.to}

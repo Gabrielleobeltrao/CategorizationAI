@@ -363,7 +363,7 @@ function Home() {
           </p>
         </header>
 
-        <FeatureGate flag="crm">
+        <FeatureGate flag="crmTasks">
           <TasksCalendar tasks={calendarTasks} onSelectTask={setViewingTask} defaultMode="day" />
 
           <HomeTasksCard
