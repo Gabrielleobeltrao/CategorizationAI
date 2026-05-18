@@ -41,8 +41,18 @@ function TasksPage() {
     const [isLoading, setIsLoading] = useState(true)
     const [appliedFilters, setAppliedFilters] = useState(EMPTY_TASK_FILTERS)
     const [isFiltersOpen, setIsFiltersOpen] = useState(false)
+    const [searchTerm, setSearchTerm] = useState("")
     const currentProfileId = String(profile?._id || profile?.id || "").trim()
     const activeFiltersCount = countActiveFilters(appliedFilters)
+
+    const displayedTasks = useMemo(() => {
+        const needle = searchTerm.trim().toLowerCase()
+        if (!needle) return tasks
+        return tasks.filter((task) => {
+            const haystack = [task.title || "", task.description || ""].join(" ").toLowerCase()
+            return haystack.includes(needle)
+        })
+    }, [tasks, searchTerm])
 
     const [isFormOpen, setIsFormOpen] = useState(false)
     const [editingTask, setEditingTask] = useState(null)
@@ -77,19 +87,6 @@ function TasksPage() {
             error(err.message || "Failed to load tasks")
         }
     }, [appliedFilters, error, officeId])
-
-    const tasksForMe = useMemo(
-        () => tasks.filter((t) => {
-            if (!currentProfileId) return false
-            const ids = toIdArray(t, "assigneeIds", "assigneeId")
-            return ids.includes(currentProfileId)
-        }),
-        [tasks, currentProfileId]
-    )
-    const tasksForTeam = useMemo(
-        () => tasks.filter((t) => toIdArray(t, "assigneeIds", "assigneeId").length === 0),
-        [tasks]
-    )
 
     useEffect(() => {
         let active = true
@@ -260,130 +257,151 @@ function TasksPage() {
     return (
         <section className="w-full p-4 sm:p-6 lg:p-8">
             <div className="mx-auto flex max-w-5xl flex-col gap-4 sm:gap-6">
-                <header className="flex flex-row items-start justify-between gap-3">
+                <header className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
-                        <h1 className="text-2xl font-bold sm:text-3xl">Tasks</h1>
+                        <h1 className="text-2xl font-bold sm:text-3xl">Tasks Manager</h1>
                         <p className="mt-2 hidden text-sm text-gray-500 sm:block">
-                            Operational tasks for your office. Link a client, an assignee or a due date — all optional.
+                            Supervisor view of every task across the office. Use filters to slice by assignee, status, priority or date.
                         </p>
                     </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                        <button
-                            type="button"
-                            onClick={() => setIsFiltersOpen(true)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-2.5 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 sm:gap-2 sm:px-3"
-                        >
-                            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M3 4h18l-7 9v6l-4-2v-4z" />
-                            </svg>
-                            <span className="hidden sm:inline">Filters</span>
-                            {activeFiltersCount > 0 && (
-                                <span className="rounded-full bg-gray-900 px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                                    {activeFiltersCount}
-                                </span>
-                            )}
-                        </button>
-                        {activeFiltersCount > 0 && (
-                            <button
-                                type="button"
-                                onClick={() => setAppliedFilters(EMPTY_TASK_FILTERS)}
-                                className="hidden rounded-lg px-2 py-2 text-xs font-medium text-gray-500 hover:bg-gray-100 sm:inline-flex"
-                                title="Clear filters"
-                            >
-                                Clear
-                            </button>
-                        )}
-                        <button
-                            type="button"
-                            onClick={openCreate}
-                            className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black sm:px-4"
-                        >
-                            <span className="hidden sm:inline">New task</span>
-                            <span className="sm:hidden">+ New</span>
-                        </button>
-                    </div>
+                    <button
+                        type="button"
+                        onClick={openCreate}
+                        className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black"
+                    >
+                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M12 5v14" />
+                            <path d="M5 12h14" />
+                        </svg>
+                        New task
+                    </button>
                 </header>
+
+                <div className="flex flex-wrap items-center gap-2">
+                    <div className="relative min-w-0 flex-1">
+                        <input
+                            type="text"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            placeholder="Search tasks"
+                            className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-gray-500"
+                        />
+                        <svg
+                            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            aria-hidden="true"
+                        >
+                            <circle cx="11" cy="11" r="7" />
+                            <path d="m20 20-3.5-3.5" />
+                        </svg>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setIsFiltersOpen(true)}
+                        className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                    >
+                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M3 4h18l-7 9v6l-4-2v-4z" />
+                        </svg>
+                        Filters
+                        {activeFiltersCount > 0 && (
+                            <span className="rounded-full bg-gray-900 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                                {activeFiltersCount}
+                            </span>
+                        )}
+                    </button>
+                    {(activeFiltersCount > 0 || searchTerm.trim()) && (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setAppliedFilters(EMPTY_TASK_FILTERS)
+                                setSearchTerm("")
+                            }}
+                            className="shrink-0 rounded-lg px-2 py-2 text-xs font-medium text-gray-500 hover:bg-gray-100"
+                        >
+                            Clear
+                        </button>
+                    )}
+                </div>
 
                 {isLoading ? (
                     <p className="text-sm text-gray-500">Loading tasks…</p>
                 ) : tasks.length === 0 ? (
                     <div className="rounded-2xl border border-dashed border-gray-200 px-6 py-12 text-center">
-                        <p className="text-sm text-gray-500">No tasks yet.</p>
-                        <button
-                            type="button"
-                            onClick={openCreate}
-                            className="mt-3 rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                        >
-                            Create the first one
-                        </button>
-                    </div>
-                ) : (() => {
-                    const assigneeFilterId = appliedFilters.assigneeId
-                    const filteredAssignee = assigneeFilterId ? employeeById.get(String(assigneeFilterId)) : null
-                    const columns = assigneeFilterId
-                        ? [{
-                            key: "assignee",
-                            title: filteredAssignee?.name || filteredAssignee?.email || "Selected assignee",
-                            subtitle: "Tasks filtered by assignee",
-                            items: tasks,
-                            emptyLabel: "No tasks for this person.",
-                        }]
-                        : [
-                            {
-                                key: "me",
-                                title: "Assigned to you",
-                                subtitle: "Open tasks on your name",
-                                items: tasksForMe,
-                                emptyLabel: "Nothing assigned to you.",
-                            },
-                            {
-                                key: "team",
-                                title: "Open for the team",
-                                subtitle: "Tasks no one picked up yet",
-                                items: tasksForTeam,
-                                emptyLabel: "No unassigned tasks.",
-                            },
-                        ]
-
-                    return (
-                    <div className={`grid grid-cols-1 gap-4 ${columns.length > 1 ? "md:grid-cols-2" : ""}`}>
-                        {columns.map((column) => (
-                            <section
-                                key={column.key}
-                                className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-4"
+                        <p className="text-sm text-gray-500">
+                            {activeFiltersCount > 0
+                                ? "No tasks match the current filters."
+                                : "No tasks yet."}
+                        </p>
+                        {activeFiltersCount > 0 ? (
+                            <button
+                                type="button"
+                                onClick={() => setAppliedFilters(EMPTY_TASK_FILTERS)}
+                                className="mt-3 rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
                             >
-                                <header className="flex items-baseline justify-between gap-2">
-                                    <div>
-                                        <h2 className="text-sm font-semibold text-gray-900">{column.title}</h2>
-                                        <p className="text-xs text-gray-500">{column.subtitle}</p>
-                                    </div>
-                                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-700">
-                                        {column.items.length}
-                                    </span>
-                                </header>
-
-                                {column.items.length === 0 ? (
-                                    <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-6 text-center text-xs text-gray-500">
-                                        {column.emptyLabel}
-                                    </p>
-                                ) : (
-                                    <ul className="flex flex-col gap-2">
-                                        {column.items.map((task) => (
-                                            <TaskCard
-                                                key={task._id || task.id}
-                                                task={task}
-                                                clientById={clientById}
-                                                employeeById={employeeById}
-                                                onSelect={openView}
-                                            />
-                                        ))}
-                                    </ul>
-                                )}
-                            </section>
-                        ))}
+                                Clear filters
+                            </button>
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={openCreate}
+                                className="mt-3 rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                            >
+                                Create the first one
+                            </button>
+                        )}
                     </div>
-                    )
-                })()}
+                ) : (
+                    <section className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-gray-100 p-4 [&>ul>li]:border-gray-200 [&>ul>li]:bg-white [&>ul>li]:shadow-sm">
+                        <header>
+                            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                                <h2 className="text-sm font-semibold text-gray-900">All tasks</h2>
+                                <span className="text-xs text-gray-500">
+                                    {activeFiltersCount > 0 || searchTerm.trim() ? (
+                                        <>
+                                            <span className="font-medium text-gray-700 tabular-nums">{displayedTasks.length}</span>
+                                            <span className="mx-1 text-gray-400">of</span>
+                                            <span className="font-medium text-gray-700 tabular-nums">{tasks.length}</span>
+                                            <span className="ml-1">task{displayedTasks.length === 1 ? "" : "s"}</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <span className="font-medium text-gray-700 tabular-nums">{tasks.length}</span>
+                                            <span className="ml-1">task{tasks.length === 1 ? "" : "s"}</span>
+                                        </>
+                                    )}
+                                </span>
+                            </div>
+                            <p className="text-xs text-gray-500">
+                                {activeFiltersCount > 0 || searchTerm.trim()
+                                    ? "Filtered list"
+                                    : "Every task in the office"}
+                            </p>
+                        </header>
+                        {displayedTasks.length === 0 ? (
+                            <p className="rounded-xl border border-dashed border-gray-200 bg-white px-4 py-6 text-center text-sm text-gray-500">
+                                No tasks match the current search.
+                            </p>
+                        ) : (
+                            <ul className="flex flex-col gap-2">
+                                {displayedTasks.map((task) => (
+                                    <TaskCard
+                                        key={task._id || task.id}
+                                        task={task}
+                                        clientById={clientById}
+                                        employeeById={employeeById}
+                                        onSelect={openView}
+                                    />
+                                ))}
+                            </ul>
+                        )}
+                    </section>
+                )}
             </div>
 
             <TaskEditModal
