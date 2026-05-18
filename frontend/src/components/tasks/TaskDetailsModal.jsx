@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import TaskCommentsSection from "./TaskCommentsSection"
 
 function ClientDetails({ client }) {
@@ -117,10 +117,10 @@ function formatLogTimestamp(value) {
 }
 
 const PRIORITY_LABELS = {
-    low: { label: "Low", textClass: "text-gray-700" },
-    medium: { label: "Medium", textClass: "text-sky-700" },
-    high: { label: "High", textClass: "text-amber-700" },
-    urgent: { label: "Urgent", textClass: "text-rose-700" },
+    low: { label: "Low", textClass: "text-slate-700", borderClass: "border-l-slate-400" },
+    medium: { label: "Medium", textClass: "text-yellow-700", borderClass: "border-l-yellow-400" },
+    high: { label: "High", textClass: "text-orange-700", borderClass: "border-l-orange-500" },
+    urgent: { label: "Urgent", textClass: "text-red-700", borderClass: "border-l-red-600" },
 }
 
 function TaskDetailsModal({
@@ -141,6 +141,24 @@ function TaskDetailsModal({
     onDeleteComment,
 }) {
     const [isStatusHistoryOpen, setIsStatusHistoryOpen] = useState(false)
+    const [isStatusHelpOpen, setIsStatusHelpOpen] = useState(false)
+    const statusHelpRef = useRef(null)
+    useEffect(() => {
+        if (!isStatusHelpOpen) return undefined
+        const handlePointerDown = (event) => {
+            if (statusHelpRef.current?.contains(event.target)) return
+            setIsStatusHelpOpen(false)
+        }
+        const handleEscape = (event) => {
+            if (event.key === "Escape") setIsStatusHelpOpen(false)
+        }
+        window.addEventListener("pointerdown", handlePointerDown)
+        window.addEventListener("keydown", handleEscape)
+        return () => {
+            window.removeEventListener("pointerdown", handlePointerDown)
+            window.removeEventListener("keydown", handleEscape)
+        }
+    }, [isStatusHelpOpen])
     if (!task) return null
     const isDone = task.status === "done"
     const currentStatus = task.status || "open"
@@ -159,7 +177,7 @@ function TaskDetailsModal({
                 aria-label="Close"
                 onClick={onClose}
             />
-            <div className="relative flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className={`relative flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border-l-4 bg-white shadow-2xl ${(PRIORITY_LABELS[task.priority] || PRIORITY_LABELS.low).borderClass}`}>
                 <header className="flex items-start justify-between gap-3 border-b border-gray-100 px-4 py-3 sm:px-5 sm:py-4">
                     <div className="min-w-0">
                         {isDone && task.doneAt && (
@@ -317,22 +335,60 @@ function TaskDetailsModal({
 
                 <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 bg-gray-50/60 px-4 py-3 sm:px-5">
                     {onChangeStatus ? (
-                        <div className="inline-flex rounded-md border border-gray-200 p-0.5">
-                            {STATUS_OPTIONS.map((option) => {
-                                const isActive = option.id === currentStatus
-                                return (
-                                    <button
-                                        key={option.id}
-                                        type="button"
-                                        onClick={() => onChangeStatus(task, option.id)}
-                                        className={`rounded px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                                            isActive ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
-                                        }`}
+                        <div className="flex items-center gap-2">
+                            <div className="inline-flex rounded-md border border-gray-200 p-0.5">
+                                {STATUS_OPTIONS.map((option) => {
+                                    const isActive = option.id === currentStatus
+                                    return (
+                                        <button
+                                            key={option.id}
+                                            type="button"
+                                            onClick={() => onChangeStatus(task, option.id)}
+                                            className={`rounded px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                                                isActive ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
+                                            }`}
+                                        >
+                                            {option.label}
+                                        </button>
+                                    )
+                                })}
+                            </div>
+                            <div ref={statusHelpRef} className="relative">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsStatusHelpOpen((current) => !current)}
+                                    className="flex h-6 w-6 items-center justify-center rounded-full border border-gray-200 text-xs font-semibold text-gray-500 hover:bg-gray-100"
+                                    aria-label="Status help"
+                                    aria-expanded={isStatusHelpOpen}
+                                >
+                                    ?
+                                </button>
+                                {isStatusHelpOpen && (
+                                    <div
+                                        role="dialog"
+                                        className="absolute bottom-[calc(100%+8px)] left-0 z-[210] w-[min(20rem,calc(100vw-2rem))] rounded-xl border border-gray-200 bg-white p-3 text-xs leading-5 text-gray-700 shadow-[0_20px_40px_-24px_rgba(15,23,42,0.45)] ring-1 ring-black/5"
                                     >
-                                        {option.label}
-                                    </button>
-                                )
-                            })}
+                                        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Status</p>
+                                        <ul className="flex flex-col gap-1.5">
+                                            <li className="flex items-start gap-2">
+                                                <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-gray-400" aria-hidden="true" />
+                                                <span><span className="font-semibold text-gray-900">Open</span> — task hasn't been started yet.</span>
+                                            </li>
+                                            <li className="flex items-start gap-2">
+                                                <span className="relative mt-1 inline-flex h-1.5 w-1.5 shrink-0 items-center justify-center" aria-hidden="true">
+                                                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+                                                    <span className="relative inline-block h-1.5 w-1.5 rounded-full bg-red-500" />
+                                                </span>
+                                                <span><span className="font-semibold text-gray-900">In progress</span> — actively being worked on; the card shows a red pulsing dot.</span>
+                                            </li>
+                                            <li className="flex items-start gap-2">
+                                                <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden="true" />
+                                                <span><span className="font-semibold text-gray-900">Done</span> — finished; moves to the bottom of the list with strikethrough text.</span>
+                                            </li>
+                                        </ul>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     ) : <span />}
 
