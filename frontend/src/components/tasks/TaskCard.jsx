@@ -42,7 +42,7 @@ function TaskCard({ task, clientById, employeeById, onSelect }) {
     const priority = String(task.priority || "low")
     const priorityMeta = getPriorityMeta(priority)
     const commentsCount = Array.isArray(task.comments) ? task.comments.length : 0
-    const metaDate = isDone && task.doneAt ? task.doneAt : task.dueDate
+    const metaDate = task.dueDate
     const hasMeta = Boolean(metaDate) || assigneeChips.length > 0 || commentsCount > 0
 
     return (
