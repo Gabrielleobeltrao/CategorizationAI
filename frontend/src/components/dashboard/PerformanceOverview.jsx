@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react"
 import DateRangePicker from "../ui/DateRangePicker"
 import {
   CartesianGrid,
-  Legend,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -54,33 +53,89 @@ function OverviewTooltip({ active, payload, label }) {
   )
 }
 
-function OverviewChart({ data = [], xKey = "bucket", series = DEFAULT_CHART_SERIES }) {
+function SeriesToggleLegend({ series, hiddenKeys, onToggle }) {
   return (
-    <div className="h-full min-h-[22rem] rounded-xl border border-gray-200 bg-gray-50 p-4">
-      <div className="h-full w-full">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} margin={{ top: 16, right: 20, left: 0, bottom: 8 }}>
-            <CartesianGrid stroke="#e5e7eb" vertical={false} />
-            <XAxis dataKey={xKey} tick={{ fill: "#6b7280", fontSize: 12 }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fill: "#6b7280", fontSize: 12 }} axisLine={false} tickLine={false} />
-            <Tooltip content={<OverviewTooltip />} cursor={{ stroke: "#d1d5db", strokeWidth: 1 }} />
-            <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ paddingBottom: 18, fontSize: "12px" }} />
-            {series.map((serie) => (
-              <Line
-                key={serie.key}
-                type="monotone"
-                dataKey={serie.key}
-                name={serie.label}
-                stroke={serie.color}
-                strokeWidth={3}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                dot={{ r: 4, stroke: "#ffffff", strokeWidth: 2, fill: serie.color }}
-                activeDot={{ r: 6, stroke: "#ffffff", strokeWidth: 2, fill: serie.color }}
-              />
-            ))}
-          </LineChart>
-        </ResponsiveContainer>
+    <div className="mb-3 flex flex-wrap gap-x-3 gap-y-2">
+      {series.map((serie) => {
+        const isHidden = hiddenKeys.has(serie.key)
+        return (
+          <button
+            key={serie.key}
+            type="button"
+            onClick={() => onToggle(serie.key)}
+            className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium transition ${
+              isHidden
+                ? "border-gray-200 bg-gray-50 text-gray-400 hover:bg-gray-100"
+                : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+            }`}
+            aria-pressed={!isHidden}
+          >
+            <span
+              className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border ${
+                isHidden ? "border-gray-300 bg-white" : "border-gray-700"
+              }`}
+              style={!isHidden ? { backgroundColor: serie.color, borderColor: serie.color } : undefined}
+              aria-hidden="true"
+            >
+              {!isHidden && (
+                <svg viewBox="0 0 24 24" className="h-2.5 w-2.5 text-white" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              )}
+            </span>
+            <span className={isHidden ? "line-through" : ""}>{serie.label}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function OverviewChart({ data = [], xKey = "bucket", series = DEFAULT_CHART_SERIES }) {
+  const [hiddenKeys, setHiddenKeys] = useState(() => new Set())
+  const toggleSeries = (key) => {
+    setHiddenKeys((current) => {
+      const next = new Set(current)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+  const allHidden = hiddenKeys.size === series.length && series.length > 0
+
+  return (
+    <div className="flex h-full min-h-[22rem] flex-col rounded-xl border border-gray-200 bg-gray-50 p-4">
+      <SeriesToggleLegend series={series} hiddenKeys={hiddenKeys} onToggle={toggleSeries} />
+      <div className="flex-1">
+        {allHidden ? (
+          <div className="flex h-full items-center justify-center text-xs text-gray-500">
+            Select at least one series to display.
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={data} margin={{ top: 16, right: 20, left: 0, bottom: 8 }}>
+              <CartesianGrid stroke="#e5e7eb" vertical={false} />
+              <XAxis dataKey={xKey} tick={{ fill: "#6b7280", fontSize: 12 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: "#6b7280", fontSize: 12 }} axisLine={false} tickLine={false} />
+              <Tooltip content={<OverviewTooltip />} cursor={{ stroke: "#d1d5db", strokeWidth: 1 }} />
+              {series.map((serie) => (
+                <Line
+                  key={serie.key}
+                  type="monotone"
+                  dataKey={serie.key}
+                  name={serie.label}
+                  stroke={serie.color}
+                  strokeWidth={3}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  hide={hiddenKeys.has(serie.key)}
+                  dot={{ r: 4, stroke: "#ffffff", strokeWidth: 2, fill: serie.color }}
+                  activeDot={{ r: 6, stroke: "#ffffff", strokeWidth: 2, fill: serie.color }}
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        )}
       </div>
     </div>
   )
