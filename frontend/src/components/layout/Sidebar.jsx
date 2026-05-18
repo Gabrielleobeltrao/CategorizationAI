@@ -90,6 +90,7 @@ const crmNavItems = [
     to: "/crm/tasks",
     label: "Tasks Manager",
     feature: "crmTasks",
+    permission: "tasks:read",
     icon: (
       <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
         <rect x="4" y="5" width="16" height="15" rx="2" />
@@ -123,7 +124,11 @@ function Sidebar({ isCollapsed: rawCollapsed, onToggleCollapse, isMobileOpen = f
   const isCrmEnabled = useFeature("crm")
   const isCrmTasksEnabled = useFeature("crmTasks")
   const featureFlagValues = { crm: isCrmEnabled, crmTasks: isCrmTasksEnabled }
-  const visibleCrmNavItems = crmNavItems.filter((item) => !item.feature || featureFlagValues[item.feature])
+  const visibleCrmNavItems = crmNavItems.filter((item) => {
+    if (item.feature && !featureFlagValues[item.feature]) return false
+    if (item.permission && !hasPermission(currentProfile?.permissions, item.permission)) return false
+    return true
+  })
   const clientScopeMatch = matchPath("/clients/:clientId/*", location.pathname)
   const clientId = clientScopeMatch?.params?.clientId
   const [selectedClient, setSelectedClient] = useState(null)

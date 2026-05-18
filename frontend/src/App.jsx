@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect } from 'react'
 import { BrowserRouter as BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import ProtectedRoute from './components/auth/ProtectedRoute.jsx'
 import FeatureGate from './components/auth/FeatureGate.jsx'
+import PermissionGate from './components/auth/PermissionGate.jsx'
 import { NotificationProvider } from './contexts/notification.context.jsx'
 import { CategorizationJobsProvider } from './contexts/categorizationJobs.context.jsx'
 import { OpenTestProvider } from './contexts/openTest.context.jsx'
@@ -136,7 +137,9 @@ function App() {
                   path="/crm/tasks"
                   element={
                     <FeatureGate flag="crmTasks" fallback={<Navigate to="/home" replace />}>
-                      <TasksPage />
+                      <PermissionGate permission="tasks:read" fallback={<Navigate to="/home" replace />}>
+                        <TasksPage />
+                      </PermissionGate>
                     </FeatureGate>
                   }
                 />
