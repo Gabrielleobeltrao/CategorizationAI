@@ -9,6 +9,8 @@ import { listClientsByOfficeId } from "../services/clients.service"
 import { listEmployeesByOfficeId } from "../services/employees.service"
 import PerformanceOverview from "../components/dashboard/PerformanceOverview"
 import OverviewScopeFilter from "../components/dashboard/OverviewScopeFilter"
+import OperationalStatusOverviewCard from "../components/crm/OperationalStatusOverviewCard"
+import { useFeature } from "../hooks/useFeature"
 
 const EMPTY_FEED = { recentActivities: [], jobsQueue: [] }
 
@@ -31,6 +33,7 @@ function getQueueStatusClass(status) {
 function BookkeepingDashboardPage() {
   const { profile, office } = useAuth()
   const { error } = useNotification()
+  const isOperationalStatusEnabled = useFeature("crmOperationalStatus")
   const officeId = String(profile?.officeId || "").trim()
   const officeName = String(office?.name || "").trim()
 
@@ -149,6 +152,10 @@ function BookkeepingDashboardPage() {
           onRangeChange={setCustomRange}
           isLoading={isCustomLoading}
         />
+
+        {isOperationalStatusEnabled && (
+          <OperationalStatusOverviewCard officeId={officeId} />
+        )}
 
         <section>
           <article className="rounded-xl border border-gray-200 bg-white p-4">
