@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "../contexts/auth.context"
 import { useNotification } from "../contexts/notification.context"
@@ -22,10 +22,9 @@ import {
 } from "../services/tasks.service"
 import { listClientsByOfficeId } from "../services/clients.service"
 import { listEmployeesByOfficeId } from "../services/employees.service"
-import TaskCard from "../components/tasks/TaskCard"
 import TaskDetailsModal from "../components/tasks/TaskDetailsModal"
 import TaskEditModal from "../components/tasks/TaskEditModal"
-import TasksCalendar from "../components/tasks/TasksCalendar"
+import TasksTimeline from "../components/tasks/TasksTimeline"
 import { hasPermission } from "../utils/permissions"
 
 function formatOpenedAt(value) {
@@ -132,29 +131,6 @@ function Home() {
   }, [error, profile?._id, profile?.id])
 
   const currentProfileId = String(profile?._id || profile?.id || "").trim()
-  const getTaskAssigneeIds = (task) => {
-    if (Array.isArray(task?.assigneeIds) && task.assigneeIds.length > 0) {
-      return task.assigneeIds.map(String)
-    }
-    return task?.assigneeId ? [String(task.assigneeId)] : []
-  }
-  const calendarTasks = useMemo(
-    () => openTasks.filter((task) => {
-      if (!task?.dueDate) return false
-      const ids = getTaskAssigneeIds(task)
-      if (ids.length === 0) return true
-      return currentProfileId && ids.includes(currentProfileId)
-    }),
-    [openTasks, currentProfileId]
-  )
-
-  const myTasks = useMemo(
-    () => openTasks.filter((task) => {
-      if (task.status === "done" || !currentProfileId) return false
-      return getTaskAssigneeIds(task).includes(currentProfileId)
-    }),
-    [openTasks, currentProfileId]
-  )
 
   const handleHomeTaskEdit = (task) => {
     setEditingTask(task)
@@ -249,7 +225,9 @@ function Home() {
     let active = true
     setIsLoadingTasks(true)
     Promise.all([
-      listTasks({ status: "active" }).catch(() => []),
+      // Fetch every status so done tasks still appear in the timeline,
+      // sorted at the bottom of their day by TasksTimeline.
+      listTasks().catch(() => []),
       listClientsByOfficeId(officeId, { limit: 500 }).catch(() => null),
       listEmployeesByOfficeId(officeId).catch(() => null),
     ])
@@ -340,44 +318,25 @@ function Home() {
         </header>
 
         <FeatureGate flag="crmTasks">
-          <TasksCalendar tasks={calendarTasks} onSelectTask={setViewingTask} defaultMode="day" />
-
-          <article className="rounded-xl border border-gray-200 bg-white p-4">
-            <header className="flex items-baseline justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold">Your tasks</h2>
-                <p className="text-sm text-gray-500">Top 5 active tasks assigned to you</p>
-              </div>
+          <TasksTimeline
+            tasks={openTasks}
+            clientsById={taskClientsById}
+            employeesById={taskEmployeesById}
+            onSelect={setViewingTask}
+            headerAction={(
               <button
                 type="button"
                 onClick={() => navigate("/board")}
-                className="rounded-md border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100"
+                className="group inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-sm font-medium text-gray-600 transition hover:text-gray-900"
               >
                 Open Board
+                <svg viewBox="0 0 24 24" className="h-4 w-4 transition-transform group-hover:translate-x-0.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M5 12h14" />
+                  <path d="m13 6 6 6-6 6" />
+                </svg>
               </button>
-            </header>
-            {isLoadingTasks ? (
-              <p className="mt-4 rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
-                Loading…
-              </p>
-            ) : myTasks.length === 0 ? (
-              <p className="mt-4 rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-4 text-center text-sm text-gray-500">
-                Nothing assigned to you yet.
-              </p>
-            ) : (
-              <ul className="mt-4 flex flex-col gap-2">
-                {myTasks.slice(0, 5).map((task) => (
-                  <TaskCard
-                    key={task._id || task.id}
-                    task={task}
-                    clientById={taskClientsById}
-                    employeeById={taskEmployeesById}
-                    onSelect={setViewingTask}
-                  />
-                ))}
-              </ul>
             )}
-          </article>
+          />
         </FeatureGate>
 
         <section className="rounded-xl border border-gray-200 bg-white p-4">
