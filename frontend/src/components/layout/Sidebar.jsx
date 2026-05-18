@@ -39,10 +39,10 @@ const bookkeepingNavItems = [
     label: "Overview",
     icon: (
       <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M3 3h7v7H3z" />
-        <path d="M14 3h7v7h-7z" />
-        <path d="M14 14h7v7h-7z" />
-        <path d="M3 14h7v7H3z" />
+        <rect x="3" y="3" width="7" height="9" rx="1" />
+        <rect x="14" y="3" width="7" height="5" rx="1" />
+        <rect x="14" y="12" width="7" height="9" rx="1" />
+        <rect x="3" y="16" width="7" height="5" rx="1" />
       </svg>
     ),
   },
@@ -51,10 +51,17 @@ const bookkeepingNavItems = [
     label: "Clients",
     icon: (
       <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="3" y="4" width="18" height="16" rx="2" />
-        <path d="M8 8h8" />
-        <path d="M8 12h8" />
-        <path d="M8 16h5" />
+        <rect x="4" y="2" width="16" height="20" rx="2" />
+        <path d="M9 22v-4h6v4" />
+        <path d="M8 6h.01" />
+        <path d="M12 6h.01" />
+        <path d="M16 6h.01" />
+        <path d="M8 10h.01" />
+        <path d="M12 10h.01" />
+        <path d="M16 10h.01" />
+        <path d="M8 14h.01" />
+        <path d="M12 14h.01" />
+        <path d="M16 14h.01" />
       </svg>
     ),
   },
@@ -79,10 +86,10 @@ const crmNavItems = [
     label: "Overview",
     icon: (
       <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M3 3h7v7H3z" />
-        <path d="M14 3h7v7h-7z" />
-        <path d="M14 14h7v7h-7z" />
-        <path d="M3 14h7v7H3z" />
+        <rect x="3" y="3" width="18" height="18" rx="2" />
+        <path d="M8 7v7" />
+        <path d="M12 7v4" />
+        <path d="M16 7v9" />
       </svg>
     ),
   },
@@ -140,9 +147,10 @@ function Sidebar({ isCollapsed: rawCollapsed, onToggleCollapse, isMobileOpen = f
           label: "Transactions",
           icon: (
             <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M4 6h16" />
-              <path d="M4 12h16" />
-              <path d="M4 18h10" />
+              <polyline points="17 11 21 7 17 3" />
+              <line x1="21" y1="7" x2="9" y2="7" />
+              <polyline points="7 21 3 17 7 13" />
+              <line x1="15" y1="17" x2="3" y2="17" />
             </svg>
           ),
         },
@@ -151,8 +159,12 @@ function Sidebar({ isCollapsed: rawCollapsed, onToggleCollapse, isMobileOpen = f
           label: "Accounts",
           icon: (
             <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="5" width="18" height="14" rx="2" />
-              <path d="M3 10h18" />
+              <polygon points="12 3 21 8 3 8" />
+              <line x1="5" y1="11" x2="5" y2="18" />
+              <line x1="9.5" y1="11" x2="9.5" y2="18" />
+              <line x1="14.5" y1="11" x2="14.5" y2="18" />
+              <line x1="19" y1="11" x2="19" y2="18" />
+              <line x1="3" y1="21" x2="21" y2="21" />
             </svg>
           ),
         },
@@ -161,9 +173,7 @@ function Sidebar({ isCollapsed: rawCollapsed, onToggleCollapse, isMobileOpen = f
           label: "Categories",
           icon: (
             <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M4 7h10" />
-              <path d="M4 12h16" />
-              <path d="M4 17h12" />
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
             </svg>
           ),
         },
