@@ -132,6 +132,7 @@ export async function createTask(input) {
         doneAt: status === "done" ? now : null,
         statusHistory: [{ status, at: now, by: createdBy }],
         comments: [],
+        collectionId: null,
         createdBy,
         createdAt: now,
         updatedAt: now,
@@ -236,6 +237,10 @@ export async function updateTaskById(id, patch, { actorProfileId } = {}) {
     if (patch.title !== undefined) $set.title = String(patch.title || "").trim()
     if (patch.description !== undefined) $set.description = String(patch.description || "").trim()
     if (patch.priority !== undefined) $set.priority = normalizePriority(patch.priority)
+    if (patch.collectionId !== undefined) {
+        const safe = String(patch.collectionId || "").trim()
+        $set.collectionId = safe || null
+    }
 
     if (patch.status !== undefined) {
         const nextStatus = normalizeStatus(patch.status)

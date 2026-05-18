@@ -21,6 +21,7 @@ const loadClientSettingsPage = () => import('./pages/ClientSettingsPage.jsx')
 const loadBookkeepingDashboardPage = () => import('./pages/BookkeepingDashboardPage.jsx')
 const loadCrmDashboardPage = () => import('./pages/CrmDashboardPage.jsx')
 const loadTasksPage = () => import('./pages/TasksPage.jsx')
+const loadBoardPage = () => import('./pages/BoardPage.jsx')
 const loadUpdatePasswordPage = () => import('./pages/UpdatePassword.jsx')
 const loadAppShell = () => import('./components/layout/AppShell.jsx')
 
@@ -38,6 +39,7 @@ const ClientSettingsPage = lazy(loadClientSettingsPage)
 const BookkeepingDashboardPage = lazy(loadBookkeepingDashboardPage)
 const CrmDashboardPage = lazy(loadCrmDashboardPage)
 const TasksPage = lazy(loadTasksPage)
+const BoardPage = lazy(loadBoardPage)
 const UpdatePassword = lazy(loadUpdatePasswordPage)
 const AppShell = lazy(loadAppShell)
 
@@ -135,6 +137,20 @@ function App() {
                   element={
                     <FeatureGate flag="crmTasks" fallback={<Navigate to="/home" replace />}>
                       <TasksPage />
+                    </FeatureGate>
+                  }
+                />
+                <Route
+                  path="/board"
+                  element={
+                    /* Board requires the parent Operations CRM add-on AND the
+                     * Tasks sub-feature. The CRM gate is technically redundant
+                     * (normalizeOfficeFeatures forces crmTasks=false when
+                     * crm=false) but kept here to make the contract explicit. */
+                    <FeatureGate flag="crm" fallback={<Navigate to="/home" replace />}>
+                      <FeatureGate flag="crmTasks" fallback={<Navigate to="/home" replace />}>
+                        <BoardPage />
+                      </FeatureGate>
                     </FeatureGate>
                   }
                 />

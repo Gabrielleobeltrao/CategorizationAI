@@ -17,6 +17,9 @@ function sanitizePayload(input = {}) {
   if (input.dueDate !== undefined) payload.dueDate = input.dueDate || null
   if (input.status !== undefined) payload.status = input.status
   if (input.priority !== undefined) payload.priority = input.priority || "low"
+  if (input.collectionId !== undefined) {
+    payload.collectionId = input.collectionId ? String(input.collectionId).trim() : null
+  }
   return payload
 }
 

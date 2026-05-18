@@ -19,6 +19,20 @@ const homeNavItem = {
   ),
 }
 
+const boardNavItem = {
+  to: "/board",
+  label: "Board",
+  feature: "crmTasks",
+  permission: "board:read",
+  icon: (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="5" height="16" rx="1" />
+      <rect x="10" y="4" width="5" height="10" rx="1" />
+      <rect x="17" y="4" width="4" height="13" rx="1" />
+    </svg>
+  ),
+}
+
 const bookkeepingNavItems = [
   {
     to: "/bookkeeping",
@@ -283,6 +297,22 @@ function Sidebar({ isCollapsed: rawCollapsed, onToggleCollapse, isMobileOpen = f
             <span>{homeNavItem.icon}</span>
             {!isCollapsed && <span>{homeNavItem.label}</span>}
           </NavLink>
+          {isCrmEnabled && isCrmTasksEnabled && hasPermission(currentProfile?.permissions, boardNavItem.permission) && (
+            <NavLink
+              to={boardNavItem.to}
+              className={({ isActive }) =>
+                `flex items-center rounded-lg py-2 text-sm font-medium transition-colors ${
+                  isCollapsed ? "justify-center px-2" : "gap-3 px-3"
+                } ${
+                  isActive ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
+                }`
+              }
+              title={isCollapsed ? boardNavItem.label : undefined}
+            >
+              <span>{boardNavItem.icon}</span>
+              {!isCollapsed && <span>{boardNavItem.label}</span>}
+            </NavLink>
+          )}
         </nav>
 
         {clientId ? (

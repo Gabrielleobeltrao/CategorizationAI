@@ -13,6 +13,7 @@ import categoryTemplatesRoutes from "./categoryTemplates.routes.js"
 import registrationRoutes from "./registration.routes.js"
 import appRoutes from "./app.routes.js"
 import tasksRoutes from "./tasks.routes.js"
+import boardRoutes from "./board.routes.js"
 
 const router = Router()
 router.use(healthRoutes)
@@ -29,5 +30,6 @@ router.use(userProfileRoutes)
 router.use(profitLossRoutes)
 router.use(rolesRoutes)
 router.use(tasksRoutes)
+router.use(boardRoutes)
 
 export default router
