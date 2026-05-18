@@ -76,68 +76,6 @@ function normalizeDashboardPayload(payload = {}) {
   }
 }
 
-function HomeTasksCard({
-  title,
-  subtitle,
-  groups = [],
-  isLoading,
-  clientsById,
-  employeesById,
-  onOpenTasks,
-  onSelectTask,
-}) {
-  return (
-    <article className="rounded-xl border border-gray-200 bg-white p-4">
-      <header className="flex items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold">{title}</h2>
-          {subtitle && <p className="text-sm text-gray-500">{subtitle}</p>}
-        </div>
-        <button
-          type="button"
-          onClick={onOpenTasks}
-          className="rounded-md border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100"
-        >
-          Open Tasks
-        </button>
-      </header>
-
-      {isLoading ? (
-        <p className="mt-4 rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
-          Loading…
-        </p>
-      ) : (
-        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-          {groups.map((group) => (
-            <section key={group.key}>
-              <p className="px-1 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-                {group.title}
-              </p>
-              <ul className="flex flex-col gap-2">
-                {group.tasks.length === 0 ? (
-                  <li className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
-                    {group.emptyLabel}
-                  </li>
-                ) : (
-                  group.tasks.slice(0, 6).map((task) => (
-                    <TaskCard
-                      key={task._id || task.id}
-                      task={task}
-                      clientById={clientsById}
-                      employeeById={employeesById}
-                      onSelect={onSelectTask}
-                    />
-                  ))
-                )}
-              </ul>
-            </section>
-          ))}
-        </div>
-      )}
-    </article>
-  )
-}
-
 function Home() {
   const navigate = useNavigate()
   const { error } = useNotification()
@@ -200,28 +138,20 @@ function Home() {
     }
     return task?.assigneeId ? [String(task.assigneeId)] : []
   }
-  const tasksForMe = useMemo(
-    () => openTasks.filter((task) => {
-      if (task.status === "done" || !currentProfileId) return false
-      return getTaskAssigneeIds(task).includes(currentProfileId)
-    }),
-    [openTasks, currentProfileId]
-  )
-  const tasksForTeam = useMemo(
-    () => openTasks.filter((task) => task.status !== "done" && getTaskAssigneeIds(task).length === 0),
-    [openTasks]
-  )
-  const myAndTeamTasks = useMemo(
-    () => [...tasksForMe, ...tasksForTeam],
-    [tasksForMe, tasksForTeam]
-  )
-
   const calendarTasks = useMemo(
     () => openTasks.filter((task) => {
       if (!task?.dueDate) return false
       const ids = getTaskAssigneeIds(task)
       if (ids.length === 0) return true
       return currentProfileId && ids.includes(currentProfileId)
+    }),
+    [openTasks, currentProfileId]
+  )
+
+  const myTasks = useMemo(
+    () => openTasks.filter((task) => {
+      if (task.status === "done" || !currentProfileId) return false
+      return getTaskAssigneeIds(task).includes(currentProfileId)
     }),
     [openTasks, currentProfileId]
   )
@@ -412,28 +342,42 @@ function Home() {
         <FeatureGate flag="crmTasks">
           <TasksCalendar tasks={calendarTasks} onSelectTask={setViewingTask} defaultMode="day" />
 
-          <HomeTasksCard
-            title="Your tasks"
-            isLoading={isLoadingTasks}
-            groups={[
-              {
-                key: "me",
-                title: "Assigned to you",
-                tasks: tasksForMe,
-                emptyLabel: "Nothing assigned to you yet.",
-              },
-              {
-                key: "team",
-                title: "Open for the team",
-                tasks: tasksForTeam,
-                emptyLabel: "No unassigned tasks.",
-              },
-            ]}
-            clientsById={taskClientsById}
-            employeesById={taskEmployeesById}
-            onOpenTasks={() => navigate("/crm/tasks")}
-            onSelectTask={setViewingTask}
-          />
+          <article className="rounded-xl border border-gray-200 bg-white p-4">
+            <header className="flex items-baseline justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold">Your tasks</h2>
+                <p className="text-sm text-gray-500">Top 5 active tasks assigned to you</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => navigate("/board")}
+                className="rounded-md border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100"
+              >
+                Open Board
+              </button>
+            </header>
+            {isLoadingTasks ? (
+              <p className="mt-4 rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
+                Loading…
+              </p>
+            ) : myTasks.length === 0 ? (
+              <p className="mt-4 rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-4 text-center text-sm text-gray-500">
+                Nothing assigned to you yet.
+              </p>
+            ) : (
+              <ul className="mt-4 flex flex-col gap-2">
+                {myTasks.slice(0, 5).map((task) => (
+                  <TaskCard
+                    key={task._id || task.id}
+                    task={task}
+                    clientById={taskClientsById}
+                    employeeById={taskEmployeesById}
+                    onSelect={setViewingTask}
+                  />
+                ))}
+              </ul>
+            )}
+          </article>
         </FeatureGate>
 
         <section className="rounded-xl border border-gray-200 bg-white p-4">
