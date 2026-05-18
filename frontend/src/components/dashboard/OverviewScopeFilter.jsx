@@ -175,7 +175,7 @@ function OverviewScopeFilter({
 
             {showTeam && (
               <div className="border-b border-gray-100 p-2">
-                <SectionHeader title="Team" count={1} />
+                <SectionHeader title="Office" count={1} />
                 {renderItem("team", teamLabel, mode === "team", () => handleSelect("team", ""))}
               </div>
             )}
