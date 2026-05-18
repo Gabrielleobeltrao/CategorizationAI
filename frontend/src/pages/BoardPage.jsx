@@ -54,8 +54,9 @@ function DraggableTaskCard({ task, clientById, employeeById, onSelect, isDraggin
             {...listeners}
             // The arbitrary `[&>li]` variants override TaskCard's default
             // translucent gray background so cards stand out from the gray
-            // column they sit on.
-            className={`cursor-grab touch-none active:cursor-grabbing [&>li]:border-gray-200 [&>li]:bg-white [&>li]:shadow-sm ${isDragging ? "opacity-40" : ""}`}
+            // column they sit on. Border color is set per-side (top/right/
+            // bottom) so the priority-colored left border still shows.
+            className={`cursor-grab touch-none active:cursor-grabbing [&>li]:border-t-gray-200 [&>li]:border-r-gray-200 [&>li]:border-b-gray-200 [&>li]:bg-white [&>li]:shadow-sm ${isDragging ? "opacity-40" : ""}`}
         >
             <TaskCard task={task} clientById={clientById} employeeById={employeeById} onSelect={onSelect} />
         </div>
@@ -138,6 +139,7 @@ function BoardPage() {
     const [isCreatingColumn, setIsCreatingColumn] = useState(false)
     const [isAddingColumn, setIsAddingColumn] = useState(false)
     const [isTaskFormOpen, setIsTaskFormOpen] = useState(false)
+    const [editingTask, setEditingTask] = useState(null)
     const [isSavingTask, setIsSavingTask] = useState(false)
     const [filters, setFilters] = useState(EMPTY_BOARD_FILTERS)
     const [isFiltersOpen, setIsFiltersOpen] = useState(false)
@@ -341,15 +343,38 @@ function BoardPage() {
         }
     }, [tasks, error])
 
-    const handleCreateTask = async (draft) => {
+    const openEditTask = (task) => {
+        setEditingTask(task)
+        setIsTaskFormOpen(true)
+    }
+
+    const closeTaskForm = () => {
+        setIsTaskFormOpen(false)
+        setEditingTask(null)
+    }
+
+    const handleSaveTask = async (draft) => {
         try {
             setIsSavingTask(true)
-            const created = await createTask(draft || {})
-            setTasks((current) => [created, ...current])
-            setIsTaskFormOpen(false)
-            success("Task created")
+            if (editingTask) {
+                const updated = await updateTaskById(editingTask._id || editingTask.id, draft || {})
+                setTasks((current) =>
+                    current.map((t) => (String(t._id || t.id) === String(updated._id || updated.id) ? updated : t))
+                )
+                setViewingTask((current) =>
+                    current && String(current._id || current.id) === String(updated._id || updated.id)
+                        ? updated
+                        : current
+                )
+                success("Task updated")
+            } else {
+                const created = await createTask(draft || {})
+                setTasks((current) => [created, ...current])
+                success("Task created")
+            }
+            closeTaskForm()
         } catch (err) {
-            error(err.message || "Failed to create task")
+            error(err.message || (editingTask ? "Failed to update task" : "Failed to create task"))
         } finally {
             setIsSavingTask(false)
         }
@@ -508,7 +533,10 @@ function BoardPage() {
                     {canCreateTask && (
                         <button
                             type="button"
-                            onClick={() => setIsTaskFormOpen(true)}
+                            onClick={() => {
+                                setEditingTask(null)
+                                setIsTaskFormOpen(true)
+                            }}
                             className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black"
                         >
                             <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
@@ -580,7 +608,7 @@ function BoardPage() {
                     // Filter / search mode: forget the columns and show every
                     // matching task in a grid (4 cols on desktop). DnD is
                     // disabled here since the columns aren't visible.
-                    <section className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-100 p-3 [&>ul>li]:border-gray-200 [&>ul>li]:bg-white [&>ul>li]:shadow-sm">
+                    <section className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-100 p-3 [&>ul>li]:border-t-gray-200 [&>ul>li]:border-r-gray-200 [&>ul>li]:border-b-gray-200 [&>ul>li]:bg-white [&>ul>li]:shadow-sm">
                         {filteredTasks.length === 0 ? (
                             <p className="rounded-xl border border-dashed border-gray-200 bg-white px-4 py-6 text-center text-sm text-gray-500">
                                 No tasks match the current filters.
@@ -708,6 +736,10 @@ function BoardPage() {
                         : []
                 }
                 onClose={() => setViewingTask(null)}
+                onEdit={canUpdateTasks ? (task) => {
+                    setViewingTask(null)
+                    openEditTask(task)
+                } : undefined}
                 onChangeStatus={async (task, nextStatus) => {
                     if (!canUpdateTasks) return
                     try {
@@ -732,12 +764,12 @@ function BoardPage() {
 
             <TaskEditModal
                 isOpen={isTaskFormOpen}
-                task={null}
+                task={editingTask}
                 clients={Array.from(clientById.values())}
                 employees={Array.from(employeeById.values())}
                 isSaving={isSavingTask}
-                onCancel={() => setIsTaskFormOpen(false)}
-                onSubmit={handleCreateTask}
+                onCancel={closeTaskForm}
+                onSubmit={handleSaveTask}
             />
 
             <BoardFiltersModal

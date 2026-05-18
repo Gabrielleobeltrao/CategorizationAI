@@ -1,18 +1,8 @@
-const STATUS_META = {
-    open: { label: "Open", dotClass: "bg-gray-400", textClass: "text-gray-600" },
-    in_progress: { label: "In progress", dotClass: "bg-amber-500", textClass: "text-amber-700" },
-    done: { label: "Done", dotClass: "bg-emerald-500", textClass: "text-emerald-700" },
-}
-
 const PRIORITY_META = {
-    low: { label: "Low", textClass: "text-gray-500" },
-    medium: { label: "Medium", textClass: "text-sky-700" },
-    high: { label: "High", textClass: "text-amber-700" },
-    urgent: { label: "Urgent", textClass: "text-rose-700" },
-}
-
-function getStatusMeta(status) {
-    return STATUS_META[status] || STATUS_META.open
+    low: { label: "Low", textClass: "text-slate-500", borderClass: "border-l-slate-400" },
+    medium: { label: "Medium", textClass: "text-yellow-700", borderClass: "border-l-yellow-400" },
+    high: { label: "High", textClass: "text-orange-700", borderClass: "border-l-orange-500" },
+    urgent: { label: "Urgent", textClass: "text-red-700", borderClass: "border-l-red-600" },
 }
 
 function getPriorityMeta(priority) {
@@ -45,103 +35,79 @@ function TaskCard({ task, clientById, employeeById, onSelect }) {
     const assigneeChips = taskAssigneeIds
         .map((id) => employeeById?.get?.(String(id)))
         .filter(Boolean)
+    const firstClient = clientChips[0]
+    const extraClients = clientChips.length > 1 ? clientChips.length - 1 : 0
     const isDone = task.status === "done"
-    const statusMeta = getStatusMeta(task.status)
+    const isInProgress = task.status === "in_progress"
     const priority = String(task.priority || "low")
     const priorityMeta = getPriorityMeta(priority)
-    const showPriority = priority !== "low"
     const commentsCount = Array.isArray(task.comments) ? task.comments.length : 0
+    const metaDate = isDone && task.doneAt ? task.doneAt : task.dueDate
+    const hasMeta = Boolean(metaDate) || assigneeChips.length > 0 || commentsCount > 0
 
     return (
-        <li className={`rounded-xl border border-gray-100 bg-gray-50/50 ${isDone ? "opacity-70" : ""}`}>
+        <li className={`rounded-xl border border-gray-100 border-l-4 ${priorityMeta.borderClass} bg-gray-50/50 ${isDone ? "opacity-70" : ""}`}>
             <button
                 type="button"
                 onClick={() => onSelect?.(task)}
                 className="flex w-full min-w-0 flex-col gap-1.5 p-3 text-left"
             >
-                <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider">
-                    <span className={`flex items-center gap-1.5 ${statusMeta.textClass}`}>
-                        <span className={`h-1.5 w-1.5 rounded-full ${statusMeta.dotClass}`} />
-                        {statusMeta.label}
-                    </span>
-                    {showPriority && (
-                        <>
-                            <span className="text-gray-300">•</span>
-                            <span className={`flex items-center gap-1 ${priorityMeta.textClass}`}>
-                                <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M4 21V4l8 4 8-4v17" />
-                                    <line x1="4" y1="14" x2="20" y2="14" />
-                                </svg>
-                                {priorityMeta.label}
-                            </span>
-                        </>
+                <div className="flex min-w-0 items-start gap-2">
+                    {isInProgress && (
+                        <span className="relative mt-1.5 inline-flex h-2 w-2 shrink-0 items-center justify-center" aria-hidden="true">
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+                            <span className="relative inline-block h-2 w-2 rounded-full bg-red-500" />
+                        </span>
                     )}
-                    {commentsCount > 0 && (
-                        <>
-                            <span className="text-gray-300">•</span>
-                            <span className="flex items-center gap-1 text-gray-500" title={`${commentsCount} comment${commentsCount === 1 ? "" : "s"}`}>
-                                <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <div className="min-w-0 flex-1">
+                        <p className={`truncate text-sm font-medium ${isDone ? "text-gray-500 line-through" : "text-gray-900"}`}>
+                            {task.title || "(Untitled)"}
+                        </p>
+                        {firstClient && (
+                            <p className="truncate text-[11px] text-gray-500">
+                                {firstClient.name || "Unnamed"}
+                                {extraClients > 0 ? ` +${extraClients}` : ""}
+                            </p>
+                        )}
+                    </div>
+                </div>
+                {task.description && (
+                    <p className="line-clamp-2 text-xs text-gray-500">{task.description}</p>
+                )}
+                {hasMeta && (
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-500">
+                        {metaDate && (
+                            <span className="flex items-center gap-1">
+                                <svg className="h-3 w-3 shrink-0 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <rect x="3" y="4" width="18" height="18" rx="2" />
+                                    <line x1="16" y1="2" x2="16" y2="6" />
+                                    <line x1="8" y1="2" x2="8" y2="6" />
+                                    <line x1="3" y1="10" x2="21" y2="10" />
+                                </svg>
+                                {formatDate(metaDate)}
+                            </span>
+                        )}
+                        {assigneeChips.length > 0 && (
+                            <span className="flex min-w-0 items-center gap-1">
+                                <svg className="h-3 w-3 shrink-0 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                                    <circle cx="12" cy="7" r="4" />
+                                </svg>
+                                <span className="truncate">
+                                    {assigneeChips.map((a) => a.name || a.email || "—").join(", ")}
+                                </span>
+                            </span>
+                        )}
+                        {commentsCount > 0 && (
+                            <span className="ml-auto flex items-center gap-1" title={`${commentsCount} comment${commentsCount === 1 ? "" : "s"}`}>
+                                <svg className="h-3 w-3 shrink-0 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                                     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                                 </svg>
                                 <span className="tabular-nums">{commentsCount}</span>
                             </span>
-                        </>
-                    )}
-                </div>
-                <p className={`text-sm font-medium ${isDone ? "text-gray-500 line-through" : "text-gray-900"}`}>
-                    {task.title || "(Untitled)"}
-                </p>
-                {task.description && (
-                    <p className="line-clamp-2 text-xs text-gray-500">{task.description}</p>
+                        )}
+                    </div>
                 )}
-                <dl className="mt-1.5 flex flex-col gap-1.5 text-xs">
-                    {clientChips.length > 0 && (
-                        <div className="flex items-start gap-2">
-                            <svg className="mt-1 h-3.5 w-3.5 shrink-0 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M3 21h18" />
-                                <path d="M5 21V7l8-4v18" />
-                                <path d="M19 21V11l-6-4" />
-                            </svg>
-                            <ul className="flex min-w-0 flex-1 flex-col gap-0.5">
-                                {clientChips.map((c) => (
-                                    <li key={String(c._id || c.id)} className="truncate font-medium text-gray-800">
-                                        {c.name || "Unnamed"}
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                    )}
-                    {assigneeChips.length > 0 && (
-                        <div className="flex items-start gap-2">
-                            <svg className="mt-1 h-3.5 w-3.5 shrink-0 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                                <circle cx="12" cy="7" r="4" />
-                            </svg>
-                            <ul className="flex min-w-0 flex-1 flex-col gap-0.5">
-                                {assigneeChips.map((a) => (
-                                    <li key={String(a._id || a.id)} className="truncate font-medium text-gray-800">
-                                        {a.name || a.email || "—"}
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                    )}
-                    {(task.dueDate || (isDone && task.doneAt)) && (
-                        <div className="flex items-center gap-2 text-gray-600">
-                            <svg className="h-3.5 w-3.5 shrink-0 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <rect x="3" y="4" width="18" height="18" rx="2" />
-                                <line x1="16" y1="2" x2="16" y2="6" />
-                                <line x1="8" y1="2" x2="8" y2="6" />
-                                <line x1="3" y1="10" x2="21" y2="10" />
-                            </svg>
-                            <span>
-                                {isDone && task.doneAt
-                                    ? `Done ${formatDate(task.doneAt)}`
-                                    : `Due ${formatDate(task.dueDate)}`}
-                            </span>
-                        </div>
-                    )}
-                </dl>
             </button>
         </li>
     )
