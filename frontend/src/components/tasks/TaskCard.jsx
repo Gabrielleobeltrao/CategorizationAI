@@ -50,6 +50,7 @@ function TaskCard({ task, clientById, employeeById, onSelect }) {
     const priority = String(task.priority || "low")
     const priorityMeta = getPriorityMeta(priority)
     const showPriority = priority !== "low"
+    const commentsCount = Array.isArray(task.comments) ? task.comments.length : 0
 
     return (
         <li className={`rounded-xl border border-gray-100 bg-gray-50/50 ${isDone ? "opacity-70" : ""}`}>
@@ -72,6 +73,17 @@ function TaskCard({ task, clientById, employeeById, onSelect }) {
                                     <line x1="4" y1="14" x2="20" y2="14" />
                                 </svg>
                                 {priorityMeta.label}
+                            </span>
+                        </>
+                    )}
+                    {commentsCount > 0 && (
+                        <>
+                            <span className="text-gray-300">•</span>
+                            <span className="flex items-center gap-1 text-gray-500" title={`${commentsCount} comment${commentsCount === 1 ? "" : "s"}`}>
+                                <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                                </svg>
+                                <span className="tabular-nums">{commentsCount}</span>
                             </span>
                         </>
                     )}

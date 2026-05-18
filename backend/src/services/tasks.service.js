@@ -4,7 +4,12 @@ import {
     getTaskById,
     updateTaskById,
     deleteTaskById,
+    addTaskComment,
+    updateTaskComment,
+    deleteTaskComment,
 } from "../repositories/tasks.repository.js"
+import { hasPermissionFromListService } from "./roles.service.js"
+import { AppError } from "../utils/appError.js"
 
 function ensureSameOffice(task, actorOfficeId) {
     const safeOfficeId = String(actorOfficeId || "").trim()
@@ -73,4 +78,68 @@ export async function deleteTaskByIdService(id, context = {}) {
     ensureSameOffice(existing, context?.actorOfficeId)
 
     await deleteTaskById(id)
+}
+
+export async function addTaskCommentService(taskId, input, context = {}) {
+    if (!taskId) throw new Error("taskId is required")
+    const body = String(input?.body || "").trim()
+    if (!body) throw new Error("comment body is required")
+
+    const existing = await getTaskById(taskId)
+    if (!existing) throw new Error("Task not found")
+    ensureSameOffice(existing, context?.actorOfficeId)
+
+    return addTaskComment(taskId, {
+        body,
+        authorId: String(context?.actorProfileId || "").trim(),
+        authorName: String(context?.actorName || "").trim(),
+    })
+}
+
+// Rule: a user can always update/delete *their own* comment. The
+// tasks:commentUpdate / tasks:commentDelete permissions only matter when the
+// actor is touching someone else's comment. Routes therefore drop the strict
+// requirePermission upfront and we authorize here based on ownership first.
+function ensureCommentActionAllowed({ comment, context, permissionKey }) {
+    const actorId = String(context?.actorProfileId || "").trim()
+    const authorId = String(comment?.authorId || "").trim()
+    const isOwner = actorId && authorId && actorId === authorId
+    if (isOwner) return
+    const permissions = Array.isArray(context?.actorPermissions) ? context.actorPermissions : []
+    if (hasPermissionFromListService(permissions, permissionKey)) return
+    throw new AppError("Forbidden", 403)
+}
+
+export async function updateTaskCommentService(taskId, commentId, input, context = {}) {
+    if (!taskId) throw new Error("taskId is required")
+    if (!commentId) throw new Error("commentId is required")
+    const body = String(input?.body || "").trim()
+    if (!body) throw new Error("comment body is required")
+
+    const existing = await getTaskById(taskId)
+    if (!existing) throw new Error("Task not found")
+    ensureSameOffice(existing, context?.actorOfficeId)
+
+    const comments = Array.isArray(existing?.comments) ? existing.comments : []
+    const comment = comments.find((c) => String(c?.id || "") === String(commentId))
+    if (!comment) throw new Error("Comment not found")
+    ensureCommentActionAllowed({ comment, context, permissionKey: "tasks:commentUpdate" })
+
+    return updateTaskComment(taskId, commentId, { body })
+}
+
+export async function deleteTaskCommentService(taskId, commentId, context = {}) {
+    if (!taskId) throw new Error("taskId is required")
+    if (!commentId) throw new Error("commentId is required")
+
+    const existing = await getTaskById(taskId)
+    if (!existing) throw new Error("Task not found")
+    ensureSameOffice(existing, context?.actorOfficeId)
+
+    const comments = Array.isArray(existing?.comments) ? existing.comments : []
+    const comment = comments.find((c) => String(c?.id || "") === String(commentId))
+    if (!comment) throw new Error("Comment not found")
+    ensureCommentActionAllowed({ comment, context, permissionKey: "tasks:commentDelete" })
+
+    return deleteTaskComment(taskId, commentId)
 }

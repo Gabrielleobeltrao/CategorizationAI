@@ -5,6 +5,9 @@ import {
     getTaskByIdController,
     updateTaskByIdController,
     deleteTaskByIdController,
+    addTaskCommentController,
+    updateTaskCommentController,
+    deleteTaskCommentController,
 } from "../controllers/tasks.controller.js"
 import { requireAuth } from "../middlewares/requireAuth.js"
 import { requirePermission } from "../middlewares/requirePermission.js"
@@ -54,6 +57,34 @@ router.delete(
     requireFeature("crmTasks"),
     validateObjectIdParam("id"),
     deleteTaskByIdController
+)
+
+router.post(
+    "/tasks/:id/comments",
+    requireAuth,
+    requirePermission("tasks:commentCreate"),
+    requireFeature("crmTasks"),
+    validateObjectIdParam("id"),
+    addTaskCommentController
+)
+
+// Ownership-or-permission authorization is handled inside the service so the
+// author can always edit/delete their own comment, while other users need
+// tasks:commentUpdate / tasks:commentDelete to touch someone else's.
+router.patch(
+    "/tasks/:id/comments/:commentId",
+    requireAuth,
+    requireFeature("crmTasks"),
+    validateObjectIdParam("id"),
+    updateTaskCommentController
+)
+
+router.delete(
+    "/tasks/:id/comments/:commentId",
+    requireAuth,
+    requireFeature("crmTasks"),
+    validateObjectIdParam("id"),
+    deleteTaskCommentController
 )
 
 export default router

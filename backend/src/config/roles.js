@@ -43,6 +43,9 @@ export const PERMISSION_DEFINITIONS = [
   { key: "tasks:update", module: "Operations CRM", group: "Tasks", label: "Update tasks" },
   { key: "tasks:delete", module: "Operations CRM", group: "Tasks", label: "Delete tasks" },
   { key: "tasks:readStatusHistory", module: "Operations CRM", group: "Tasks", label: "View task status history" },
+  { key: "tasks:commentCreate", module: "Operations CRM", group: "Tasks", label: "Add task comments" },
+  { key: "tasks:commentUpdate", module: "Operations CRM", group: "Tasks", label: "Edit task comments (any author)" },
+  { key: "tasks:commentDelete", module: "Operations CRM", group: "Tasks", label: "Delete task comments (any author)" },
 ]
 
 export const PERMISSION_KEYS = PERMISSION_DEFINITIONS.map((item) => item.key)

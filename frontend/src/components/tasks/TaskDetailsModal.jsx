@@ -1,4 +1,5 @@
 import { useState } from "react"
+import TaskCommentsSection from "./TaskCommentsSection"
 
 function ClientDetails({ client }) {
     return (
@@ -131,6 +132,13 @@ function TaskDetailsModal({
     onChangeStatus,
     onDelete,
     canViewStatusHistory = false,
+    currentProfileId = "",
+    canCreateComment = false,
+    canUpdateComment = false,
+    canDeleteComment = false,
+    onCreateComment,
+    onUpdateComment,
+    onDeleteComment,
 }) {
     const [isStatusHistoryOpen, setIsStatusHistoryOpen] = useState(false)
     if (!task) return null
@@ -139,7 +147,9 @@ function TaskDetailsModal({
     const clients = Array.isArray(clientList) ? clientList.filter(Boolean) : []
     const assignees = Array.isArray(assigneeList) ? assigneeList.filter(Boolean) : []
     const statusHistory = Array.isArray(task.statusHistory) ? task.statusHistory : []
+    const comments = Array.isArray(task.comments) ? task.comments : []
     const showStatusHistory = canViewStatusHistory && statusHistory.length > 0
+    const showCommentsSection = canCreateComment || comments.length > 0
 
     return (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
@@ -238,6 +248,19 @@ function TaskDetailsModal({
                                 ))}
                             </ul>
                         </section>
+                    )}
+
+                    {showCommentsSection && (
+                        <TaskCommentsSection
+                            comments={comments}
+                            currentProfileId={currentProfileId}
+                            canCreate={canCreateComment}
+                            canUpdate={canUpdateComment}
+                            canDelete={canDeleteComment}
+                            onCreate={(body) => onCreateComment?.(task, body)}
+                            onUpdate={(commentId, body) => onUpdateComment?.(task, commentId, body)}
+                            onDelete={(commentId) => onDeleteComment?.(task, commentId)}
+                        />
                     )}
 
                     {showStatusHistory && (

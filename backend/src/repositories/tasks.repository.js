@@ -49,6 +49,7 @@ function decorateTask(task) {
     const assigneeIds = Array.isArray(task.assigneeIds) && task.assigneeIds.length > 0
         ? task.assigneeIds
         : (task.assigneeId ? [String(task.assigneeId)] : [])
+    const comments = Array.isArray(task.comments) ? task.comments : []
     // Synthesize a minimal status history for legacy tasks that predate the
     // log field, so the UI never has to handle a missing array.
     let statusHistory = Array.isArray(task.statusHistory) ? task.statusHistory : null
@@ -70,6 +71,7 @@ function decorateTask(task) {
         clientId: clientIds[0] || null,
         assigneeId: assigneeIds[0] || null,
         statusHistory,
+        comments,
     }
 }
 
@@ -129,6 +131,7 @@ export async function createTask(input) {
         priority,
         doneAt: status === "done" ? now : null,
         statusHistory: [{ status, at: now, by: createdBy }],
+        comments: [],
         createdBy,
         createdAt: now,
         updatedAt: now,
@@ -270,4 +273,62 @@ export async function updateTaskById(id, patch, { actorProfileId } = {}) {
 export async function deleteTaskById(id) {
     const db = getDB()
     return db.collection(COLLECTION).deleteOne({ _id: new ObjectId(id) })
+}
+
+// ── Comments ────────────────────────────────────────────────────────────────
+// Comments live embedded on the task document as a `comments` array of
+// `{ id, body, authorId, authorName, createdAt, updatedAt? }`. We generate
+// `id` on the server so the frontend can target individual comments without
+// relying on array positions (which would shift after deletes).
+
+export async function addTaskComment(taskId, { body, authorId, authorName }) {
+    const db = getDB()
+    const now = new Date()
+    const comment = {
+        id: new ObjectId().toString(),
+        body: String(body || "").trim(),
+        authorId: String(authorId || "").trim(),
+        authorName: String(authorName || "").trim(),
+        createdAt: now,
+        updatedAt: null,
+    }
+    if (!comment.body) throw new Error("comment body is required")
+
+    const updated = await db.collection(COLLECTION).findOneAndUpdate(
+        { _id: new ObjectId(taskId) },
+        { $push: { comments: comment }, $set: { updatedAt: now } },
+        { returnDocument: "after" }
+    )
+    return updated ? decorateTask(updated) : updated
+}
+
+export async function updateTaskComment(taskId, commentId, { body }) {
+    const db = getDB()
+    const now = new Date()
+    const safeBody = String(body || "").trim()
+    if (!safeBody) throw new Error("comment body is required")
+
+    const updated = await db.collection(COLLECTION).findOneAndUpdate(
+        { _id: new ObjectId(taskId), "comments.id": commentId },
+        {
+            $set: {
+                "comments.$.body": safeBody,
+                "comments.$.updatedAt": now,
+                updatedAt: now,
+            },
+        },
+        { returnDocument: "after" }
+    )
+    return updated ? decorateTask(updated) : updated
+}
+
+export async function deleteTaskComment(taskId, commentId) {
+    const db = getDB()
+    const now = new Date()
+    const updated = await db.collection(COLLECTION).findOneAndUpdate(
+        { _id: new ObjectId(taskId) },
+        { $pull: { comments: { id: commentId } }, $set: { updatedAt: now } },
+        { returnDocument: "after" }
+    )
+    return updated ? decorateTask(updated) : updated
 }

@@ -13,7 +13,13 @@ import {
 import { subscribeDashboardRefresh } from "../utils/dashboardRefresh"
 import { useFeature } from "../hooks/useFeature"
 import FeatureGate from "../components/auth/FeatureGate"
-import { listTasks, updateTaskById as updateTask } from "../services/tasks.service"
+import {
+  listTasks,
+  updateTaskById as updateTask,
+  addTaskComment,
+  updateTaskComment,
+  deleteTaskComment,
+} from "../services/tasks.service"
 import { listClientsByOfficeId } from "../services/clients.service"
 import { listEmployeesByOfficeId } from "../services/employees.service"
 import TaskCard from "../components/tasks/TaskCard"
@@ -262,6 +268,46 @@ function Home() {
     }
   }
 
+  const applyHomeTaskUpdate = (updated) => {
+    if (!updated) return
+    setOpenTasks((current) =>
+      current.map((t) => (String(t._id || t.id) === String(updated._id || updated.id) ? updated : t))
+    )
+    setViewingTask((current) =>
+      current && String(current._id || current.id) === String(updated._id || updated.id) ? updated : current
+    )
+  }
+
+  const handleHomeCreateComment = async (task, body) => {
+    try {
+      const updated = await addTaskComment(task._id || task.id, body)
+      applyHomeTaskUpdate(updated)
+    } catch (err) {
+      error(err.message || "Failed to add comment")
+      throw err
+    }
+  }
+
+  const handleHomeUpdateComment = async (task, commentId, body) => {
+    try {
+      const updated = await updateTaskComment(task._id || task.id, commentId, body)
+      applyHomeTaskUpdate(updated)
+    } catch (err) {
+      error(err.message || "Failed to update comment")
+      throw err
+    }
+  }
+
+  const handleHomeDeleteComment = async (task, commentId) => {
+    try {
+      const updated = await deleteTaskComment(task._id || task.id, commentId)
+      applyHomeTaskUpdate(updated)
+    } catch (err) {
+      error(err.message || "Failed to delete comment")
+      throw err
+    }
+  }
+
   useEffect(() => {
     const officeId = String(profile?.officeId || "").trim()
     if (!isCrmEnabled || !officeId) {
@@ -483,6 +529,13 @@ function Home() {
         onEdit={(task) => handleHomeTaskEdit(task)}
         onChangeStatus={handleHomeTaskChangeStatus}
         canViewStatusHistory={hasPermission(profile?.permissions, "tasks:readStatusHistory")}
+        currentProfileId={currentProfileId}
+        canCreateComment={hasPermission(profile?.permissions, "tasks:commentCreate")}
+        canUpdateComment={hasPermission(profile?.permissions, "tasks:commentUpdate")}
+        canDeleteComment={hasPermission(profile?.permissions, "tasks:commentDelete")}
+        onCreateComment={handleHomeCreateComment}
+        onUpdateComment={handleHomeUpdateComment}
+        onDeleteComment={handleHomeDeleteComment}
       />
 
       <TaskEditModal

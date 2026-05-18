@@ -12,6 +12,9 @@ import {
     createTask,
     updateTaskById,
     deleteTaskById,
+    addTaskComment,
+    updateTaskComment,
+    deleteTaskComment,
 } from "../services/tasks.service"
 import { hasPermission } from "../utils/permissions"
 
@@ -28,6 +31,9 @@ function TasksPage() {
 
     const officeId = String(profile?.officeId || "").trim()
     const canViewStatusHistory = hasPermission(profile?.permissions, "tasks:readStatusHistory")
+    const canCreateComment = hasPermission(profile?.permissions, "tasks:commentCreate")
+    const canUpdateComment = hasPermission(profile?.permissions, "tasks:commentUpdate")
+    const canDeleteComment = hasPermission(profile?.permissions, "tasks:commentDelete")
 
     const [tasks, setTasks] = useState([])
     const [clients, setClients] = useState([])
@@ -211,6 +217,46 @@ function TasksPage() {
         }
     }
 
+    const applyTaskUpdate = (updated) => {
+        if (!updated) return
+        setTasks((current) =>
+            current.map((t) => (String(t._id || t.id) === String(updated._id || updated.id) ? updated : t))
+        )
+        setViewingTask((current) =>
+            current && String(current._id || current.id) === String(updated._id || updated.id) ? updated : current
+        )
+    }
+
+    const handleCreateComment = async (task, body) => {
+        try {
+            const updated = await addTaskComment(task._id || task.id, body)
+            applyTaskUpdate(updated)
+        } catch (err) {
+            error(err.message || "Failed to add comment")
+            throw err
+        }
+    }
+
+    const handleUpdateComment = async (task, commentId, body) => {
+        try {
+            const updated = await updateTaskComment(task._id || task.id, commentId, body)
+            applyTaskUpdate(updated)
+        } catch (err) {
+            error(err.message || "Failed to update comment")
+            throw err
+        }
+    }
+
+    const handleDeleteComment = async (task, commentId) => {
+        try {
+            const updated = await deleteTaskComment(task._id || task.id, commentId)
+            applyTaskUpdate(updated)
+        } catch (err) {
+            error(err.message || "Failed to delete comment")
+            throw err
+        }
+    }
+
     return (
         <section className="w-full p-4 sm:p-6 lg:p-8">
             <div className="mx-auto flex max-w-5xl flex-col gap-4 sm:gap-6">
@@ -371,6 +417,13 @@ function TasksPage() {
                 onChangeStatus={handleChangeStatus}
                 onDelete={handleDelete}
                 canViewStatusHistory={canViewStatusHistory}
+                currentProfileId={currentProfileId}
+                canCreateComment={canCreateComment}
+                canUpdateComment={canUpdateComment}
+                canDeleteComment={canDeleteComment}
+                onCreateComment={handleCreateComment}
+                onUpdateComment={handleUpdateComment}
+                onDeleteComment={handleDeleteComment}
             />
 
             <TaskFiltersModal

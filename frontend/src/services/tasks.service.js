@@ -59,3 +59,37 @@ export async function deleteTaskById(taskId) {
     method: "DELETE",
   })
 }
+
+export async function addTaskComment(taskId, body) {
+  const id = String(taskId || "").trim()
+  if (!id) throw new Error("taskId is required")
+  const safeBody = String(body || "").trim()
+  if (!safeBody) throw new Error("comment body is required")
+  return api(`/api/tasks/${id}/comments`, {
+    method: "POST",
+    body: JSON.stringify({ body: safeBody }),
+  })
+}
+
+export async function updateTaskComment(taskId, commentId, body) {
+  const id = String(taskId || "").trim()
+  const safeCommentId = String(commentId || "").trim()
+  if (!id) throw new Error("taskId is required")
+  if (!safeCommentId) throw new Error("commentId is required")
+  const safeBody = String(body || "").trim()
+  if (!safeBody) throw new Error("comment body is required")
+  return api(`/api/tasks/${id}/comments/${safeCommentId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ body: safeBody }),
+  })
+}
+
+export async function deleteTaskComment(taskId, commentId) {
+  const id = String(taskId || "").trim()
+  const safeCommentId = String(commentId || "").trim()
+  if (!id) throw new Error("taskId is required")
+  if (!safeCommentId) throw new Error("commentId is required")
+  return api(`/api/tasks/${id}/comments/${safeCommentId}`, {
+    method: "DELETE",
+  })
+}
