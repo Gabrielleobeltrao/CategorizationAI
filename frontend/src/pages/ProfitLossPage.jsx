@@ -476,36 +476,91 @@ function ProfitLossPage() {
     })
   }
 
+  const handleDownloadCsv = () => {
+    if (!profitLoss) return
+
+    const periodValue = formatPeriodLabel(profitLoss.period)
+    const clientName = client?.name || "Unknown client"
+    const now = new Date()
+    const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
+      now.getDate()
+    ).padStart(2, "0")}`
+    const safeClientSlug = clientName.replace(/\s+/g, "-").toLowerCase()
+
+    const escape = (value) => {
+      const safe = String(value ?? "").replace(/"/g, '""')
+      return /[",\n]/.test(safe) ? `"${safe}"` : safe
+    }
+
+    const lines = [
+      `Profit & Loss - ${clientName}`,
+      `Period: ${periodValue}`,
+      "",
+      ["Label", "Amount", "Type", "Level"].map(escape).join(","),
+    ]
+    for (const row of Array.isArray(profitLoss.statement) ? profitLoss.statement : []) {
+      lines.push([row.label, Number(row.amount || 0), row.type || "", row.level ?? ""].map(escape).join(","))
+    }
+
+    const csv = lines.join("\n")
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = `profit-loss-${safeClientSlug}-${timestamp}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <section className="w-full p-4 sm:p-6 lg:p-8">
-      <div className="flex w-full flex-col gap-3">
-        <header className="rounded-xl border border-gray-200 bg-white p-4">
-          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-            <div>
-              <h1 className="text-2xl font-bold sm:text-3xl">Profit & Loss</h1>
-              <p className="text-sm text-gray-500 mt-1">
-                {client ? client.name : "Unknown client"}
-              </p>
-              <p className="text-sm text-gray-500 mt-1">
+      <div className="flex w-full flex-col gap-4">
+        <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
+          <header className="flex h-full flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="text-xl font-semibold text-gray-900">Profit & Loss</h1>
+              <p className="text-sm text-gray-500">
                 Period: {profitLoss ? formatPeriodLabel(profitLoss.period) : (isBlockingLoading ? "Loading..." : "-")}
               </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
-                className="mt-3 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-sm font-semibold text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={handleDownloadCsv}
+                disabled={!profitLoss}
+                className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                CSV
+              </button>
+              <button
+                type="button"
                 onClick={handleDownloadPdf}
                 disabled={!profitLoss}
+                className="inline-flex items-center gap-1.5 rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Download PDF
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                PDF
               </button>
             </div>
+          </header>
 
-            <div className="w-full md:w-1/2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
-              <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                Period Filter
-              </label>
-
-              <div className="flex flex-col gap-2">
-                <div className="grid grid-cols-4 gap-1 rounded-lg border border-gray-200 bg-white p-1">
+          <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <span className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+              Period filter
+            </span>
+            <div className="flex flex-col gap-2">
+              <div className="grid grid-cols-4 gap-1 rounded-lg border border-gray-200 bg-white p-1">
                   {[
                     { value: "ALL", label: "All" },
                     { value: "MONTH", label: "Month" },
@@ -579,19 +634,18 @@ function ProfitLossPage() {
                   </div>
                 )}
 
-                {filter.mode === "RANGE" && (
-                  <DateRangePicker
-                    value={{ from: filter.fromDate, to: filter.toDate }}
-                    onChange={(next) => {
-                      setRangeField("fromDate", next.from)
-                      setRangeField("toDate", next.to)
-                    }}
-                  />
-                )}
-              </div>
+              {filter.mode === "RANGE" && (
+                <DateRangePicker
+                  value={{ from: filter.fromDate, to: filter.toDate }}
+                  onChange={(next) => {
+                    setRangeField("fromDate", next.from)
+                    setRangeField("toDate", next.to)
+                  }}
+                />
+              )}
             </div>
           </div>
-        </header>
+        </div>
 
         {openTestConfig?.enabled && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">

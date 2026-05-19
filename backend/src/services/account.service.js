@@ -12,15 +12,22 @@ import {
   listLinkedAccountIds,
 } from "../repositories/transactions.repository.js"
 import { AppError } from "../utils/appError.js"
+import { isValidBalanceSheetType } from "../config/balanceSheetTypes.js"
 
 export async function createAccountService(input) {
   if (!input?.name) throw new Error("name is required")
   if (!input?.type) throw new Error("type is required")
   if (!input?.clientId) throw new Error("clientId is required")
 
+  const balanceSheetType = String(input.balanceSheetType || "").trim()
+  if (balanceSheetType && !isValidBalanceSheetType(balanceSheetType)) {
+    throw new AppError("Invalid balanceSheetType", 400)
+  }
+
   return createAccount({
     name: input.name.trim(),
     type: input.type.trim(),
+    balanceSheetType,
     clientId: input.clientId,
   })
 }
@@ -47,6 +54,14 @@ export async function updateAccountByIdService(id, patch) {
     const clientId = patch.clientId.trim()
     if (!clientId) throw new Error("clientId cannot be empty")
     safePatch.clientId = clientId
+  }
+
+  if (typeof patch.balanceSheetType === "string") {
+    const balanceSheetType = patch.balanceSheetType.trim()
+    if (balanceSheetType && !isValidBalanceSheetType(balanceSheetType)) {
+      throw new AppError("Invalid balanceSheetType", 400)
+    }
+    safePatch.balanceSheetType = balanceSheetType
   }
 
   if (Object.keys(safePatch).length === 0) {

@@ -11,6 +11,7 @@ export async function createAccount(input) {
   const clientId = String(input?.clientId || "").trim()
   const name = String(input?.name || "").trim()
   const type = String(input?.type || "").trim()
+  const balanceSheetType = String(input?.balanceSheetType || "").trim()
 
   if (!clientId) throw new Error("clientId is required")
   if (!name) throw new Error("name is required")
@@ -18,7 +19,7 @@ export async function createAccount(input) {
 
   return api("/api/accounts", {
     method: "POST",
-    body: JSON.stringify({ clientId, name, type }),
+    body: JSON.stringify({ clientId, name, type, balanceSheetType }),
   })
 }
 

@@ -177,8 +177,9 @@ function Sidebar({ isCollapsed: rawCollapsed, onToggleCollapse, isMobileOpen = f
             </svg>
           ),
         },
+        { kind: "section", label: "Reports" },
         {
-          to: `/clients/${clientId}/profit-loss`,
+          to: `/clients/${clientId}/reports/profit-loss`,
           label: "Profit & Loss",
           icon: (
             <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
@@ -186,6 +187,30 @@ function Sidebar({ isCollapsed: rawCollapsed, onToggleCollapse, isMobileOpen = f
               <path d="M6 16V9" />
               <path d="M12 16V6" />
               <path d="M18 16v-4" />
+            </svg>
+          ),
+        },
+        {
+          to: `/clients/${clientId}/reports/account-balances`,
+          label: "Account Balances",
+          icon: (
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="5" width="18" height="14" rx="2" />
+              <line x1="3" y1="10" x2="21" y2="10" />
+              <line x1="8" y1="14" x2="12" y2="14" />
+              <line x1="14" y1="14" x2="18" y2="14" />
+            </svg>
+          ),
+        },
+        {
+          to: `/clients/${clientId}/reports/balance-sheet`,
+          label: "Balance Sheet",
+          icon: (
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 3v18" />
+              <path d="M6 7l-3 4 3 4" />
+              <path d="M18 7l3 4-3 4" />
+              <path d="M3 11h18" />
             </svg>
           ),
         },
@@ -338,24 +363,39 @@ function Sidebar({ isCollapsed: rawCollapsed, onToggleCollapse, isMobileOpen = f
               </p>
             )}
             <nav className="flex flex-col gap-1">
-              {clientMenuItems.map((clientItem) => (
-                <NavLink
-                  key={clientItem.to}
-                  to={clientItem.to}
-                  end
-                  className={({ isActive }) =>
-                    `flex items-center rounded-lg py-2 text-sm font-medium transition-colors ${
-                      isCollapsed ? "justify-center px-2" : "gap-3 px-3"
-                    } ${
-                      isActive ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
-                    }`
+              {clientMenuItems.map((clientItem, idx) => {
+                if (clientItem.kind === "section") {
+                  if (isCollapsed) {
+                    return <div key={`section-${idx}`} className="my-2 border-t border-gray-100" />
                   }
-                  title={isCollapsed ? clientItem.label : undefined}
-                >
-                  <span>{clientItem.icon}</span>
-                  {!isCollapsed && <span>{clientItem.label}</span>}
-                </NavLink>
-              ))}
+                  return (
+                    <p
+                      key={`section-${idx}`}
+                      className="mt-3 px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400"
+                    >
+                      {clientItem.label}
+                    </p>
+                  )
+                }
+                return (
+                  <NavLink
+                    key={clientItem.to}
+                    to={clientItem.to}
+                    end
+                    className={({ isActive }) =>
+                      `flex items-center rounded-lg py-2 text-sm font-medium transition-colors ${
+                        isCollapsed ? "justify-center px-2" : "gap-3 px-3"
+                      } ${
+                        isActive ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
+                      }`
+                    }
+                    title={isCollapsed ? clientItem.label : undefined}
+                  >
+                    <span>{clientItem.icon}</span>
+                    {!isCollapsed && <span>{clientItem.label}</span>}
+                  </NavLink>
+                )
+              })}
             </nav>
           </div>
         ) : (

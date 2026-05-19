@@ -36,6 +36,7 @@ import { useOfficeTags } from "../hooks/useOfficeTags"
 import { trackClientOpened } from "../utils/recentClients"
 import { emitDashboardRefresh } from "../utils/dashboardRefresh"
 import { CATEGORY_TYPE_OPTIONS, getCategoryTypeLabel, normalizeCategoryType } from "../constants/categoryTypes"
+import { BALANCE_SHEET_TYPE_OPTIONS } from "../constants/balanceSheetTypes"
 
 const LedgerEntriesTable = lazy(() => import("../components/ledger/LedgerEntriesTable"))
 const AccountsSection = lazy(() => import("../components/ledger/AccountsSection"))
@@ -142,6 +143,7 @@ function mapAccount(item = {}) {
         clientId: item?.clientId || "",
         name: item?.name || "",
         type: item?.type || "",
+        balanceSheetType: item?.balanceSheetType || "",
     }
 }
 
@@ -367,6 +369,7 @@ function LedgerPage() {
 
     const [newAccountName, setNewAccountName] = useState("")
     const [newAccountType, setNewAccountType] = useState("")
+    const [newAccountBalanceSheetType, setNewAccountBalanceSheetType] = useState("")
 
     const [newCategoryName, setNewCategoryName] = useState("")
     const [newCategoryType, setNewCategoryType] = useState("")
@@ -1301,11 +1304,13 @@ function LedgerPage() {
                 clientId,
                 name: newAccountName,
                 type: newAccountType,
+                balanceSheetType: newAccountBalanceSheetType,
             })
 
             setAccounts((current) => [mapAccount(created), ...current])
             setNewAccountName("")
             setNewAccountType("")
+            setNewAccountBalanceSheetType("")
             setShowAccountForm(false)
             success("Account created successfully")
         } catch (err) {
@@ -1649,6 +1654,37 @@ function LedgerPage() {
                             value={newAccountType}
                             onChange={(e) => setNewAccountType(e.target.value)}
                         />
+                    </label>
+                    <label className="flex flex-col gap-1">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Balance Sheet category</span>
+                        <div className="relative w-full">
+                            <select
+                                className="w-full appearance-none rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 pr-10 text-sm outline-none transition focus:border-gray-400 focus:bg-white"
+                                value={newAccountBalanceSheetType}
+                                onChange={(e) => setNewAccountBalanceSheetType(e.target.value)}
+                            >
+                                <option value="">Auto-detect from type</option>
+                                {BALANCE_SHEET_TYPE_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                        {option.label}
+                                    </option>
+                                ))}
+                            </select>
+                            <svg
+                                className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            >
+                                <path d="M6 9l6 6 6-6" />
+                            </svg>
+                        </div>
+                        <span className="text-[11px] text-gray-500">
+                            Used in the Balance Sheet report. Leave blank to infer (checking/savings/cash → Current Asset, credit_card → Current Liability, loan → Non-current Liability).
+                        </span>
                     </label>
                     <div className="mt-1 flex items-center justify-end gap-2">
                         <button

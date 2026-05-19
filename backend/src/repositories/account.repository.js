@@ -17,6 +17,7 @@ export async function createAccount(input) {
   const doc = {
     name: input.name,
     type: input.type,
+    balanceSheetType: input.balanceSheetType || "",
     clientId: input.clientId,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -32,6 +33,7 @@ export async function updateAccountById(id, patch) {
   const allowed = {
     name: patch.name,
     type: patch.type,
+    balanceSheetType: patch.balanceSheetType,
     clientId: patch.clientId,
     updatedAt: new Date(),
   }
