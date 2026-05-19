@@ -53,15 +53,22 @@ function buildExpenseItems(mapByCategory) {
     .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
 }
 
+const KNOWN_BUCKETS = new Set([
+  "income",
+  "cost_of_goods_sold",
+  "operating_expense",
+  "other_income",
+  "other_expense",
+  "tax_expense",
+])
+
 function getCategoryBucket({ categoryType = "", categoryName = "", amount = 0, isUncategorized = false }) {
   if (isUncategorized) {
     return Number(amount || 0) >= 0 ? "income" : "operating_expense"
   }
 
   const normalizedType = normalizeCategoryType(categoryType)
-  if (normalizedType === "income") return "income"
-  if (normalizedType === "cost_of_goods_sold") return "cost_of_goods_sold"
-  if (normalizedType === "operating_expense") return "operating_expense"
+  if (KNOWN_BUCKETS.has(normalizedType)) return normalizedType
 
   const normalizedName = String(categoryName || "").trim().toLowerCase()
   if (normalizedName === UNCATEGORIZED_INCOME_LABEL.toLowerCase()) return "income"
@@ -185,10 +192,16 @@ export async function getProfitLossByClientAndRange({ clientId, startDate, endDa
   let revenue = 0
   let cogs = 0
   let operatingExpenses = 0
+  let otherIncome = 0
+  let otherExpense = 0
+  let taxExpense = 0
 
   const revenueByCategory = new Map()
   const cogsByCategory = new Map()
   const operatingByCategory = new Map()
+  const otherIncomeByCategory = new Map()
+  const otherExpenseByCategory = new Map()
+  const taxExpenseByCategory = new Map()
   const netByMonth = new Map()
 
   for (const line of transactionLines) {
@@ -217,10 +230,23 @@ export async function getProfitLossByClientAndRange({ clientId, startDate, endDa
       continue
     }
 
+    if (bucket === "other_income") {
+      otherIncome += amount
+      otherIncomeByCategory.set(categoryName, (otherIncomeByCategory.get(categoryName) || 0) + amount)
+      netByMonth.set(keyMonth, (netByMonth.get(keyMonth) || 0) + amount)
+      continue
+    }
+
     const expenseImpact = -amount
     if (bucket === "cost_of_goods_sold") {
       cogs += expenseImpact
       cogsByCategory.set(categoryName, (cogsByCategory.get(categoryName) || 0) + expenseImpact)
+    } else if (bucket === "other_expense") {
+      otherExpense += expenseImpact
+      otherExpenseByCategory.set(categoryName, (otherExpenseByCategory.get(categoryName) || 0) + expenseImpact)
+    } else if (bucket === "tax_expense") {
+      taxExpense += expenseImpact
+      taxExpenseByCategory.set(categoryName, (taxExpenseByCategory.get(categoryName) || 0) + expenseImpact)
     } else {
       const expenseCategoryLabel = isUncategorized ? UNCATEGORIZED_EXPENSES_LABEL : categoryName
       operatingExpenses += expenseImpact
@@ -234,27 +260,27 @@ export async function getProfitLossByClientAndRange({ clientId, startDate, endDa
 
   const grossProfit = revenue - cogs
   const operatingIncome = grossProfit - operatingExpenses
-  const netIncome = operatingIncome
+  const pretaxIncome = operatingIncome + otherIncome - otherExpense
+  const netIncome = pretaxIncome - taxExpense
 
-  const revenueItems = Array.from(revenueByCategory.entries())
-    .map(([label, amount]) => ({
-      id: statementId(label),
-      label,
-      amount: normalizeAmount(amount),
-      level: 1,
-      type: "item",
-      presentationType: "income",
-    }))
-    .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
+  const buildIncomeItems = (map) =>
+    Array.from(map.entries())
+      .map(([label, amount]) => ({
+        id: statementId(label),
+        label,
+        amount: normalizeAmount(amount),
+        level: 1,
+        type: "item",
+        presentationType: "income",
+      }))
+      .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
 
-  const cogsItems = buildExpenseItems(cogsByCategory).map((item) => ({
-    ...item,
-    presentationType: "expense",
-  }))
-  const operatingItems = buildExpenseItems(operatingByCategory).map((item) => ({
-    ...item,
-    presentationType: "expense",
-  }))
+  const revenueItems = buildIncomeItems(revenueByCategory)
+  const cogsItems = buildExpenseItems(cogsByCategory).map((item) => ({ ...item, presentationType: "expense" }))
+  const operatingItems = buildExpenseItems(operatingByCategory).map((item) => ({ ...item, presentationType: "expense" }))
+  const otherIncomeItems = buildIncomeItems(otherIncomeByCategory)
+  const otherExpenseItems = buildExpenseItems(otherExpenseByCategory).map((item) => ({ ...item, presentationType: "expense" }))
+  const taxExpenseItems = buildExpenseItems(taxExpenseByCategory).map((item) => ({ ...item, presentationType: "expense" }))
 
   const statement = [
     { id: "revenue", label: "Revenue", amount: normalizeAmount(revenue), level: 0, type: "group", presentationType: "income" },
@@ -265,6 +291,19 @@ export async function getProfitLossByClientAndRange({ clientId, startDate, endDa
     { id: "opex", label: "Operating Expenses", amount: -normalizeAmount(operatingExpenses), level: 0, type: "group", presentationType: "expense" },
     ...operatingItems,
     { id: "op_total", label: "Operating Income", amount: normalizeAmount(operatingIncome), level: 0, type: "total", presentationType: "net" },
+    ...(otherIncome !== 0 || otherIncomeItems.length > 0 ? [
+      { id: "other_income", label: "Other Income", amount: normalizeAmount(otherIncome), level: 0, type: "group", presentationType: "income" },
+      ...otherIncomeItems,
+    ] : []),
+    ...(otherExpense !== 0 || otherExpenseItems.length > 0 ? [
+      { id: "other_expense", label: "Other Expense", amount: -normalizeAmount(otherExpense), level: 0, type: "group", presentationType: "expense" },
+      ...otherExpenseItems,
+    ] : []),
+    { id: "pretax_total", label: "Pretax Income", amount: normalizeAmount(pretaxIncome), level: 0, type: "total", presentationType: "net" },
+    ...(taxExpense !== 0 || taxExpenseItems.length > 0 ? [
+      { id: "tax_expense", label: "Tax Expense", amount: -normalizeAmount(taxExpense), level: 0, type: "group", presentationType: "expense" },
+      ...taxExpenseItems,
+    ] : []),
     { id: "net_total", label: "Net Income", amount: normalizeAmount(netIncome), level: 0, type: "total", presentationType: "net" },
   ]
 
@@ -281,6 +320,7 @@ export async function getProfitLossByClientAndRange({ clientId, startDate, endDa
       { id: "revenue", label: "Revenue", value: normalizeAmount(revenue) },
       { id: "gross_profit", label: "Gross Profit", value: normalizeAmount(grossProfit) },
       { id: "operating_income", label: "Operating Income", value: normalizeAmount(operatingIncome) },
+      { id: "pretax_income", label: "Pretax Income", value: normalizeAmount(pretaxIncome) },
       { id: "net_income", label: "Net Income", value: normalizeAmount(netIncome) },
     ],
     statement,

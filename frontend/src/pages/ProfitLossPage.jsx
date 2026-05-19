@@ -354,13 +354,28 @@ function ProfitLossPage() {
     const income = profitLoss?.kpis.find((kpi) => kpi.id === "revenue")?.value ?? 0
     const grossProfit = profitLoss?.kpis.find((kpi) => kpi.id === "gross_profit")?.value ?? 0
     const operatingIncome = profitLoss?.kpis.find((kpi) => kpi.id === "operating_income")?.value ?? 0
+    const pretaxIncome = profitLoss?.kpis.find((kpi) => kpi.id === "pretax_income")?.value ?? operatingIncome
     const netIncome = profitLoss?.kpis.find((kpi) => kpi.id === "net_income")?.value ?? 0
+
+    const otherIncomeLine = profitLoss?.statement?.find((line) => line.id === "other_income")
+    const otherExpenseLine = profitLoss?.statement?.find((line) => line.id === "other_expense")
+    const taxExpenseLine = profitLoss?.statement?.find((line) => line.id === "tax_expense")
+
+    const otherIncome = otherIncomeLine?.amount ?? 0
+    const otherExpense = otherExpenseLine ? -otherExpenseLine.amount : 0
+    const taxExpense = taxExpenseLine ? -taxExpenseLine.amount : 0
 
     return {
       income,
       costOfGoodsSold: income - grossProfit,
       operatingExpenses: grossProfit - operatingIncome,
+      operatingIncome,
+      otherIncome,
+      otherExpense,
+      pretaxIncome,
+      taxExpense,
       netIncome,
+      hasAdjustments: otherIncome !== 0 || otherExpense !== 0 || taxExpense !== 0,
     }
   }, [profitLoss])
 
@@ -556,95 +571,95 @@ function ProfitLossPage() {
           </header>
 
           <div className="rounded-xl border border-gray-200 bg-white p-4">
-            <span className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-              Period filter
-            </span>
-            <div className="flex flex-col gap-2">
-              <div className="grid grid-cols-4 gap-1 rounded-lg border border-gray-200 bg-white p-1">
-                  {[
-                    { value: "ALL", label: "All" },
-                    { value: "MONTH", label: "Month" },
-                    { value: "YEAR", label: "Year" },
-                    { value: "RANGE", label: "Manual" },
-                  ].map((item) => (
+          <span className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+            Period filter
+          </span>
+          <div className="flex flex-col gap-2">
+            <div className="grid grid-cols-4 gap-1 rounded-lg border border-gray-200 bg-white p-1">
+              {[
+                { value: "ALL", label: "All" },
+                { value: "MONTH", label: "Month" },
+                { value: "YEAR", label: "Year" },
+                { value: "RANGE", label: "Manual" },
+              ].map((item) => (
+                <button
+                  key={item.value}
+                  type="button"
+                  className={`rounded-md px-2 py-1.5 text-xs font-semibold ${
+                    filter.mode === item.value
+                      ? "bg-gray-900 text-white"
+                      : "text-gray-600 hover:bg-gray-100"
+                  }`}
+                  onClick={() => setMode(item.value)}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+
+            {filter.mode === "MONTH" && (
+              <div className="w-full overflow-x-auto">
+                <div className="flex h-8 min-w-max items-center gap-1.5">
+                  {monthOptions.length === 0 && (
+                    <span className="text-xs text-gray-500">
+                      {periodOptionsLoaded ? "No months available" : "Loading months..."}
+                    </span>
+                  )}
+                  {monthOptions.map((option) => (
                     <button
-                      key={item.value}
+                      key={option.value}
                       type="button"
-                      className={`rounded-md px-2 py-1.5 text-xs font-semibold ${
-                        filter.mode === item.value
+                      className={`rounded-md px-2 py-1.5 text-xs ${
+                        filter.month === option.value
                           ? "bg-gray-900 text-white"
-                          : "text-gray-600 hover:bg-gray-100"
+                          : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-100"
                       }`}
-                      onClick={() => setMode(item.value)}
+                      onClick={() => setMonthFilter(option.value)}
                     >
-                      {item.label}
+                      {option.label}
                     </button>
                   ))}
                 </div>
+              </div>
+            )}
 
-                {filter.mode === "MONTH" && (
-                  <div className="w-full overflow-x-auto">
-                    <div className="flex h-8 min-w-max items-center gap-1.5">
-                      {monthOptions.length === 0 && (
-                        <span className="text-xs text-gray-500">
-                          {periodOptionsLoaded ? "No months available" : "Loading months..."}
-                        </span>
-                      )}
-                      {monthOptions.map((option) => (
-                        <button
-                          key={option.value}
-                          type="button"
-                          className={`rounded-md px-2 py-1.5 text-xs ${
-                            filter.month === option.value
-                              ? "bg-gray-900 text-white"
-                              : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-100"
-                          }`}
-                          onClick={() => setMonthFilter(option.value)}
-                        >
-                          {option.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
+            {filter.mode === "YEAR" && (
+              <div className="w-full overflow-x-auto">
+                <div className="flex h-8 min-w-max items-center gap-1.5">
+                  {yearOptions.length === 0 && (
+                    <span className="text-xs text-gray-500">
+                      {periodOptionsLoaded ? "No years available" : "Loading years..."}
+                    </span>
+                  )}
+                  {yearOptions.map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      className={`rounded-md px-2 py-1.5 text-xs ${
+                        filter.year === option
+                          ? "bg-gray-900 text-white"
+                          : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-100"
+                      }`}
+                      onClick={() => setYearFilter(option)}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
-                {filter.mode === "YEAR" && (
-                  <div className="w-full overflow-x-auto">
-                    <div className="flex h-8 min-w-max items-center gap-1.5">
-                      {yearOptions.length === 0 && (
-                        <span className="text-xs text-gray-500">
-                          {periodOptionsLoaded ? "No years available" : "Loading years..."}
-                        </span>
-                      )}
-                      {yearOptions.map((option) => (
-                        <button
-                          key={option}
-                          type="button"
-                          className={`rounded-md px-2 py-1.5 text-xs ${
-                            filter.year === option
-                              ? "bg-gray-900 text-white"
-                              : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-100"
-                          }`}
-                          onClick={() => setYearFilter(option)}
-                        >
-                          {option}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-              {filter.mode === "RANGE" && (
-                <DateRangePicker
-                  value={{ from: filter.fromDate, to: filter.toDate }}
-                  onChange={(next) => {
-                    setRangeField("fromDate", next.from)
-                    setRangeField("toDate", next.to)
-                  }}
-                />
-              )}
-            </div>
+            {filter.mode === "RANGE" && (
+              <DateRangePicker
+                value={{ from: filter.fromDate, to: filter.toDate }}
+                onChange={(next) => {
+                  setRangeField("fromDate", next.from)
+                  setRangeField("toDate", next.to)
+                }}
+              />
+            )}
           </div>
+        </div>
         </div>
 
         {openTestConfig?.enabled && (
@@ -690,12 +705,49 @@ function ProfitLossPage() {
                     </div>
                     <span className="flex w-full justify-center text-lg font-semibold text-gray-500 lg:h-10 lg:w-8 lg:items-end lg:justify-center lg:pb-1 lg:font-normal">=</span>
                     <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2 lg:block lg:border-0 lg:bg-transparent lg:px-0 lg:py-0 lg:text-center">
-                      <p className={`text-xs uppercase tracking-wide ${netIncomeColorClass}`}>Net Income</p>
-                      <p className={`text-xl font-bold ${netIncomeColorClass}`}>{formatAbsoluteCurrency(formula.netIncome)}</p>
+                      <p className={`text-xs uppercase tracking-wide ${formula.hasAdjustments ? "text-gray-500" : netIncomeColorClass}`}>
+                        {formula.hasAdjustments ? "Operating Income" : "Net Income"}
+                      </p>
+                      <p className={`text-xl font-bold ${formula.hasAdjustments ? "text-gray-900" : netIncomeColorClass}`}>
+                        {formatAbsoluteCurrency(formula.hasAdjustments ? formula.operatingIncome : formula.netIncome)}
+                      </p>
                     </div>
                   </div>
                 </div>
               </article>
+              {formula.hasAdjustments && (
+                <article className="mt-3 rounded-xl border border-gray-200 bg-white p-4">
+                  <div className="m-3">
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Adjustments to Net Income</p>
+                    <div className="flex flex-col gap-2 lg:grid lg:grid-cols-[minmax(160px,1fr)_24px_minmax(160px,1fr)_24px_minmax(160px,1fr)_24px_minmax(160px,1fr)_24px_minmax(160px,1fr)] lg:items-end lg:gap-x-2 lg:gap-y-0">
+                      <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 lg:block lg:border-0 lg:bg-transparent lg:px-0 lg:py-0 lg:text-center">
+                        <p className="text-xs uppercase tracking-wide text-gray-500">Operating Income</p>
+                        <p className="text-lg font-semibold text-gray-900">{formatAbsoluteCurrency(formula.operatingIncome)}</p>
+                      </div>
+                      <span className="flex w-full justify-center text-lg text-gray-400 lg:h-10 lg:w-6 lg:items-end lg:justify-center lg:pb-1">+</span>
+                      <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 lg:block lg:border-0 lg:bg-transparent lg:px-0 lg:py-0 lg:text-center">
+                        <p className="text-xs uppercase tracking-wide text-gray-500">Other Income</p>
+                        <p className={`text-lg font-semibold ${getProfitLossKpiPresentation({ amount: formula.otherIncome, kind: "income" }).className}`}>{formatAbsoluteCurrency(formula.otherIncome)}</p>
+                      </div>
+                      <span className="flex w-full justify-center text-lg text-gray-400 lg:h-10 lg:w-6 lg:items-end lg:justify-center lg:pb-1">-</span>
+                      <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 lg:block lg:border-0 lg:bg-transparent lg:px-0 lg:py-0 lg:text-center">
+                        <p className="text-xs uppercase tracking-wide text-gray-500">Other Expense</p>
+                        <p className={`text-lg font-semibold ${getProfitLossKpiPresentation({ amount: formula.otherExpense, kind: "expense" }).className}`}>{formatAbsoluteCurrency(formula.otherExpense)}</p>
+                      </div>
+                      <span className="flex w-full justify-center text-lg text-gray-400 lg:h-10 lg:w-6 lg:items-end lg:justify-center lg:pb-1">-</span>
+                      <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 lg:block lg:border-0 lg:bg-transparent lg:px-0 lg:py-0 lg:text-center">
+                        <p className="text-xs uppercase tracking-wide text-gray-500">Tax Expense</p>
+                        <p className={`text-lg font-semibold ${getProfitLossKpiPresentation({ amount: formula.taxExpense, kind: "expense" }).className}`}>{formatAbsoluteCurrency(formula.taxExpense)}</p>
+                      </div>
+                      <span className="flex w-full justify-center text-lg font-semibold text-gray-500 lg:h-10 lg:w-6 lg:items-end lg:justify-center lg:pb-1 lg:font-normal">=</span>
+                      <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2 lg:block lg:border-0 lg:bg-transparent lg:px-0 lg:py-0 lg:text-center">
+                        <p className={`text-xs uppercase tracking-wide ${netIncomeColorClass}`}>Net Income</p>
+                        <p className={`text-lg font-bold ${netIncomeColorClass}`}>{formatAbsoluteCurrency(formula.netIncome)}</p>
+                      </div>
+                    </div>
+                  </div>
+                </article>
+              )}
             </section>
 
             <section className="grid grid-cols-1 gap-4">

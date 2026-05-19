@@ -2,13 +2,14 @@ export const CATEGORY_TYPE_OPTIONS = [
   { value: "income", label: "Income" },
   { value: "cost_of_goods_sold", label: "Cost of Goods Sold" },
   { value: "operating_expense", label: "Operating Expense" },
+  { value: "other_income", label: "Other Income" },
+  { value: "other_expense", label: "Other Expense" },
+  { value: "tax_expense", label: "Tax Expense" },
 ]
 
 const CATEGORY_TYPE_ALIASES = {
   income: "income",
   revenue: "income",
-  other_income: "income",
-  "other income": "income",
   cost_of_goods_sold: "cost_of_goods_sold",
   "cost of goods sold": "cost_of_goods_sold",
   cogs: "cost_of_goods_sold",
@@ -18,6 +19,16 @@ const CATEGORY_TYPE_ALIASES = {
   operating_expenses: "operating_expense",
   "operating expense": "operating_expense",
   "operating expenses": "operating_expense",
+  other_income: "other_income",
+  "other income": "other_income",
+  non_operating_income: "other_income",
+  other_expense: "other_expense",
+  "other expense": "other_expense",
+  non_operating_expense: "other_expense",
+  tax_expense: "tax_expense",
+  "tax expense": "tax_expense",
+  income_tax: "tax_expense",
+  "income tax": "tax_expense",
 }
 
 export function normalizeCategoryType(value = "") {

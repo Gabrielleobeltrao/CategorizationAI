@@ -81,7 +81,16 @@ export async function getBalanceSheetByClientId({ clientId, asOfDate }) {
       },
       {
         $match: {
-          categoryType: { $in: ["income", "cost_of_goods_sold", "operating_expense"] },
+          categoryType: {
+            $in: [
+              "income",
+              "cost_of_goods_sold",
+              "operating_expense",
+              "other_income",
+              "other_expense",
+              "tax_expense",
+            ],
+          },
         },
       },
       {

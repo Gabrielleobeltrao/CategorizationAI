@@ -10,6 +10,9 @@ const GROUPS = [
   { id: "income", label: "Income", code: "4000", parent: "income" },
   { id: "cost_of_goods_sold", label: "Cost of Goods Sold", code: "5000", parent: "expense" },
   { id: "operating_expense", label: "Operating Expenses", code: "6000", parent: "expense" },
+  { id: "other_income", label: "Other Income", code: "7000", parent: "income" },
+  { id: "other_expense", label: "Other Expense", code: "8000", parent: "expense" },
+  { id: "tax_expense", label: "Tax Expense", code: "8500", parent: "expense" },
   { id: "uncategorized", label: "Uncategorized", code: "9999", parent: "other" },
 ]
 
