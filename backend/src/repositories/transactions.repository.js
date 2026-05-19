@@ -15,6 +15,12 @@ const ATLAS_SEARCH_QUERY_TIMEOUT_MS = Math.max(0, Number(process.env.MONGODB_ATL
 const ATLAS_SEARCH_COOLDOWN_MS = Math.max(0, Number(process.env.MONGODB_ATLAS_SEARCH_COOLDOWN_MS || 120000))
 const TRANSACTIONS_BACKFILL_BATCH_SIZE = Math.max(100, Number(process.env.TRANSACTIONS_BACKFILL_BATCH_SIZE || 500))
 const TRANSACTIONS_QUERY_DEBUG = String(process.env.TRANSACTIONS_QUERY_DEBUG || "false").trim().toLowerCase() === "true"
+// Matches transaction descriptions that contain "zel" or "zelle" as a
+// standalone token. Used to route those rows through the Zelle-specific
+// LLM categorizer instead of the generic one. The constant was dropped
+// by the Atlas Search refactor (a818bfc) while still being referenced
+// from listEligibleTransactionsFor* — restoring it.
+const ZELLE_DESCRIPTION_REGEX = /(^|[^a-z])(zel|zelle)([^a-z]|$)/i
 const TRANSACTIONS_QUERY_SLOW_MS = Math.max(0, Number(process.env.TRANSACTIONS_QUERY_SLOW_MS || 750))
 let atlasSearchDisabledUntil = 0
 
