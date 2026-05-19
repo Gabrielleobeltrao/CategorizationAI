@@ -101,7 +101,7 @@ function CategoriesSection({
     return (
         <section className="min-h-0 h-full p-1 flex flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-base font-bold">Categories</h3>
+                <h3 className="text-base font-bold">P&L Categories</h3>
                 <div className="flex flex-wrap items-center gap-2">
                     <button
                         type="button"

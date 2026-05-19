@@ -19,6 +19,7 @@ const loadEmployeesPage = () => import('./pages/EmployeesPage.jsx')
 const loadProfitLossPage = () => import('./pages/ProfitLossPage.jsx')
 const loadAccountBalancesPage = () => import('./pages/AccountBalancesPage.jsx')
 const loadBalanceSheetPage = () => import('./pages/BalanceSheetPage.jsx')
+const loadChartOfAccountsPage = () => import('./pages/ChartOfAccountsPage.jsx')
 const loadSettingsPage = () => import('./pages/SettingsPage.jsx')
 const loadClientSettingsPage = () => import('./pages/ClientSettingsPage.jsx')
 const loadBookkeepingDashboardPage = () => import('./pages/BookkeepingDashboardPage.jsx')
@@ -39,6 +40,7 @@ const EmployeesPage = lazy(loadEmployeesPage)
 const ProfitLossPage = lazy(loadProfitLossPage)
 const AccountBalancesPage = lazy(loadAccountBalancesPage)
 const BalanceSheetPage = lazy(loadBalanceSheetPage)
+const ChartOfAccountsPage = lazy(loadChartOfAccountsPage)
 const SettingsPage = lazy(loadSettingsPage)
 const ClientSettingsPage = lazy(loadClientSettingsPage)
 const BookkeepingDashboardPage = lazy(loadBookkeepingDashboardPage)
@@ -171,6 +173,7 @@ function App() {
                 <Route path="/clients/:clientId/reports/profit-loss" element={<ProfitLossPage />} />
                 <Route path="/clients/:clientId/reports/account-balances" element={<AccountBalancesPage />} />
                 <Route path="/clients/:clientId/reports/balance-sheet" element={<BalanceSheetPage />} />
+                <Route path="/clients/:clientId/chart-of-accounts" element={<ChartOfAccountsPage />} />
                 <Route path="/clients/:clientId/settings" element={<ClientSettingsPage />} />
               </Route>
 

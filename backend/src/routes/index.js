@@ -9,6 +9,7 @@ import userProfileRoutes from "./userProfile.routes.js"
 import profitLossRoutes from "./profitLoss.routes.js"
 import accountBalancesRoutes from "./accountBalances.routes.js"
 import balanceSheetRoutes from "./balanceSheet.routes.js"
+import chartOfAccountsRoutes from "./chartOfAccounts.routes.js"
 import rolesRoutes from "./roles.routes.js"
 import openTestRoutes from "./openTest.routes.js"
 import categoryTemplatesRoutes from "./categoryTemplates.routes.js"
@@ -32,6 +33,7 @@ router.use(userProfileRoutes)
 router.use(profitLossRoutes)
 router.use(accountBalancesRoutes)
 router.use(balanceSheetRoutes)
+router.use(chartOfAccountsRoutes)
 router.use(rolesRoutes)
 router.use(tasksRoutes)
 router.use(boardRoutes)

@@ -56,7 +56,7 @@ function AccountsSection({ accounts, onCreate, onSaveEdit, onDelete }) {
     return (
         <section className="min-h-0 h-full p-1 flex flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-base font-bold">Accounts</h3>
+                <h3 className="text-base font-bold">Bank Accounts</h3>
                 <button
                     className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black"
                     onClick={onCreate}

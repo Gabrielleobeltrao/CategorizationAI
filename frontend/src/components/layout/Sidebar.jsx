@@ -156,7 +156,7 @@ function Sidebar({ isCollapsed: rawCollapsed, onToggleCollapse, isMobileOpen = f
         },
         {
           to: `/clients/${clientId}/ledger/accounts`,
-          label: "Accounts",
+          label: "Bank Accounts",
           icon: (
             <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polygon points="12 3 21 8 3 8" />
@@ -170,10 +170,23 @@ function Sidebar({ isCollapsed: rawCollapsed, onToggleCollapse, isMobileOpen = f
         },
         {
           to: `/clients/${clientId}/ledger/categories`,
-          label: "Categories",
+          label: "P&L Categories",
           icon: (
             <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+            </svg>
+          ),
+        },
+        {
+          to: `/clients/${clientId}/chart-of-accounts`,
+          label: "Chart of Accounts",
+          icon: (
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 5h16" />
+              <path d="M4 5v14" />
+              <path d="M9 8v11" />
+              <path d="M9 12h11" />
+              <path d="M9 16h11" />
             </svg>
           ),
         },
@@ -214,6 +227,7 @@ function Sidebar({ isCollapsed: rawCollapsed, onToggleCollapse, isMobileOpen = f
             </svg>
           ),
         },
+        { kind: "divider" },
         {
           to: `/clients/${clientId}/settings`,
           label: "Settings",
@@ -364,6 +378,9 @@ function Sidebar({ isCollapsed: rawCollapsed, onToggleCollapse, isMobileOpen = f
             )}
             <nav className="flex flex-col gap-1">
               {clientMenuItems.map((clientItem, idx) => {
+                if (clientItem.kind === "divider") {
+                  return <div key={`divider-${idx}`} className="my-2 border-t border-gray-100" />
+                }
                 if (clientItem.kind === "section") {
                   if (isCollapsed) {
                     return <div key={`section-${idx}`} className="my-2 border-t border-gray-100" />
@@ -462,21 +479,7 @@ function Sidebar({ isCollapsed: rawCollapsed, onToggleCollapse, isMobileOpen = f
 
       </div>
 
-      {clientId ? (
-        <button
-          type="button"
-          onClick={() => navigate("/clients")}
-          className={`mt-4 flex items-center rounded-lg py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 ${
-            isCollapsed ? "justify-center px-2" : "gap-3 px-3"
-          }`}
-          title={isCollapsed ? "Back to Clients" : undefined}
-        >
-          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
-            <path d="m15 18-6-6 6-6" />
-          </svg>
-          {!isCollapsed && <span>Back to Clients</span>}
-        </button>
-      ) : (
+      {!clientId && (
         <>
           <NavLink
             to={employeesNavItem.to}
