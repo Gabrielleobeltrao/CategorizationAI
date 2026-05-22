@@ -12,22 +12,36 @@ function NotificationCenter({ notification, onClose }) {
 
   return (
     <div className="pointer-events-none fixed inset-x-0 top-4 z-[400] flex justify-center px-4">
-      <div className={`pointer-events-auto flex min-w-[280px] max-w-[560px] items-center justify-between gap-4 rounded-lg border px-4 py-3 shadow-md ${tone}`}>
-        <div className="flex items-center gap-2">
+      <div className={`pointer-events-auto flex min-w-[280px] max-w-[640px] items-start justify-between gap-3 rounded-lg border px-4 py-3 shadow-md ${tone}`}>
+        <div className="flex items-start gap-2">
           {notification.type === "loading" && (
-            <svg viewBox="0 0 24 24" className="h-4 w-4 animate-spin" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <svg viewBox="0 0 24 24" className="mt-0.5 h-4 w-4 animate-spin" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M21 12a9 9 0 1 1-9-9" />
             </svg>
           )}
           <p className="text-sm font-medium">{notification.message}</p>
         </div>
-        <button
-          type="button"
-          onClick={() => onClose?.()}
-          className="rounded px-2 py-1 text-xs font-semibold hover:bg-black/5"
-        >
-          Close
-        </button>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {notification.action && notification.action.label && (
+            <button
+              type="button"
+              onClick={() => {
+                notification.action?.onClick?.()
+                onClose?.()
+              }}
+              className="rounded-md border border-current bg-white/60 px-2.5 py-1 text-xs font-semibold transition hover:bg-white"
+            >
+              {notification.action.label}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => onClose?.()}
+            className="rounded px-2 py-1 text-xs font-semibold hover:bg-black/5"
+          >
+            Close
+          </button>
+        </div>
       </div>
     </div>
   )

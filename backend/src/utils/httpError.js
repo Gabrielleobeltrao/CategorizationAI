@@ -22,5 +22,12 @@ export function sendErrorResponse(res, error, options = {}) {
     body.details = error.details
   }
 
+  // Surface domain-specific codes (PERIOD_CLOSED, RECONCILED_TRANSACTION_LOCKED, …)
+  // so the frontend can render context-aware actions in the toast.
+  const code = error?.code || error?.details?.code
+  if (!isServerError && code) {
+    body.code = code
+  }
+
   return res.status(statusCode).json(body)
 }

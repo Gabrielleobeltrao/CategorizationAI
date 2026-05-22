@@ -48,11 +48,22 @@ export async function api(path, options = {}) {
     const data = isJson ? await response.json() : await response.text()
 
     if (!response.ok) {
-      throw new Error(
+      const message =
         typeof data === "object" && data?.message
           ? data.message
           : `Request failed: ${response.status}`
-      )
+      const err = new Error(message)
+      err.status = response.status
+      if (typeof data === "object" && data) {
+        // Preserve domain-specific code + details so callers can render
+        // context-aware UI (deep links, retry buttons, etc.).
+        if (data.code) err.code = data.code
+        if (data.details) {
+          err.details = data.details
+          if (!err.code && data.details.code) err.code = data.details.code
+        }
+      }
+      throw err
     }
 
     return data

@@ -4,6 +4,8 @@ import { listAccountsByClientId } from "../../services/accounts.service"
 import { createJournalEntry } from "../../services/journalEntries.service"
 import { ACCOUNT_TYPE_LABELS } from "../../constants/accountTypes"
 import { useNotification } from "../../contexts/notification.context"
+import { useNavigate } from "react-router-dom"
+import { showApiError } from "../../utils/errorPresentation"
 
 // Multi-leg manual journal entry editor. Lets the bookkeeper post
 // adjustments that don't fit the bank-import shape (depreciation,
@@ -39,6 +41,7 @@ function formatCurrency(value) {
 
 function JournalEntryModal({ isOpen, onClose, clientId, onCreated }) {
     const { error, success } = useNotification()
+    const navigate = useNavigate()
     const [date, setDate] = useState(todayIso())
     const [description, setDescription] = useState("")
     const [legs, setLegs] = useState([emptyLeg(), emptyLeg()])
@@ -152,7 +155,7 @@ function JournalEntryModal({ isOpen, onClose, clientId, onCreated }) {
             onClose?.()
             onCreated?.(created)
         } catch (err) {
-            error(err?.message || "Failed to create journal entry")
+            showApiError({ error, err, fallbackMessage: "Failed to create journal entry", navigate, clientId })
         } finally {
             setIsSaving(false)
         }
