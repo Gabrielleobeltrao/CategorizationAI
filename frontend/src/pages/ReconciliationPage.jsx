@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useParams } from "react-router-dom"
+import { useNavigate, useParams } from "react-router-dom"
+import { showApiError } from "../utils/errorPresentation"
 import { getClientById } from "../services/clients.service"
 import { listAccountsByClientId } from "../services/accounts.service"
 import {
@@ -20,6 +21,7 @@ import { listEmployeesByOfficeId } from "../services/employees.service"
 import { createHalfEntry } from "../services/journalEntries.service"
 import ConfirmModal from "../components/ui/ConfirmModal"
 import PopupModal from "../components/ui/PopupModal"
+import EmptyState from "../components/ui/EmptyState"
 
 const BANK_LIKE_TYPES = [
     "asset_current",
@@ -58,6 +60,7 @@ function formatDate(iso) {
 
 function ReconciliationPage() {
     const { clientId } = useParams()
+    const navigate = useNavigate()
     const { error, success } = useNotification()
     const { profile } = useAuth()
 
@@ -298,7 +301,7 @@ function ReconciliationPage() {
             setStatementEndingBalance("")
             await reloadHistory()
         } catch (err) {
-            error(err?.message || "Failed to complete reconciliation")
+            showApiError({ error, err, fallbackMessage: "Failed to complete reconciliation", navigate, clientId })
         } finally {
             setIsSaving(false)
         }
@@ -353,7 +356,7 @@ function ReconciliationPage() {
             setIsAddTxnOpen(false)
             await loadWorksheet(String(worksheet.reconciliation._id))
         } catch (err) {
-            error(err?.message || "Failed to add transaction")
+            showApiError({ error, err, fallbackMessage: "Failed to add transaction", navigate, clientId })
         } finally {
             setIsSavingNewTxn(false)
         }
@@ -368,7 +371,7 @@ function ReconciliationPage() {
             await reloadHistory()
             success("Reconciliation reopened")
         } catch (err) {
-            error(err?.message || "Failed to reopen reconciliation")
+            showApiError({ error, err, fallbackMessage: "Failed to reopen reconciliation", navigate, clientId })
         } finally {
             setReopeningId("")
         }
@@ -387,18 +390,38 @@ function ReconciliationPage() {
                 </header>
 
                 {!isWorksheetActive ? (
-                    <SetupCard
-                        accounts={accounts}
-                        accountId={accountId}
-                        setAccountId={setAccountId}
-                        statementDate={statementDate}
-                        setStatementDate={setStatementDate}
-                        statementEndingBalance={statementEndingBalance}
-                        setStatementEndingBalance={setStatementEndingBalance}
-                        openingBalance={openingBalance}
-                        onSubmit={handleStart}
-                        isStarting={isStarting}
-                    />
+                    accounts.length === 0 ? (
+                        <div className="rounded-xl border border-gray-200 bg-white">
+                            <EmptyState
+                                icon={(
+                                    <svg viewBox="0 0 24 24" className="h-8 w-8 text-gray-300" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                                        <rect x="3" y="6" width="18" height="14" rx="2" />
+                                        <path d="M3 11h18" />
+                                        <path d="M7 16h2" />
+                                    </svg>
+                                )}
+                                title="No bank accounts to reconcile"
+                                description="Reconciliation works against bank-like accounts (checking, savings, credit cards). Add at least one in the Chart of Accounts to get started — preset clients usually have a 'Business Checking' ready to rename."
+                                primaryAction={{
+                                    label: "Open Chart of Accounts",
+                                    to: `/clients/${clientId}/chart-of-accounts`,
+                                }}
+                            />
+                        </div>
+                    ) : (
+                        <SetupCard
+                            accounts={accounts}
+                            accountId={accountId}
+                            setAccountId={setAccountId}
+                            statementDate={statementDate}
+                            setStatementDate={setStatementDate}
+                            statementEndingBalance={statementEndingBalance}
+                            setStatementEndingBalance={setStatementEndingBalance}
+                            openingBalance={openingBalance}
+                            onSubmit={handleStart}
+                            isStarting={isStarting}
+                        />
+                    )
                 ) : (
                     <Worksheet
                         worksheet={worksheet}

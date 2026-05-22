@@ -11,6 +11,7 @@ import {
 import { useNotification } from "../contexts/notification.context"
 import { downloadProfitLossPdf } from "../utils/pdf"
 import DateRangePicker from "../components/ui/DateRangePicker"
+import EmptyState from "../components/ui/EmptyState"
 import { trackClientOpened } from "../utils/recentClients"
 import {
   formatAbsoluteCurrency,
@@ -672,8 +673,27 @@ function ProfitLossPage() {
         )}
 
         {hasNoReport && (
-          <div className="rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-600">
-            Profit & Loss data not found for this client.
+          <div className="rounded-xl border border-gray-200 bg-white">
+            <EmptyState
+              icon={(
+                <svg viewBox="0 0 24 24" className="h-8 w-8 text-gray-300" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 19h16" />
+                  <path d="M6 16V9" />
+                  <path d="M12 16V6" />
+                  <path d="M18 16v-4" />
+                </svg>
+              )}
+              title="No Profit & Loss yet"
+              description="Income and expense categories pick up activity here once you've imported transactions and assigned them. Try picking a different period or start by importing a bank statement."
+              primaryAction={{
+                label: "Open Transactions",
+                to: `/clients/${clientId}/transactions`,
+              }}
+              secondaryAction={{
+                label: "Chart of Accounts",
+                to: `/clients/${clientId}/chart-of-accounts`,
+              }}
+            />
           </div>
         )}
 

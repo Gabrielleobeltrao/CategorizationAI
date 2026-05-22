@@ -4,6 +4,7 @@ import { getClientById } from "../services/clients.service"
 import { getAccountBalancesReport } from "../services/accountBalances.service"
 import { useNotification } from "../contexts/notification.context"
 import { downloadPdfDocument } from "../utils/pdf"
+import EmptyState from "../components/ui/EmptyState"
 
 function todayIso() {
     const now = new Date()
@@ -359,9 +360,26 @@ function AccountBalancesPage() {
                 {isLoading && (!report || report.rows.length === 0) ? (
                     <div className="flex h-full items-center justify-center p-8 text-sm text-gray-500">Loading…</div>
                 ) : !report?.rows?.length ? (
-                    <div className="flex h-full items-center justify-center p-8 text-sm text-gray-500">
-                        No accounts found for this client.
-                    </div>
+                    <EmptyState
+                        icon={(
+                            <svg viewBox="0 0 24 24" className="h-8 w-8 text-gray-300" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                                <rect x="3" y="5" width="18" height="14" rx="2" />
+                                <line x1="3" y1="10" x2="21" y2="10" />
+                                <line x1="8" y1="14" x2="12" y2="14" />
+                                <line x1="14" y1="14" x2="18" y2="14" />
+                            </svg>
+                        )}
+                        title="No account balances yet"
+                        description="Set up the Chart of Accounts and import or post your first transactions to see balances broken down by account."
+                        primaryAction={{
+                            label: "Open Transactions",
+                            to: `/clients/${clientId}/transactions`,
+                        }}
+                        secondaryAction={{
+                            label: "Chart of Accounts",
+                            to: `/clients/${clientId}/chart-of-accounts`,
+                        }}
+                    />
                 ) : (
                     <table className="w-full text-sm">
                         <thead className="border-b border-gray-100 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">

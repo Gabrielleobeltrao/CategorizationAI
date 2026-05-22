@@ -5,6 +5,7 @@ import { getTrialBalanceReport } from "../services/trialBalance.service"
 import { useNotification } from "../contexts/notification.context"
 import { downloadPdfDocument } from "../utils/pdf"
 import { ACCOUNT_TYPE_LABELS } from "../constants/accountTypes"
+import EmptyState from "../components/ui/EmptyState"
 
 function todayIso() {
     const now = new Date()
@@ -265,9 +266,22 @@ function TrialBalancePage() {
                         Loading…
                     </div>
                 ) : !report || visibleRows.length === 0 ? (
-                    <div className="flex h-full items-center justify-center p-8 text-sm text-gray-500">
-                        No accounts with movement up to this date.
-                    </div>
+                    <EmptyState
+                        icon={(
+                            <svg viewBox="0 0 24 24" className="h-8 w-8 text-gray-300" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M3 12h7" />
+                                <path d="M14 12h7" />
+                                <path d="M12 4v16" />
+                                <circle cx="12" cy="12" r="2" />
+                            </svg>
+                        )}
+                        title="No accounts with movement yet"
+                        description="The trial balance lists every account that received a debit or credit up to the chosen date. Import transactions first — once they're categorized, they show up here grouped by side."
+                        primaryAction={{
+                            label: "Open Transactions",
+                            to: `/clients/${clientId}/transactions`,
+                        }}
+                    />
                 ) : (
                     <table className="w-full text-sm">
                         <thead className="bg-gray-50 text-[11px] font-semibold uppercase tracking-wide text-gray-500">

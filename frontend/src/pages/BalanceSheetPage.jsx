@@ -4,6 +4,7 @@ import { getClientById } from "../services/clients.service"
 import { getBalanceSheetReport } from "../services/balanceSheet.service"
 import { useNotification } from "../contexts/notification.context"
 import { downloadPdfDocument } from "../utils/pdf"
+import EmptyState from "../components/ui/EmptyState"
 
 function todayIso() {
     const now = new Date()
@@ -350,9 +351,28 @@ function BalanceSheetPage() {
                     <div className="flex h-full items-center justify-center rounded-xl border border-gray-200 bg-white p-8 text-sm text-gray-500">
                         Loading…
                     </div>
-                ) : !report ? (
-                    <div className="flex h-full items-center justify-center rounded-xl border border-gray-200 bg-white p-8 text-sm text-gray-500">
-                        No data.
+                ) : !report || (report.sections || []).every((s) => (s.rows || []).length === 0) ? (
+                    <div className="rounded-xl border border-gray-200 bg-white">
+                        <EmptyState
+                            icon={(
+                                <svg viewBox="0 0 24 24" className="h-8 w-8 text-gray-300" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M12 3v18" />
+                                    <path d="M6 7l-3 4 3 4" />
+                                    <path d="M18 7l3 4-3 4" />
+                                    <path d="M3 11h18" />
+                                </svg>
+                            )}
+                            title="No balance sheet to show"
+                            description="Once this client has categorized transactions, assets, liabilities and equity will populate here. Start by setting up the Chart of Accounts and importing a bank statement."
+                            primaryAction={{
+                                label: "Open Transactions",
+                                to: `/clients/${clientId}/transactions`,
+                            }}
+                            secondaryAction={{
+                                label: "Chart of Accounts",
+                                to: `/clients/${clientId}/chart-of-accounts`,
+                            }}
+                        />
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
