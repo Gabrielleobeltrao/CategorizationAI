@@ -1,5 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react"
-import { useLocation, useOutletContext, useParams, useSearchParams } from "react-router-dom"
+import { useLocation, useNavigate, useOutletContext, useParams, useSearchParams } from "react-router-dom"
 import PopupModal from "../components/ui/PopupModal"
 import ConfirmModal from "../components/ui/ConfirmModal"
 import TagsInput from "../components/ui/TagsInput"
@@ -38,6 +38,7 @@ import { emitDashboardRefresh } from "../utils/dashboardRefresh"
 import { CATEGORY_TYPE_OPTIONS, getCategoryTypeLabel, normalizeCategoryType } from "../constants/categoryTypes"
 import { ACCOUNT_TYPE_OPTIONS, BALANCE_SHEET_ACCOUNT_TYPES } from "../constants/accountTypes"
 import { createHalfEntry } from "../services/journalEntries.service"
+import { showApiError } from "../utils/errorPresentation"
 
 const BALANCE_SHEET_ACCOUNT_TYPE_OPTIONS = ACCOUNT_TYPE_OPTIONS.filter((opt) =>
     BALANCE_SHEET_ACCOUNT_TYPES.includes(opt.value),
@@ -45,6 +46,7 @@ const BALANCE_SHEET_ACCOUNT_TYPE_OPTIONS = ACCOUNT_TYPE_OPTIONS.filter((opt) =>
 
 const LedgerEntriesTable = lazy(() => import("../components/ledger/LedgerEntriesTable"))
 const JournalEntryModal = lazy(() => import("../components/ledger/JournalEntryModal"))
+const GetStartedPanel = lazy(() => import("../components/ledger/GetStartedPanel"))
 const AccountsSection = lazy(() => import("../components/ledger/AccountsSection"))
 const CategoriesSection = lazy(() => import("../components/ledger/CategoriesSection"))
 const LedgerHeader = lazy(() => import("../components/ledger/LedgerHeader"))
@@ -327,6 +329,7 @@ function LedgerPage() {
     const { clientId: routeClientId } = useParams()
     const [searchParams] = useSearchParams()
     const location = useLocation()
+    const navigate = useNavigate()
     const clientId = routeClientId || searchParams.get("clientId")
     const persistedState = readPersistedLedgerState(clientId)
     const preselectedCategoryName = String(searchParams.get("category") || "").trim()
@@ -1027,7 +1030,7 @@ function LedgerPage() {
                     current.map((item) => (item.id === id ? previousEntry : item))
                 )
             }
-            error(err.message || "Failed to update transaction")
+            showApiError({ error, err, fallbackMessage: "Failed to update transaction", navigate, clientId })
             throw err
         }
     }
@@ -1082,7 +1085,7 @@ function LedgerPage() {
                     current.map((entry) => previousEntriesById.get(entry.id) || entry)
                 )
             }
-            error(err.message || "Failed to update transactions")
+            showApiError({ error, err, fallbackMessage: "Failed to update transactions", navigate, clientId })
             throw err
         }
     }
@@ -1102,7 +1105,7 @@ function LedgerPage() {
             emitDashboardRefresh("transaction-deleted")
             success("Transaction deleted successfully")
         } catch (err) {
-            error(err.message || "Failed to delete transaction")
+            showApiError({ error, err, fallbackMessage: "Failed to delete transaction", navigate, clientId })
             throw err
         }
     }
@@ -1134,7 +1137,7 @@ function LedgerPage() {
                     : `${targetIds.length} transactions deleted successfully`
             )
         } catch (err) {
-            error(err.message || "Failed to delete transactions")
+            showApiError({ error, err, fallbackMessage: "Failed to delete transactions", navigate, clientId })
             throw err
         }
     }
@@ -1183,7 +1186,7 @@ function LedgerPage() {
             setIsAddTxnOpen(false)
             await refreshLedgerAfterImport()
         } catch (err) {
-            error(err?.message || "Failed to add transaction")
+            showApiError({ error, err, fallbackMessage: "Failed to add transaction", navigate, clientId })
         } finally {
             setIsSavingNewTxn(false)
         }
@@ -1596,6 +1599,10 @@ function LedgerPage() {
                     <LedgerHeader
                         clientName={client?.name || ""}
                     />
+                </Suspense>
+
+                <Suspense fallback={null}>
+                    <GetStartedPanel clientId={clientId} refreshKey={ledgerEntries.length} />
                 </Suspense>
 
                 <section className={`min-h-[460px] min-w-0 rounded-lg border border-gray-200 bg-white p-4 flex flex-col ${activeSection === "ledger" ? "overflow-visible" : "overflow-hidden"}`}>
