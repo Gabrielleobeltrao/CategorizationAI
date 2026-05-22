@@ -36,9 +36,15 @@ import { useOfficeTags } from "../hooks/useOfficeTags"
 import { trackClientOpened } from "../utils/recentClients"
 import { emitDashboardRefresh } from "../utils/dashboardRefresh"
 import { CATEGORY_TYPE_OPTIONS, getCategoryTypeLabel, normalizeCategoryType } from "../constants/categoryTypes"
-import { BALANCE_SHEET_TYPE_OPTIONS } from "../constants/balanceSheetTypes"
+import { ACCOUNT_TYPE_OPTIONS, BALANCE_SHEET_ACCOUNT_TYPES } from "../constants/accountTypes"
+import { createHalfEntry } from "../services/journalEntries.service"
+
+const BALANCE_SHEET_ACCOUNT_TYPE_OPTIONS = ACCOUNT_TYPE_OPTIONS.filter((opt) =>
+    BALANCE_SHEET_ACCOUNT_TYPES.includes(opt.value),
+)
 
 const LedgerEntriesTable = lazy(() => import("../components/ledger/LedgerEntriesTable"))
+const JournalEntryModal = lazy(() => import("../components/ledger/JournalEntryModal"))
 const AccountsSection = lazy(() => import("../components/ledger/AccountsSection"))
 const CategoriesSection = lazy(() => import("../components/ledger/CategoriesSection"))
 const LedgerHeader = lazy(() => import("../components/ledger/LedgerHeader"))
@@ -142,8 +148,7 @@ function mapAccount(item = {}) {
         id: item?._id || item?.id || "",
         clientId: item?.clientId || "",
         name: item?.name || "",
-        type: item?.type || "",
-        balanceSheetType: item?.balanceSheetType || "",
+        type: item?.type || item?.accountType || "",
     }
 }
 
@@ -358,6 +363,23 @@ function LedgerPage() {
     })
     const [isLoadingTransactionsSummary, setIsLoadingTransactionsSummary] = useState(false)
     const [showUploadModal, setShowUploadModal] = useState(false)
+
+    // Manual journal entry modal (multi-leg)
+    const [isJournalEntryOpen, setIsJournalEntryOpen] = useState(false)
+
+    // Manual "Add transaction" modal
+    const [isAddTxnOpen, setIsAddTxnOpen] = useState(false)
+    const [newTxnAccountId, setNewTxnAccountId] = useState("")
+    const [newTxnDate, setNewTxnDate] = useState(() => {
+        const now = new Date()
+        return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()))
+            .toISOString()
+            .slice(0, 10)
+    })
+    const [newTxnDescription, setNewTxnDescription] = useState("")
+    const [newTxnAmount, setNewTxnAmount] = useState("")
+    const [newTxnDirection, setNewTxnDirection] = useState("out")
+    const [isSavingNewTxn, setIsSavingNewTxn] = useState(false)
     const [isBaseDataLoaded, setIsBaseDataLoaded] = useState(false)
     const skipNextTransactionsFetchKeyRef = useRef("")
     const skipNextPeriodOptionsFetchRef = useRef(false)
@@ -369,7 +391,6 @@ function LedgerPage() {
 
     const [newAccountName, setNewAccountName] = useState("")
     const [newAccountType, setNewAccountType] = useState("")
-    const [newAccountBalanceSheetType, setNewAccountBalanceSheetType] = useState("")
 
     const [newCategoryName, setNewCategoryName] = useState("")
     const [newCategoryType, setNewCategoryType] = useState("")
@@ -1118,6 +1139,56 @@ function LedgerPage() {
         }
     }
 
+    const openAddTxnModal = () => {
+        setNewTxnAccountId(accounts.length === 1 ? accounts[0].id : "")
+        setNewTxnDate(() => {
+            const now = new Date()
+            return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()))
+                .toISOString()
+                .slice(0, 10)
+        })
+        setNewTxnDescription("")
+        setNewTxnAmount("")
+        setNewTxnDirection("out")
+        setIsAddTxnOpen(true)
+    }
+
+    const handleAddTransaction = async (e) => {
+        e?.preventDefault?.()
+        if (!newTxnAccountId) {
+            error("Pick an account")
+            return
+        }
+        const amountAbs = Number(newTxnAmount)
+        if (!Number.isFinite(amountAbs) || amountAbs <= 0) {
+            error("Amount must be a positive number")
+            return
+        }
+        const description = newTxnDescription.trim()
+        if (!description) {
+            error("Description is required")
+            return
+        }
+        const signed = newTxnDirection === "in" ? amountAbs : -amountAbs
+        try {
+            setIsSavingNewTxn(true)
+            await createHalfEntry({
+                clientId,
+                bankAccountId: newTxnAccountId,
+                date: newTxnDate,
+                description,
+                amount: signed,
+            })
+            success("Transaction added")
+            setIsAddTxnOpen(false)
+            await refreshLedgerAfterImport()
+        } catch (err) {
+            error(err?.message || "Failed to add transaction")
+        } finally {
+            setIsSavingNewTxn(false)
+        }
+    }
+
     const handleImportTransactions = async (transactions, summary = null) => {
         const total = Array.isArray(transactions) ? transactions.length : 0
         if (total === 0) {
@@ -1303,14 +1374,12 @@ function LedgerPage() {
             const created = await createAccount({
                 clientId,
                 name: newAccountName,
-                type: newAccountType,
-                balanceSheetType: newAccountBalanceSheetType,
+                accountType: newAccountType,
             })
 
             setAccounts((current) => [mapAccount(created), ...current])
             setNewAccountName("")
             setNewAccountType("")
-            setNewAccountBalanceSheetType("")
             setShowAccountForm(false)
             success("Account created successfully")
         } catch (err) {
@@ -1520,23 +1589,22 @@ function LedgerPage() {
     return (
         <section
             ref={sharedScrollRef ? undefined : localPageScrollRef}
-            className="relative w-full min-w-0 box-border p-4"
+            className="relative w-full min-w-0 box-border px-12 py-8"
         >
-            <div className="min-h-full min-w-0 flex flex-col gap-4 pb-4">
+            <div className="mx-auto min-h-full min-w-0 max-w-7xl flex flex-col gap-4 pb-4">
                 <Suspense fallback={<LedgerSectionFallback />}>
                     <LedgerHeader
-                        clientId={clientId}
                         clientName={client?.name || ""}
                     />
                 </Suspense>
 
-                <section className={`min-h-[460px] min-w-0 rounded-lg border border-gray-200 bg-white p-3 flex flex-col sm:p-4 ${activeSection === "ledger" ? "overflow-visible" : "overflow-hidden"}`}>
+                <section className={`min-h-[460px] min-w-0 rounded-lg border border-gray-200 bg-white p-4 flex flex-col ${activeSection === "ledger" ? "overflow-visible" : "overflow-hidden"}`}>
                     {activeSection === "ledger" && (
                         <section className="min-h-0 min-w-0 h-full p-1 flex flex-col gap-3">
-                            <div className="relative z-20 flex flex-wrap items-start justify-between gap-2 bg-white">
-                                <div className="min-w-0">
+                            <div className="relative z-20 flex items-center justify-between bg-white">
+                                <div>
                                     <h3 className="text-base font-bold">Transactions</h3>
-                                    <p className="mt-1 text-xs text-gray-600 sm:text-sm">
+                                    <p className="mt-1 text-sm text-gray-600">
                                         {isLoadingTransactionsSummary ? (
                                             <span className="inline-flex items-center gap-1.5">
                                                 <span className="h-3 w-3 animate-spin rounded-full border-2 border-gray-300 border-t-gray-700" aria-hidden="true" />
@@ -1549,19 +1617,46 @@ function LedgerPage() {
                                         )}
                                     </p>
                                 </div>
-                                <button
-                                    type="button"
-                                    className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                                    onClick={() => setShowUploadModal(true)}
-                                >
-                                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M12 16V4" />
-                                        <path d="m7 9 5-5 5 5" />
-                                        <path d="M20 16v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-3" />
-                                    </svg>
-                                    <span className="hidden sm:inline">Upload Files</span>
-                                    <span className="sm:hidden">Upload</span>
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                                        onClick={openAddTxnModal}
+                                    >
+                                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M12 5v14" />
+                                            <path d="M5 12h14" />
+                                        </svg>
+                                        <span>Add Transaction</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                                        onClick={() => setIsJournalEntryOpen(true)}
+                                        title="Create a multi-line journal entry (depreciation, accruals, reclassifications)"
+                                    >
+                                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M4 6h16" />
+                                            <path d="M4 12h16" />
+                                            <path d="M4 18h10" />
+                                            <path d="M18 16v6" />
+                                            <path d="M15 19h6" />
+                                        </svg>
+                                        <span>Journal Entry</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                                        onClick={() => setShowUploadModal(true)}
+                                    >
+                                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M12 16V4" />
+                                            <path d="m7 9 5-5 5 5" />
+                                            <path d="M20 16v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-3" />
+                                        </svg>
+                                        <span>Upload Files</span>
+                                    </button>
+                                </div>
                             </div>
                             <div className="min-h-0 min-w-0 flex-1">
                                 <Suspense fallback={<LedgerSectionFallback className="h-full min-h-[320px]" />}>
@@ -1647,44 +1742,18 @@ function LedgerPage() {
                     </label>
                     <label className="flex flex-col gap-1">
                         <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Type</span>
-                        <input
+                        <select
                             className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none transition focus:border-gray-400 focus:bg-white"
-                            type="text"
-                            placeholder="checking"
                             value={newAccountType}
                             onChange={(e) => setNewAccountType(e.target.value)}
-                        />
-                    </label>
-                    <label className="flex flex-col gap-1">
-                        <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Balance Sheet category</span>
-                        <div className="relative w-full">
-                            <select
-                                className="w-full appearance-none rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 pr-10 text-sm outline-none transition focus:border-gray-400 focus:bg-white"
-                                value={newAccountBalanceSheetType}
-                                onChange={(e) => setNewAccountBalanceSheetType(e.target.value)}
-                            >
-                                <option value="">Auto-detect from type</option>
-                                {BALANCE_SHEET_TYPE_OPTIONS.map((option) => (
-                                    <option key={option.value} value={option.value}>
-                                        {option.label}
-                                    </option>
-                                ))}
-                            </select>
-                            <svg
-                                className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2.5"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                            >
-                                <path d="M6 9l6 6 6-6" />
-                            </svg>
-                        </div>
-                        <span className="text-[11px] text-gray-500">
-                            Used in the Balance Sheet report. Leave blank to infer (checking/savings/cash → Current Asset, credit_card → Current Liability, loan → Non-current Liability).
-                        </span>
+                        >
+                            <option value="">Select type</option>
+                            {BALANCE_SHEET_ACCOUNT_TYPE_OPTIONS.map((opt) => (
+                                <option key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                </option>
+                            ))}
+                        </select>
                     </label>
                     <div className="mt-1 flex items-center justify-end gap-2">
                         <button
@@ -1833,6 +1902,142 @@ function LedgerPage() {
                 onClose={() => setIsClearUnusedCategoriesModalOpen(false)}
                 isLoading={isSubmitting}
             />
+
+            <PopupModal
+                isOpen={isAddTxnOpen}
+                title="Add transaction"
+                onClose={() => (isSavingNewTxn ? undefined : setIsAddTxnOpen(false))}
+                maxWidthClass="max-w-lg"
+            >
+                <form className="flex flex-col gap-4" onSubmit={handleAddTransaction}>
+                    <p className="text-[12px] text-gray-500">
+                        Creates an <strong>uncategorized</strong> transaction on the chosen account. Pick the
+                        contra-category later by clicking the transaction row in the list.
+                    </p>
+
+                    <label className="flex flex-col gap-1.5">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Account</span>
+                        <div className="relative">
+                            <select
+                                value={newTxnAccountId}
+                                onChange={(e) => setNewTxnAccountId(e.target.value)}
+                                className="w-full appearance-none rounded-md border border-gray-300 bg-white px-3 py-2 pr-8 text-sm text-gray-900 outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900"
+                            >
+                                <option value="">Select…</option>
+                                {accounts.map((acc) => (
+                                    <option key={acc.id} value={acc.id}>
+                                        {acc.name}
+                                    </option>
+                                ))}
+                            </select>
+                            <svg
+                                className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            >
+                                <path d="M6 9l6 6 6-6" />
+                            </svg>
+                        </div>
+                    </label>
+
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        <label className="flex flex-col gap-1.5">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Date</span>
+                            <input
+                                type="date"
+                                value={newTxnDate}
+                                onChange={(e) => setNewTxnDate(e.target.value)}
+                                className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900"
+                            />
+                        </label>
+                        <label className="flex flex-col gap-1.5">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Direction</span>
+                            <div className="relative">
+                                <select
+                                    value={newTxnDirection}
+                                    onChange={(e) => setNewTxnDirection(e.target.value)}
+                                    className="w-full appearance-none rounded-md border border-gray-300 bg-white px-3 py-2 pr-8 text-sm text-gray-900 outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900"
+                                >
+                                    <option value="in">Money in (deposit / credit)</option>
+                                    <option value="out">Money out (withdrawal / debit)</option>
+                                </select>
+                                <svg
+                                    className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2.5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                >
+                                    <path d="M6 9l6 6 6-6" />
+                                </svg>
+                            </div>
+                        </label>
+                    </div>
+
+                    <label className="flex flex-col gap-1.5">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Description</span>
+                        <input
+                            type="text"
+                            value={newTxnDescription}
+                            onChange={(e) => setNewTxnDescription(e.target.value)}
+                            placeholder="e.g. Vendor name or statement memo"
+                            className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900"
+                            autoFocus
+                        />
+                    </label>
+
+                    <label className="flex flex-col gap-1.5">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Amount</span>
+                        <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={newTxnAmount}
+                            onChange={(e) => setNewTxnAmount(e.target.value)}
+                            placeholder="0.00"
+                            className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900"
+                        />
+                        <span className="text-[11px] text-gray-500">
+                            Enter as a positive number — the direction above sets the sign.
+                        </span>
+                    </label>
+
+                    <div className="mt-1 flex items-center justify-end gap-2 border-t border-gray-100 pt-3">
+                        <button
+                            type="button"
+                            onClick={() => setIsAddTxnOpen(false)}
+                            disabled={isSavingNewTxn}
+                            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-60"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={isSavingNewTxn}
+                            className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            {isSavingNewTxn ? "Saving…" : "Add transaction"}
+                        </button>
+                    </div>
+                </form>
+            </PopupModal>
+
+            <Suspense fallback={null}>
+                <JournalEntryModal
+                    isOpen={isJournalEntryOpen}
+                    onClose={() => setIsJournalEntryOpen(false)}
+                    clientId={clientId}
+                    onCreated={() => {
+                        refreshLedgerAfterImport().catch(() => {})
+                    }}
+                />
+            </Suspense>
         </section>
     )
 }

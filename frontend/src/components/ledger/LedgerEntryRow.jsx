@@ -1,7 +1,7 @@
 import { getTransactionAmountPresentation } from "../../utils/amountPresentation"
 import { getCategoryDisplayName } from "../../utils/categoryPresentation"
 
-const LEDGER_ENTRY_GRID_CLASS = "grid grid-cols-[auto_minmax(0,1fr)_auto] gap-x-2 gap-y-2 md:grid-cols-[24px_minmax(92px,0.8fr)_minmax(180px,1.6fr)_minmax(112px,1fr)_minmax(180px,1.8fr)_minmax(84px,0.7fr)_88px] md:items-center md:gap-4"
+const LEDGER_ENTRY_GRID_CLASS = "grid grid-cols-[24px_minmax(92px,0.8fr)_minmax(180px,2fr)_minmax(112px,1fr)_minmax(152px,1.2fr)_20px_minmax(84px,0.7fr)_88px] items-center gap-4"
 
 function LedgerEntryRow({
     index,
@@ -41,7 +41,6 @@ function LedgerEntryRow({
     editingTouched = {},
     isApplyingCategory = false,
     isCategoryPickerOpen = false,
-    isAiCategorizationEnabled = true,
 }) {
     const shouldUseDraftDate = isEditing && (!isBatchEditing || editingTouched?.date)
     const shouldUseDraftAccount = isEditing && (!isBatchEditing || editingTouched?.accountId)
@@ -77,173 +76,148 @@ function LedgerEntryRow({
     })
 
     return (
-        <div className={`${LEDGER_ENTRY_GRID_CLASS} max-md:rounded-lg max-md:border max-md:border-gray-200 max-md:px-3 max-md:py-3 max-md:my-1 md:px-2 md:py-3 text-sm ${index % 2 === 0 ? 'bg-gray-100' : 'bg-white'}`}>
+        <div className={`${LEDGER_ENTRY_GRID_CLASS} px-2 py-3 text-sm ${index % 2 === 0 ? 'bg-gray-100' : 'bg-white'}`}>
             <input
-                className="h-4 w-4 self-start m-0 max-md:row-start-1 max-md:col-start-1 md:self-center"
+                className="h-4 w-4 self-center m-0"
                 type="checkbox"
                 checked={Boolean(isSelected)}
                 onChange={(e) => onToggleSelect?.(e.target.checked)}
             />
-            <div className="max-md:row-start-1 max-md:col-start-2 max-md:self-start max-md:text-xs max-md:text-gray-500">
-                {isEditing ? (
-                    <input
-                        type="date"
-                        className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm"
-                        value={currentDate}
-                        onChange={(e) => onChangeDraft({ date: e.target.value })}
-                    />
-                ) : (
-                    <div className="flex flex-wrap items-baseline gap-x-2">
-                        <h4 className="whitespace-nowrap">{String(currentDate).split("-").reverse().join("/")}</h4>
-                        <span className="text-xs text-gray-500 md:hidden">· {account || "No account"}</span>
-                    </div>
-                )}
-            </div>
+            {isEditing ? (
+                <input
+                    type="date"
+                    className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm"
+                    value={currentDate}
+                    onChange={(e) => onChangeDraft({ date: e.target.value })}
+                />
+            ) : (
+                <h4 className="whitespace-nowrap">{String(currentDate).split("-").reverse().join("/")}</h4>
+            )}
 
-            <div className="max-md:col-span-3 max-md:row-start-2 md:col-auto md:row-auto">
-                {isEditing && !isBatchEditing ? (
-                    <input
-                        type="text"
-                        className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm"
-                        value={currentDescription}
-                        onChange={(e) => onChangeDraft({ description: e.target.value })}
-                    />
-                ) : (
-                    <div className="flex items-center gap-2 min-w-0">
-                        <h4 className="line-clamp-2 max-md:font-semibold max-md:text-gray-900">{currentDescription}</h4>
-                    </div>
-                )}
-            </div>
+            {isEditing && !isBatchEditing ? (
+                <input
+                    type="text"
+                    className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm"
+                    value={currentDescription}
+                    onChange={(e) => onChangeDraft({ description: e.target.value })}
+                />
+            ) : (
+                <div className="flex items-center gap-2 min-w-0">
+                    <h4 className="line-clamp-2">{currentDescription}</h4>
+                </div>
+            )}
 
-            <div className={`max-md:col-span-3 max-md:row-start-4 max-md:self-center md:col-auto md:row-auto md:block ${isEditing ? "" : "max-md:hidden"}`}>
-                {isEditing ? (
-                    <div className="relative w-full">
-                        <select
-                            className="w-full rounded-full border-3 border-gray-100 bg-white p-2 pl-3 appearance-none"
-                            value={selectedAccountId}
-                            onChange={(e) => onChangeDraft({ accountId: e.target.value })}
-                        >
-                            <option value="">Select account</option>
-                            {accounts.map((item) => (
-                                <option key={item.id} value={item.id}>
-                                    {item.name}
-                                </option>
-                            ))}
-                        </select>
-                        <svg
-                            className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2.5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                        >
-                            <path d="M6 9l6 6 6-6" />
+            {isEditing ? (
+                <div className="relative w-full">
+                    <select
+                        className="w-full rounded-full border-3 border-gray-100 bg-white p-2 pl-3 appearance-none"
+                        value={selectedAccountId}
+                        onChange={(e) => onChangeDraft({ accountId: e.target.value })}
+                    >
+                        <option value="">Select account</option>
+                        {accounts.map((item) => (
+                            <option key={item.id} value={item.id}>
+                                {item.name}
+                            </option>
+                        ))}
+                    </select>
+                    <svg
+                        className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                    >
+                        <path d="M6 9l6 6 6-6" />
+                    </svg>
+                </div>
+            ) : (
+                <h4>{account || "No account"}</h4>
+            )}
+
+            {isSplit ? (
+                <h4 className="text-xs font-semibold">
+                    Split ({splitCount})
+                </h4>
+            ) : (
+                <div className="relative w-full">
+                    <button
+                        type="button"
+                        className={`w-full rounded-full border-3 bg-white p-2 pl-3 pr-8 text-left ${isCategoryPickerOpen ? "border-gray-300" : "border-gray-100"} ${isApplyingCategory ? "cursor-wait opacity-80" : ""}`}
+                        onClick={(event) => onOpenCategoryPicker?.({
+                            entryId: id,
+                            anchorElement: event.currentTarget,
+                            isEditing,
+                            currentCategory: displayedCategory,
+                            amount: Number(currentAmount || 0),
+                        })}
+                    >
+                        <span className="block truncate">{displayedCategory}</span>
+                    </button>
+                    <svg
+                        className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                    >
+                        <path d="M6 9l6 6 6-6" />
+                    </svg>
+                </div>
+            )}
+            <div className="flex justify-center">
+                {isLlmProcessing ? (
+                    <span
+                        className="inline-flex items-center justify-center rounded-full bg-amber-100 p-1 text-amber-700"
+                        title="Processing by LLM"
+                        aria-label="Processing by LLM"
+                    >
+                        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 animate-spin" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M21 12a9 9 0 1 1-9-9" />
                         </svg>
-                    </div>
-                ) : (
-                    <h4>{account || "No account"}</h4>
-                )}
+                    </span>
+                ) : iconMode === "memory" ? (
+                    <span
+                        className="inline-flex items-center justify-center rounded-full bg-violet-100 p-1 text-violet-700"
+                        title="Categorized by memory"
+                        aria-label="Categorized by memory"
+                    >
+                        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M7 8a3 3 0 0 1 3-3h7v14h-7a3 3 0 0 0-3 3z" />
+                            <path d="M17 5a3 3 0 0 1 3 3v14a3 3 0 0 0-3-3" />
+                            <path d="M10 9h4" />
+                            <path d="M10 13h4" />
+                        </svg>
+                    </span>
+                ) : iconMode === "ai" ? (
+                    <span
+                        className="inline-flex items-center justify-center rounded-full bg-sky-100 p-1 text-sky-700"
+                        title="Categorized by AI"
+                        aria-label="Categorized by AI"
+                    >
+                        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M12 3l1.9 4.3L18 9.2l-4.1 1.9L12 15.5l-1.9-4.4L6 9.2l4.1-1.9z" />
+                            <path d="M19 16l.8 1.7L21.5 18l-1.7.8L19 20.5l-.8-1.7-1.7-.8 1.7-.3z" />
+                        </svg>
+                    </span>
+                ) : null}
             </div>
-
-            <div className="max-md:col-span-2 max-md:row-start-3 md:col-auto md:row-auto">
-                {isSplit ? (
-                    <h4 className="text-xs font-semibold">
-                        Split ({splitCount})
-                    </h4>
-                ) : (
-                    <div className="flex w-full items-center gap-2">
-                        <div className="relative min-w-0 flex-1">
-                            <button
-                                type="button"
-                                className={`w-full rounded-full border-3 bg-white p-2 pl-3 pr-8 text-left ${isCategoryPickerOpen ? "border-gray-300" : "border-gray-100"} ${isApplyingCategory ? "cursor-wait opacity-80" : ""}`}
-                                onClick={(event) => onOpenCategoryPicker?.({
-                                    entryId: id,
-                                    anchorElement: event.currentTarget,
-                                    isEditing,
-                                    currentCategory: displayedCategory,
-                                    amount: Number(currentAmount || 0),
-                                })}
-                            >
-                                <span className="block truncate">{displayedCategory}</span>
-                            </button>
-                            <svg
-                                className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2.5"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                            >
-                                <path d="M6 9l6 6 6-6" />
-                            </svg>
-                        </div>
-                        {/*
-                            Icon slot ALWAYS reserved next to the category dropdown so every
-                            row gets the same internal layout — the dropdown never stretches
-                            into the icon space, eliminating the "hole" effect when some
-                            rows have icons and others don't. The live "processing" spinner
-                            still respects the AI sub-feature flag.
-                        */}
-                        <span
-                            className="inline-flex h-6 w-6 shrink-0 items-center justify-center"
-                            aria-hidden={!isLlmProcessing && !iconMode ? "true" : undefined}
-                        >
-                            {isLlmProcessing && isAiCategorizationEnabled ? (
-                                <span
-                                    className="inline-flex items-center justify-center rounded-full bg-amber-100 p-1 text-amber-700"
-                                    title="Processing by AI"
-                                    aria-label="Processing by AI"
-                                >
-                                    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 animate-spin" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M21 12a9 9 0 1 1-9-9" />
-                                    </svg>
-                                </span>
-                            ) : iconMode === "memory" ? (
-                                <span
-                                    className="inline-flex items-center justify-center rounded-full bg-violet-100 p-1 text-violet-700"
-                                    title="Categorized by memory"
-                                    aria-label="Categorized by memory"
-                                >
-                                    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M7 8a3 3 0 0 1 3-3h7v14h-7a3 3 0 0 0-3 3z" />
-                                        <path d="M17 5a3 3 0 0 1 3 3v14a3 3 0 0 0-3-3" />
-                                        <path d="M10 9h4" />
-                                        <path d="M10 13h4" />
-                                    </svg>
-                                </span>
-                            ) : iconMode === "ai" ? (
-                                <span
-                                    className="inline-flex items-center justify-center rounded-full bg-sky-100 p-1 text-sky-700"
-                                    title="Categorized by AI"
-                                    aria-label="Categorized by AI"
-                                >
-                                    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M12 3l1.9 4.3L18 9.2l-4.1 1.9L12 15.5l-1.9-4.4L6 9.2l4.1-1.9z" />
-                                        <path d="M19 16l.8 1.7L21.5 18l-1.7.8L19 20.5l-.8-1.7-1.7-.8 1.7-.3z" />
-                                    </svg>
-                                </span>
-                            ) : null}
-                        </span>
-                    </div>
-                )}
-            </div>
-            <div className="max-md:row-start-1 max-md:col-start-3 max-md:justify-self-end max-md:self-start md:col-auto md:row-auto">
-                {isEditing && !isBatchEditing ? (
-                    <input
-                        type="number"
-                        step="0.01"
-                        className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-right text-sm"
-                        value={currentAmount}
-                        onChange={(e) => onChangeDraft({ amount: e.target.value })}
-                    />
-                ) : (
-                    <h4 className={`text-right max-md:text-sm max-md:font-semibold ${amountPresentation.className}`}>{amountPresentation.text}</h4>
-                )}
-            </div>
-            <div className={`flex items-center justify-end gap-1 max-md:col-span-3 max-md:self-center md:col-auto md:row-auto ${isEditing ? "max-md:row-start-5" : "max-md:row-start-4"}`}>
+            {isEditing && !isBatchEditing ? (
+                <input
+                    type="number"
+                    step="0.01"
+                    className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-right text-sm"
+                    value={currentAmount}
+                    onChange={(e) => onChangeDraft({ amount: e.target.value })}
+                />
+            ) : (
+                <h4 className={`text-right ${amountPresentation.className}`}>{amountPresentation.text}</h4>
+            )}
+            <div className="flex items-center justify-end gap-1">
                 {!isSplitting && (
                     <button
                         type="button"
@@ -271,25 +245,57 @@ function LedgerEntryRow({
                     </button>
                 )}
 
-                {!isEditing && !isSplitting && (
-                    <button
-                        type="button"
-                        className={`rounded-md p-1 ${isMultiSelectionMode ? "cursor-not-allowed text-gray-300" : "text-gray-500 hover:bg-gray-200 hover:text-gray-800"}`}
-                        title={isSplit ? "Edit split" : "Split transaction"}
-                        aria-label={isSplit ? "Edit split" : "Split transaction"}
-                        disabled={isMultiSelectionMode}
-                        onClick={() => {
-                            if (isMultiSelectionMode) return
-                            onSplit?.()
-                        }}
-                    >
-                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M4 7h9" />
-                            <path d="M13 7l-2-2m2 2-2 2" />
-                            <path d="M20 17h-9" />
-                            <path d="M11 17l2-2m-2 2 2 2" />
-                        </svg>
-                    </button>
+                {!isEditing && (
+                    <>
+                        {isSplitting ? (
+                            <>
+                                <button
+                                    type="button"
+                                    className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-emerald-700 disabled:opacity-50"
+                                    title="Save split"
+                                    aria-label="Save split"
+                                    disabled={isSavingSplit}
+                                    onClick={() => onSaveSplit?.()}
+                                >
+                                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M20 6 9 17l-5-5" />
+                                    </svg>
+                                </button>
+                                <button
+                                    type="button"
+                                    className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-gray-800 disabled:opacity-50"
+                                    title="Cancel split"
+                                    aria-label="Cancel split"
+                                    disabled={isSavingSplit}
+                                    onClick={() => onCancelSplit?.()}
+                                >
+                                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M18 6 6 18" />
+                                        <path d="m6 6 12 12" />
+                                    </svg>
+                                </button>
+                            </>
+                        ) : (
+                            <button
+                                type="button"
+                                className={`rounded-md p-1 ${isMultiSelectionMode ? "cursor-not-allowed text-gray-300" : "text-gray-500 hover:bg-gray-200 hover:text-gray-800"}`}
+                                title={isSplit ? "Edit split" : "Split transaction"}
+                                aria-label={isSplit ? "Edit split" : "Split transaction"}
+                                disabled={isMultiSelectionMode}
+                                onClick={() => {
+                                    if (isMultiSelectionMode) return
+                                    onSplit?.()
+                                }}
+                            >
+                                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M4 7h9" />
+                                    <path d="M13 7l-2-2m2 2-2 2" />
+                                    <path d="M20 17h-9" />
+                                    <path d="M11 17l2-2m-2 2 2 2" />
+                                </svg>
+                            </button>
+                        )}
+                    </>
                 )}
 
                 {!isEditing && !isSplitting && (
