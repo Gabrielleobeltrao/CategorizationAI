@@ -25,7 +25,7 @@ export async function getAccountBalancesReportService({ clientId, asOfDate, comp
       rows: primary.map((row) => ({
         accountId: row.accountId,
         name: row.name,
-        type: row.type,
+        accountType: row.accountType,
         balance: row.balance,
       })),
     }
@@ -46,7 +46,7 @@ export async function getAccountBalancesReportService({ clientId, asOfDate, comp
       return {
         accountId: row.accountId,
         name: row.name,
-        type: row.type,
+        accountType: row.accountType,
         balance: row.balance,
         compareBalance,
         delta,

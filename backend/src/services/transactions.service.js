@@ -31,7 +31,6 @@ import {
   buildTransactionSearchTerms,
   buildTransactionSearchText,
 } from "../utils/transactionSearch.js"
-import { scheduleOperationalStatusRecompute } from "./operationalStatus.service.js"
 
 const LLM_CONFIDENCE_THRESHOLD = 0.8
 const LLM_MEMORY_CONFIDENCE_THRESHOLD = 0.9
@@ -1167,7 +1166,7 @@ function buildZelleCategorizationUpdatesFromResults(
     .filter(Boolean)
 }
 
-export async function createTransactionsBatchService(transactions, context = {}) {
+export async function createTransactionsBatchService(transactions) {
   if (!Array.isArray(transactions)) {
     throw new Error("transactions must be an array")
   }
@@ -1175,8 +1174,6 @@ export async function createTransactionsBatchService(transactions, context = {})
   if (transactions.length === 0) {
     throw new Error("transactions cannot be empty")
   }
-
-  const createdBy = String(context?.actorProfileId || "")
 
   const normalizedTransactions = transactions.map((transaction) => {
     const amount = Number(transaction?.amount || 0)
@@ -1208,18 +1205,7 @@ export async function createTransactionsBatchService(transactions, context = {})
     }
   })
 
-  const insertResult = await insertTransactionsInBatches(normalizedTransactions, { createdBy })
-
-  const distinctClientIds = Array.from(
-    new Set(
-      normalizedTransactions
-        .map((transaction) => String(transaction?.clientId || "").trim())
-        .filter(Boolean)
-    )
-  )
-  scheduleOperationalStatusRecompute(distinctClientIds)
-
-  return insertResult
+  return insertTransactionsInBatches(normalizedTransactions)
 }
 
 export async function updateTransactionByIdService(id, patch) {
@@ -1378,8 +1364,6 @@ export async function updateTransactionByIdService(id, patch) {
     runDetachedTask(() => rejectMemoryEntriesForTransactions([updatedTransaction]))
   }
 
-  scheduleOperationalStatusRecompute(currentTransaction?.clientId)
-
   return updatedTransaction
 }
 
@@ -1479,15 +1463,6 @@ export async function updateTransactionsByIdsService(input = {}) {
   if (removedCategoryTransactions.length > 0) {
     runDetachedTask(() => rejectMemoryEntriesForTransactions(removedCategoryTransactions))
   }
-
-  const distinctClientIds = Array.from(
-    new Set(
-      Array.from(currentTransactionById.values())
-        .map((transaction) => String(transaction?.clientId || "").trim())
-        .filter(Boolean)
-    )
-  )
-  scheduleOperationalStatusRecompute(distinctClientIds)
 
   return {
     requestedCount: normalizedUpdates.length,
@@ -1690,20 +1665,7 @@ export async function deleteTransactionsByIdsService(ids = []) {
     throw new Error("ids must be a non-empty array")
   }
 
-  // Capture clientIds before deletion so we can refresh their Operational Status.
-  const targetTransactions = await listTransactionsByIds(targetIds)
-  const distinctClientIds = Array.from(
-    new Set(
-      targetTransactions
-        .map((transaction) => String(transaction?.clientId || "").trim())
-        .filter(Boolean)
-    )
-  )
-
   const result = await deleteTransactionsByIds(targetIds)
-
-  scheduleOperationalStatusRecompute(distinctClientIds)
-
   return {
     deletedCount: Number(result?.deletedCount || 0),
   }
@@ -1711,11 +1673,7 @@ export async function deleteTransactionsByIdsService(ids = []) {
 
 export async function deleteTransactionByIdService(id) {
   if (!id) throw new Error("id is required")
-
-  const current = await getTransactionById(id)
-  const result = await deleteTransactionById(id)
-  scheduleOperationalStatusRecompute(current?.clientId)
-  return result
+  return deleteTransactionById(id)
 }
 
 export async function categorizeTransactionsWithLlmService(input) {
@@ -1866,8 +1824,6 @@ export async function categorizeTransactionsWithLlmService(input) {
 
   const categorizedCount = preparedUpdates.filter((item) => item.llmStatus === "suggested").length
   const emptyCount = preparedUpdates.filter((item) => item.llmStatus === "empty").length
-
-  scheduleOperationalStatusRecompute(clientId)
 
   return {
     mode,
@@ -2064,8 +2020,6 @@ export async function categorizeZelleTransactionsService(input) {
   const subCount = categorizedNames.filter((name) =>
     String(name || "").toLowerCase().startsWith("sub -")
   ).length
-
-  scheduleOperationalStatusRecompute(clientId)
 
   return {
     mode,

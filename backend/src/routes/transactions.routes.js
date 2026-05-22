@@ -28,7 +28,6 @@ import {
 } from "../middlewares/validateObjectId.js"
 import { ensureResourceExists } from "../middlewares/authorizeScope.js"
 import { requirePermission } from "../middlewares/requirePermission.js"
-import { requireFeature } from "../middlewares/requireFeature.js"
 
 const router = Router()
 
@@ -43,7 +42,6 @@ router.post(
 router.post(
   "/transactions/categorize-llm",
   requireAuth,
-  requireFeature("bookkeepingLlm"),
   requirePermission("transactions:update"),
   validateObjectIdBody("clientId"),
   ensureResourceExists({ collection: "clients", from: "body", field: "clientId", assignKey: "client" }),
@@ -53,7 +51,6 @@ router.post(
 router.post(
   "/transactions/categorize-all-llm",
   requireAuth,
-  requireFeature("bookkeepingLlm"),
   requirePermission("transactions:update"),
   validateObjectIdBody("clientId"),
   ensureResourceExists({ collection: "clients", from: "body", field: "clientId", assignKey: "client" }),
@@ -63,7 +60,6 @@ router.post(
 router.post(
   "/transactions/categorize-all-llm/jobs",
   requireAuth,
-  requireFeature("bookkeepingLlm"),
   requirePermission("transactions:update"),
   validateObjectIdBody("clientId"),
   ensureResourceExists({ collection: "clients", from: "body", field: "clientId", assignKey: "client" }),
@@ -73,7 +69,6 @@ router.post(
 router.get(
   "/transactions/categorize-all-llm/jobs",
   requireAuth,
-  requireFeature("bookkeepingLlm"),
   requirePermission("transactions:read"),
   listCategorizationJobsController
 )
@@ -81,7 +76,6 @@ router.get(
 router.get(
   "/transactions/categorize-all-llm/jobs/:jobId",
   requireAuth,
-  requireFeature("bookkeepingLlm"),
   requirePermission("transactions:read"),
   validateObjectIdParam("jobId"),
   getCategorizationJobByIdController
@@ -90,7 +84,6 @@ router.get(
 router.post(
   "/transactions/categorize-zelle",
   requireAuth,
-  requireFeature("bookkeepingLlm"),
   requirePermission("transactions:update"),
   validateObjectIdBody("clientId"),
   ensureResourceExists({ collection: "clients", from: "body", field: "clientId", assignKey: "client" }),

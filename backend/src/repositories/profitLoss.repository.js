@@ -1,6 +1,7 @@
-import { ObjectId } from "mongodb"
 import { getDB } from "../db.js"
-import { normalizeCategoryType } from "../config/categoryTypes.js"
+import { PNL_ACCOUNT_TYPES } from "../config/accountTypes.js"
+
+const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/
 
 function monthLabel(dateString) {
   const date = new Date(`${dateString}T00:00:00Z`)
@@ -14,81 +15,29 @@ function statementId(value) {
     .replace(/^_+|_+$/g, "")
 }
 
-const UNCATEGORIZED_INCOME_LABEL = "Uncategorized income"
-const UNCATEGORIZED_EXPENSES_LABEL = "Uncategorized expenses"
-
-function isCogsCategory(type) {
-  return normalizeCategoryType(type) === "cost_of_goods_sold"
-}
-
 function normalizeAmount(value) {
   return Number(Number(value || 0).toFixed(2))
 }
 
-function normalizeCategoryId(value) {
-  if (!value) return null
-  if (typeof value === "string") {
-    if (!ObjectId.isValid(value)) return null
-    return new ObjectId(value).toString()
-  }
-  if (value instanceof ObjectId) {
-    return value.toString()
-  }
-  if (typeof value === "object" && typeof value?.toString === "function") {
-    const normalized = value.toString()
-    if (ObjectId.isValid(normalized)) return new ObjectId(normalized).toString()
-  }
-  return null
-}
-
-function buildExpenseItems(mapByCategory) {
-  return Array.from(mapByCategory.entries())
-    .map(([label, amount]) => ({
-      id: statementId(label),
-      label,
-      amount: -normalizeAmount(amount),
-      level: 1,
-      type: "item",
-    }))
-    .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
-}
-
-const KNOWN_BUCKETS = new Set([
-  "income",
-  "cost_of_goods_sold",
-  "operating_expense",
-  "other_income",
-  "other_expense",
-  "tax_expense",
-])
-
-function getCategoryBucket({ categoryType = "", categoryName = "", amount = 0, isUncategorized = false }) {
-  if (isUncategorized) {
-    return Number(amount || 0) >= 0 ? "income" : "operating_expense"
-  }
-
-  const normalizedType = normalizeCategoryType(categoryType)
-  if (KNOWN_BUCKETS.has(normalizedType)) return normalizedType
-
-  const normalizedName = String(categoryName || "").trim().toLowerCase()
-  if (normalizedName === UNCATEGORIZED_INCOME_LABEL.toLowerCase()) return "income"
-  if (normalizedName === UNCATEGORIZED_EXPENSES_LABEL.toLowerCase()) return "operating_expense"
-
-  return Number(amount || 0) >= 0 ? "income" : "operating_expense"
+// Sign convention for the P&L: income / other_income accounts have a
+// natural CREDIT balance, so their "amount" on the report is
+// credit − debit (positive = revenue). Expense-type accounts have a
+// natural DEBIT balance, so the report's "amount" is debit − credit
+// (positive = cost).
+function legImpact(accountType, debit, credit) {
+  const d = Number(debit || 0)
+  const c = Number(credit || 0)
+  if (accountType === "income" || accountType === "other_income") return c - d
+  return d - c
 }
 
 export async function listProfitLossPeriodOptionsByClientId(clientId) {
   const db = getDB()
 
   const [result] = await db
-    .collection("transactions")
+    .collection("journal_entries")
     .aggregate([
-      {
-        $match: {
-          clientId,
-          date: { $regex: /^\d{4}-\d{2}-\d{2}$/ },
-        },
-      },
+      { $match: { clientId, date: { $regex: DATE_REGEX } } },
       {
         $project: {
           year: { $substrBytes: ["$date", 0, 4] },
@@ -113,80 +62,50 @@ export async function listProfitLossPeriodOptionsByClientId(clientId) {
 
 export async function getProfitLossByClientAndRange({ clientId, startDate, endDate, periodLabel }) {
   const db = getDB()
-  const collection = db.collection("transactions")
 
-  const baseFilter = {
-    clientId,
-    date: { $regex: /^\d{4}-\d{2}-\d{2}$/ },
-  }
+  const dateFilter = { $regex: DATE_REGEX }
   if (startDate && endDate) {
-    baseFilter.date = {
-      $gte: startDate,
-      $lte: endDate,
-      $regex: /^\d{4}-\d{2}-\d{2}$/,
-    }
+    dateFilter.$gte = startDate
+    dateFilter.$lte = endDate
   }
 
-  const transactionLines = await collection
-    .aggregate(
-      [
-        { $match: baseFilter },
-        {
-          $project: {
-            date: 1,
-            splitItems: {
-              $cond: [
-                { $gt: [{ $size: { $ifNull: ["$splits", []] } }, 0] },
-                "$splits",
-                [
-                  {
-                    amount: "$amount",
-                    categoryId: "$categoryId",
-                    category: "$category",
-                  },
-                ],
-              ],
-            },
-          },
-        },
-        { $unwind: "$splitItems" },
-        {
-          $set: {
-            categoryObjectId: {
-              $convert: {
-                input: "$splitItems.categoryId",
-                to: "objectId",
-                onError: null,
-                onNull: null,
-              },
-            },
-          },
-        },
-        {
-          $lookup: {
-            from: "categories",
-            localField: "categoryObjectId",
-            foreignField: "_id",
-            as: "categoryDoc",
-          },
-        },
-        {
-          $project: {
-            _id: 0,
-            date: 1,
-            amount: "$splitItems.amount",
-            categoryId: "$splitItems.categoryId",
-            category: "$splitItems.category",
-            categoryName: { $first: "$categoryDoc.name" },
-            categoryType: { $first: "$categoryDoc.type" },
-          },
-        },
-      ],
+  // Aggregates each leg that lands on a P&L account, joining the leg's
+  // accountId against coa_accounts to discover the accountType and
+  // human-readable name. Returns one row per leg (kept that way so we
+  // can also bucket by month for the trend chart).
+  const lines = await db
+    .collection("journal_entries")
+    .aggregate([
+      { $match: { clientId, date: dateFilter } },
+      { $unwind: "$legs" },
       {
-        allowDiskUse: false,
-        hint: { clientId: 1, date: -1, _id: -1 },
+        $set: {
+          accountObjectId: {
+            $convert: { input: "$legs.accountId", to: "objectId", onError: null, onNull: null },
+          },
+        },
       },
-    )
+      {
+        $lookup: {
+          from: "coa_accounts",
+          localField: "accountObjectId",
+          foreignField: "_id",
+          as: "accountDoc",
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          date: 1,
+          debit: "$legs.debit",
+          credit: "$legs.credit",
+          accountId: "$legs.accountId",
+          accountName: { $first: "$accountDoc.name" },
+          accountType: { $first: "$accountDoc.accountType" },
+        },
+      },
+      { $match: { accountType: { $in: PNL_ACCOUNT_TYPES } } },
+    ])
     .toArray()
 
   let revenue = 0
@@ -196,66 +115,42 @@ export async function getProfitLossByClientAndRange({ clientId, startDate, endDa
   let otherExpense = 0
   let taxExpense = 0
 
-  const revenueByCategory = new Map()
-  const cogsByCategory = new Map()
-  const operatingByCategory = new Map()
-  const otherIncomeByCategory = new Map()
-  const otherExpenseByCategory = new Map()
-  const taxExpenseByCategory = new Map()
+  const revenueByAccount = new Map()
+  const cogsByAccount = new Map()
+  const operatingByAccount = new Map()
+  const otherIncomeByAccount = new Map()
+  const otherExpenseByAccount = new Map()
+  const taxExpenseByAccount = new Map()
   const netByMonth = new Map()
 
-  for (const line of transactionLines) {
+  for (const line of lines) {
+    const impact = legImpact(line.accountType, line.debit, line.credit)
+    const accountName = line.accountName || "Unnamed account"
     const keyMonth = monthLabel(line.date)
-    const amount = Number(line?.amount) || 0
-    const normalizedCategoryId = normalizeCategoryId(line?.categoryId)
-    const categoryName = line?.category || line?.categoryName || "Uncategorized"
-    const categoryType = line?.categoryType || ""
-    const isUncategorized =
-      !normalizedCategoryId &&
-      !String(line?.category || "").trim() &&
-      !String(line?.categoryName || "").trim()
 
-    const bucket = getCategoryBucket({
-      categoryType,
-      categoryName,
-      amount,
-      isUncategorized,
-    })
-
-    if (bucket === "income") {
-      const incomeCategoryLabel = isUncategorized ? UNCATEGORIZED_INCOME_LABEL : categoryName
-      revenue += amount
-      revenueByCategory.set(incomeCategoryLabel, (revenueByCategory.get(incomeCategoryLabel) || 0) + amount)
-      netByMonth.set(keyMonth, (netByMonth.get(keyMonth) || 0) + amount)
-      continue
+    if (line.accountType === "income") {
+      revenue += impact
+      revenueByAccount.set(accountName, (revenueByAccount.get(accountName) || 0) + impact)
+    } else if (line.accountType === "cost_of_goods_sold") {
+      cogs += impact
+      cogsByAccount.set(accountName, (cogsByAccount.get(accountName) || 0) + impact)
+    } else if (line.accountType === "operating_expense") {
+      operatingExpenses += impact
+      operatingByAccount.set(accountName, (operatingByAccount.get(accountName) || 0) + impact)
+    } else if (line.accountType === "other_income") {
+      otherIncome += impact
+      otherIncomeByAccount.set(accountName, (otherIncomeByAccount.get(accountName) || 0) + impact)
+    } else if (line.accountType === "other_expense") {
+      otherExpense += impact
+      otherExpenseByAccount.set(accountName, (otherExpenseByAccount.get(accountName) || 0) + impact)
+    } else if (line.accountType === "tax_expense") {
+      taxExpense += impact
+      taxExpenseByAccount.set(accountName, (taxExpenseByAccount.get(accountName) || 0) + impact)
     }
 
-    if (bucket === "other_income") {
-      otherIncome += amount
-      otherIncomeByCategory.set(categoryName, (otherIncomeByCategory.get(categoryName) || 0) + amount)
-      netByMonth.set(keyMonth, (netByMonth.get(keyMonth) || 0) + amount)
-      continue
-    }
-
-    const expenseImpact = -amount
-    if (bucket === "cost_of_goods_sold") {
-      cogs += expenseImpact
-      cogsByCategory.set(categoryName, (cogsByCategory.get(categoryName) || 0) + expenseImpact)
-    } else if (bucket === "other_expense") {
-      otherExpense += expenseImpact
-      otherExpenseByCategory.set(categoryName, (otherExpenseByCategory.get(categoryName) || 0) + expenseImpact)
-    } else if (bucket === "tax_expense") {
-      taxExpense += expenseImpact
-      taxExpenseByCategory.set(categoryName, (taxExpenseByCategory.get(categoryName) || 0) + expenseImpact)
-    } else {
-      const expenseCategoryLabel = isUncategorized ? UNCATEGORIZED_EXPENSES_LABEL : categoryName
-      operatingExpenses += expenseImpact
-      operatingByCategory.set(
-        expenseCategoryLabel,
-        (operatingByCategory.get(expenseCategoryLabel) || 0) + expenseImpact
-      )
-    }
-    netByMonth.set(keyMonth, (netByMonth.get(keyMonth) || 0) + amount)
+    // Monthly net: revenue + other_income − all expense types.
+    const netDelta = line.accountType === "income" || line.accountType === "other_income" ? impact : -impact
+    netByMonth.set(keyMonth, (netByMonth.get(keyMonth) || 0) + netDelta)
   }
 
   const grossProfit = revenue - cogs
@@ -275,12 +170,24 @@ export async function getProfitLossByClientAndRange({ clientId, startDate, endDa
       }))
       .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
 
-  const revenueItems = buildIncomeItems(revenueByCategory)
-  const cogsItems = buildExpenseItems(cogsByCategory).map((item) => ({ ...item, presentationType: "expense" }))
-  const operatingItems = buildExpenseItems(operatingByCategory).map((item) => ({ ...item, presentationType: "expense" }))
-  const otherIncomeItems = buildIncomeItems(otherIncomeByCategory)
-  const otherExpenseItems = buildExpenseItems(otherExpenseByCategory).map((item) => ({ ...item, presentationType: "expense" }))
-  const taxExpenseItems = buildExpenseItems(taxExpenseByCategory).map((item) => ({ ...item, presentationType: "expense" }))
+  const buildExpenseItems = (map) =>
+    Array.from(map.entries())
+      .map(([label, amount]) => ({
+        id: statementId(label),
+        label,
+        amount: -normalizeAmount(amount),
+        level: 1,
+        type: "item",
+        presentationType: "expense",
+      }))
+      .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
+
+  const revenueItems = buildIncomeItems(revenueByAccount)
+  const cogsItems = buildExpenseItems(cogsByAccount)
+  const operatingItems = buildExpenseItems(operatingByAccount)
+  const otherIncomeItems = buildIncomeItems(otherIncomeByAccount)
+  const otherExpenseItems = buildExpenseItems(otherExpenseByAccount)
+  const taxExpenseItems = buildExpenseItems(taxExpenseByAccount)
 
   const statement = [
     { id: "revenue", label: "Revenue", amount: normalizeAmount(revenue), level: 0, type: "group", presentationType: "income" },

@@ -1,90 +1,66 @@
 import { getDB } from "../db.js"
-import { inferBalanceSheetType } from "../config/balanceSheetTypes.js"
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/
+
+// "Natural side" of an account type — used to flip the sign when
+// displaying balances so the user always sees positive numbers for
+// healthy accounts (positive cash, positive owed, positive revenue,
+// positive expenses, etc.).
+function naturalSide(accountType) {
+  if (!accountType) return "debit"
+  if (accountType.startsWith("asset_")) return "debit"
+  if (accountType.startsWith("liability_")) return "credit"
+  if (accountType === "equity") return "credit"
+  if (accountType === "income" || accountType === "other_income") return "credit"
+  return "debit"
+}
 
 export async function getChartOfAccountsByClientId({ clientId }) {
   const db = getDB()
 
-  const [accounts, categories] = await Promise.all([
-    db.collection("account").find({ clientId }).sort({ name: 1 }).toArray(),
-    db.collection("categories").find({ clientId }).sort({ name: 1 }).toArray(),
-  ])
+  const accounts = await db
+    .collection("coa_accounts")
+    .find({ clientId })
+    .sort({ accountType: 1, name: 1 })
+    .toArray()
 
-  const balanceFilter = { clientId, date: { $regex: DATE_REGEX } }
-
-  const [accountSums, categorySums] = await Promise.all([
-    accounts.length
-      ? db
-          .collection("transactions")
-          .aggregate([
-            { $match: balanceFilter },
-            { $group: { _id: "$accountId", balance: { $sum: "$amount" } } },
-          ])
-          .toArray()
-      : [],
-    categories.length
-      ? db
-          .collection("transactions")
-          .aggregate([
-            { $match: balanceFilter },
-            {
-              $project: {
-                splitItems: {
-                  $cond: [
-                    { $gt: [{ $size: { $ifNull: ["$splits", []] } }, 0] },
-                    "$splits",
-                    [{ amount: "$amount", categoryId: "$categoryId" }],
-                  ],
-                },
-              },
+  const sums = accounts.length
+    ? await db
+        .collection("journal_entries")
+        .aggregate([
+          { $match: { clientId, date: { $regex: DATE_REGEX } } },
+          { $unwind: "$legs" },
+          {
+            $group: {
+              _id: "$legs.accountId",
+              debit: { $sum: "$legs.debit" },
+              credit: { $sum: "$legs.credit" },
             },
-            { $unwind: "$splitItems" },
-            {
-              $group: {
-                _id: "$splitItems.categoryId",
-                total: { $sum: "$splitItems.amount" },
-              },
-            },
-          ])
-          .toArray()
-      : [],
-  ])
+          },
+        ])
+        .toArray()
+    : []
 
-  const accountBalanceMap = new Map(
-    accountSums.map((row) => [String(row._id || ""), Number(row.balance) || 0]),
-  )
-  const categoryTotalMap = new Map(
-    categorySums.map((row) => [String(row._id || ""), Number(row.total) || 0]),
+  const sumsMap = new Map(
+    sums.map((row) => [String(row._id || ""), {
+      debit: Number(row.debit || 0),
+      credit: Number(row.credit || 0),
+    }]),
   )
 
-  const accountRows = accounts.map((acc) => {
-    const bsType = inferBalanceSheetType({
-      balanceSheetType: acc.balanceSheetType,
-      type: acc.type,
-    })
+  return accounts.map((acc) => {
+    const totals = sumsMap.get(String(acc._id)) || { debit: 0, credit: 0 }
+    const balance = naturalSide(acc.accountType) === "debit"
+      ? totals.debit - totals.credit
+      : totals.credit - totals.debit
     return {
       id: String(acc._id),
       source: "account",
       name: acc.name || "",
-      subtypeLabel: acc.type || "",
-      group: bsType || "uncategorized",
-      balanceSheetType: bsType,
-      isInferred: !acc.balanceSheetType,
-      balance: accountBalanceMap.get(String(acc._id)) || 0,
+      description: typeof acc.description === "string" ? acc.description : "",
+      accountType: acc.accountType || "uncategorized",
+      isActive: acc.isActive !== false,
+      balance,
     }
   })
-
-  const categoryRows = categories.map((cat) => ({
-    id: String(cat._id),
-    source: "category",
-    name: cat.name || "",
-    subtypeLabel: "",
-    group: cat.type || "uncategorized",
-    balanceSheetType: null,
-    isInferred: false,
-    balance: categoryTotalMap.get(String(cat._id)) || 0,
-  }))
-
-  return [...accountRows, ...categoryRows]
 }

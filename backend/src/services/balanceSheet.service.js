@@ -7,19 +7,20 @@ function isValidDate(value) {
   return typeof value === "string" && DATE_PATTERN.test(value)
 }
 
-// Liabilities are stored with a negative sign in single-entry (e.g. credit card
-// purchases reduce the account sum); flip them so the report shows the amount
-// actually owed as a positive figure. Asset and equity accounts keep their raw
-// sign so an overdrawn checking account still shows up as negative.
+// Liabilities are stored with a negative sign in single-entry (e.g.
+// credit card purchases reduce the account sum). The double-entry
+// migration will rewrite this in a later phase; until then we flip the
+// sign here so the report shows the amount actually owed as a positive
+// figure. Assets and equity keep their raw sign.
 function presentBalance(group, rawBalance) {
   if (group === "liability") return -rawBalance
   return rawBalance
 }
 
-function groupOf(balanceSheetType) {
-  if (balanceSheetType?.startsWith("asset_")) return "asset"
-  if (balanceSheetType?.startsWith("liability_")) return "liability"
-  if (balanceSheetType === "equity") return "equity"
+function groupOf(accountType) {
+  if (accountType?.startsWith("asset_")) return "asset"
+  if (accountType?.startsWith("liability_")) return "liability"
+  if (accountType === "equity") return "equity"
   return "uncategorized"
 }
 
@@ -41,17 +42,15 @@ export async function getBalanceSheetReportService({ clientId, asOfDate }) {
   }
 
   for (const account of data.accounts) {
-    const bsType = account.balanceSheetType || "uncategorized"
-    const section = sections[bsType] || sections.uncategorized
+    const bucketId = account.accountType || "uncategorized"
+    const section = sections[bucketId] || sections.uncategorized
     const group = section.group
     const presented = presentBalance(group, account.rawBalance)
 
     section.rows.push({
       accountId: account.accountId,
       name: account.name,
-      type: account.type,
-      balanceSheetType: bsType,
-      isInferred: account.isInferred,
+      accountType: account.accountType,
       balance: presented,
     })
     section.total += presented
@@ -62,9 +61,7 @@ export async function getBalanceSheetReportService({ clientId, asOfDate }) {
     sections.equity.rows.push({
       accountId: null,
       name: "Retained Earnings",
-      type: "",
-      balanceSheetType: "equity",
-      isInferred: false,
+      accountType: "equity",
       balance: retainedEarnings,
       isDerived: true,
     })
@@ -100,5 +97,4 @@ export async function getBalanceSheetReportService({ clientId, asOfDate }) {
   }
 }
 
-// re-export so route imports work even if not currently used
 export { groupOf }

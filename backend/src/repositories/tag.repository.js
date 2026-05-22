@@ -147,7 +147,7 @@ export async function listCategoryTagsByOfficeId(officeId) {
 
   if (safeClientIds.length === 0) return []
 
-  return db.collection("categories").distinct("tags", {
+  return db.collection("coa_accounts").distinct("tags", {
     clientId: { $in: safeClientIds },
   })
 }
@@ -167,7 +167,7 @@ export async function deleteTagFromCategoriesByOfficeId(officeId, tag) {
     return { acknowledged: true, matchedCount: 0, modifiedCount: 0 }
   }
 
-  return db.collection("categories").updateMany(
+  return db.collection("coa_accounts").updateMany(
     {
       clientId: { $in: safeClientIds },
       tags: tag,
@@ -196,7 +196,7 @@ export async function deleteTagIdFromCategoriesByOfficeId(officeId, tagId) {
     return { acknowledged: true, matchedCount: 0, modifiedCount: 0 }
   }
 
-  return db.collection("categories").updateMany(
+  return db.collection("coa_accounts").updateMany(
     {
       clientId: { $in: safeClientIds },
       tagIds: tagId,

@@ -32,7 +32,7 @@ router.patch(
   requireAuth,
   requirePermission("accounts:update"),
   validateObjectIdParam("id"),
-  ensureResourceExists({ collection: "account", from: "params", field: "id", assignKey: "account" }),
+  ensureResourceExists({ collection: "coa_accounts", from: "params", field: "id", assignKey: "account" }),
   updateAccountByIdController
 )
 
@@ -50,7 +50,7 @@ router.get(
   requireAuth,
   requirePermission("accounts:read"),
   validateObjectIdParam("id"),
-  ensureResourceExists({ collection: "account", from: "params", field: "id", assignKey: "account" }),
+  ensureResourceExists({ collection: "coa_accounts", from: "params", field: "id", assignKey: "account" }),
   getAccountByIdController
 )
 
@@ -59,7 +59,7 @@ router.delete(
   requireAuth,
   requirePermission("accounts:delete"),
   validateObjectIdParam("id"),
-  ensureResourceExists({ collection: "account", from: "params", field: "id", assignKey: "account" }),
+  ensureResourceExists({ collection: "coa_accounts", from: "params", field: "id", assignKey: "account" }),
   deleteAccountByIdController
 )
 

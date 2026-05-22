@@ -12,77 +12,78 @@ import {
   listLinkedAccountIds,
 } from "../repositories/transactions.repository.js"
 import { AppError } from "../utils/appError.js"
-import { isValidBalanceSheetType } from "../config/balanceSheetTypes.js"
+import { isValidAccountType } from "../config/accountTypes.js"
 
 export async function createAccountService(input) {
-  if (!input?.name) throw new Error("name is required")
-  if (!input?.type) throw new Error("type is required")
-  if (!input?.clientId) throw new Error("clientId is required")
-
-  const balanceSheetType = String(input.balanceSheetType || "").trim()
-  if (balanceSheetType && !isValidBalanceSheetType(balanceSheetType)) {
-    throw new AppError("Invalid balanceSheetType", 400)
+  if (!input?.name) throw new AppError("name is required", 400)
+  if (!input?.accountType) throw new AppError("accountType is required", 400)
+  if (!isValidAccountType(input.accountType)) {
+    throw new AppError("Invalid accountType", 400)
   }
+  if (!input?.clientId) throw new AppError("clientId is required", 400)
 
   return createAccount({
-    name: input.name.trim(),
-    type: input.type.trim(),
-    balanceSheetType,
+    name: String(input.name).trim(),
+    accountType: String(input.accountType).trim(),
+    description: typeof input.description === "string" ? input.description.trim() : "",
+    isActive: input.isActive !== false,
     clientId: input.clientId,
   })
 }
 
 export async function updateAccountByIdService(id, patch) {
-  if (!id) throw new Error("id is required")
-  if (!patch || typeof patch !== "object") throw new Error("patch is required")
+  if (!id) throw new AppError("id is required", 400)
+  if (!patch || typeof patch !== "object") throw new AppError("patch is required", 400)
 
   const safePatch = {}
 
   if (typeof patch.name === "string") {
     const name = patch.name.trim()
-    if (!name) throw new Error("name cannot be empty")
+    if (!name) throw new AppError("name cannot be empty", 400)
     safePatch.name = name
   }
 
-  if (typeof patch.type === "string") {
-    const type = patch.type.trim()
-    if (!type) throw new Error("type cannot be empty")
-    safePatch.type = type
+  if (typeof patch.accountType === "string") {
+    const accountType = patch.accountType.trim()
+    if (!isValidAccountType(accountType)) {
+      throw new AppError("Invalid accountType", 400)
+    }
+    safePatch.accountType = accountType
+  }
+
+  if (typeof patch.description === "string") {
+    safePatch.description = patch.description.trim()
+  }
+
+  if (typeof patch.isActive === "boolean") {
+    safePatch.isActive = patch.isActive
   }
 
   if (typeof patch.clientId === "string") {
     const clientId = patch.clientId.trim()
-    if (!clientId) throw new Error("clientId cannot be empty")
+    if (!clientId) throw new AppError("clientId cannot be empty", 400)
     safePatch.clientId = clientId
   }
 
-  if (typeof patch.balanceSheetType === "string") {
-    const balanceSheetType = patch.balanceSheetType.trim()
-    if (balanceSheetType && !isValidBalanceSheetType(balanceSheetType)) {
-      throw new AppError("Invalid balanceSheetType", 400)
-    }
-    safePatch.balanceSheetType = balanceSheetType
-  }
-
   if (Object.keys(safePatch).length === 0) {
-    throw new Error("no valid fields to update")
+    throw new AppError("no valid fields to update", 400)
   }
 
   return updateAccountById(id, safePatch)
 }
 
-export async function listAccountsByClientIdService(clientId) {
-  if (!clientId) throw new Error("clientId is required")
-  return listAccountsByClientId(clientId)
+export async function listAccountsByClientIdService(clientId, options = {}) {
+  if (!clientId) throw new AppError("clientId is required", 400)
+  return listAccountsByClientId(clientId, options)
 }
 
 export async function getAccountByIdService(id) {
-  if (!id) throw new Error("id is required")
+  if (!id) throw new AppError("id is required", 400)
   return getAccountById(id)
 }
 
 export async function deleteAccountByIdService(id) {
-  if (!id) throw new Error("id is required")
+  if (!id) throw new AppError("id is required", 400)
 
   const linkedTransactionsCount = await countTransactionsByAccountId(id)
   if (linkedTransactionsCount > 0) {
@@ -100,7 +101,7 @@ export async function deleteAccountsByIdsService(ids = []) {
     : []
 
   if (safeIds.length === 0) {
-    throw new Error("ids must be a non-empty array")
+    throw new AppError("ids must be a non-empty array", 400)
   }
 
   const linkedAccountIds = await listLinkedAccountIds(safeIds)
@@ -118,6 +119,6 @@ export async function deleteAccountsByIdsService(ids = []) {
 }
 
 export async function deleteAccountsByClientIdService(clientId) {
-  if (!clientId) throw new Error("clientId is required")
+  if (!clientId) throw new AppError("clientId is required", 400)
   return deleteAccountsByClientId(clientId)
 }

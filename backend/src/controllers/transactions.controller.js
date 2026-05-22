@@ -15,9 +15,7 @@ import { sendErrorResponse } from "../utils/httpError.js"
 
 export async function createTransactionsBatchController(req, res) {
   try {
-    const result = await createTransactionsBatchService(req.body.transactions, {
-      actorProfileId: req.userProfile?._id ? String(req.userProfile._id) : "",
-    })
+    const result = await createTransactionsBatchService(req.body.transactions)
     return res.status(201).json(result)
   } catch (error) {
     return sendErrorResponse(res, error)
