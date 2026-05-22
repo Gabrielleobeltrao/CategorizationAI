@@ -7,19 +7,48 @@ import PopupModal from "../ui/PopupModal"
 import { useOpenTest } from "../../contexts/openTest.context"
 
 const PRIVATE_BETA_REVIEW_EVENT = "app:private-beta-review-required"
+const BETA_BANNER_DISMISSED_KEY = "private-beta-banner-dismissed-date"
+const BETA_MODAL_DISMISSED_KEY = "private-beta-modal-dismissed-date"
+
+function todayISO() {
+  const now = new Date()
+  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()))
+    .toISOString()
+    .slice(0, 10)
+}
+
+function wasDismissedToday(storageKey) {
+  if (typeof window === "undefined") return false
+  try {
+    return window.localStorage?.getItem(storageKey) === todayISO()
+  } catch {
+    return false
+  }
+}
+
+function markDismissedToday(storageKey) {
+  if (typeof window === "undefined") return
+  try {
+    window.localStorage?.setItem(storageKey, todayISO())
+  } catch {
+    /* ignore quota / private-mode errors */
+  }
+}
 
 function AppShell() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true)
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
   const [isOpenTestModalOpen, setIsOpenTestModalOpen] = useState(false)
-  const [isOpenTestBannerVisible, setIsOpenTestBannerVisible] = useState(true)
+  const [isOpenTestBannerVisible, setIsOpenTestBannerVisible] = useState(
+    () => !wasDismissedToday(BETA_BANNER_DISMISSED_KEY),
+  )
   const contentScrollRef = useRef(null)
   const { config: openTestConfig } = useOpenTest()
 
   useEffect(() => {
-    if (openTestConfig?.enabled) {
-      setIsOpenTestModalOpen(true)
-    }
+    if (!openTestConfig?.enabled) return
+    if (wasDismissedToday(BETA_MODAL_DISMISSED_KEY)) return
+    setIsOpenTestModalOpen(true)
   }, [openTestConfig?.enabled])
 
   useEffect(() => {
@@ -33,6 +62,16 @@ function AppShell() {
       window.removeEventListener(PRIVATE_BETA_REVIEW_EVENT, handlePrivateBetaReview)
     }
   }, [])
+
+  const dismissBetaBanner = () => {
+    markDismissedToday(BETA_BANNER_DISMISSED_KEY)
+    setIsOpenTestBannerVisible(false)
+  }
+
+  const dismissBetaModal = () => {
+    markDismissedToday(BETA_MODAL_DISMISSED_KEY)
+    setIsOpenTestModalOpen(false)
+  }
 
   return (
     <div className="h-dvh overflow-hidden bg-white">
@@ -50,7 +89,7 @@ function AppShell() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setIsOpenTestBannerVisible(false)}
+                  onClick={dismissBetaBanner}
                   className="rounded-md p-1.5 text-amber-900 transition hover:bg-amber-100"
                   title="Close notice"
                   aria-label="Close notice"
@@ -92,7 +131,7 @@ function AppShell() {
 
         <PopupModal
           isOpen={isOpenTestModalOpen}
-          onClose={() => setIsOpenTestModalOpen(false)}
+          onClose={dismissBetaModal}
           title={openTestConfig?.notices?.modalTitle || "Private beta"}
           maxWidthClass="max-w-lg"
         >
@@ -106,7 +145,7 @@ function AppShell() {
             <div className="flex justify-end">
               <button
                 type="button"
-                onClick={() => setIsOpenTestModalOpen(false)}
+                onClick={dismissBetaModal}
                 className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-black"
               >
                 I understand

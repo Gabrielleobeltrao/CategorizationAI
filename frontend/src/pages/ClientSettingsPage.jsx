@@ -211,8 +211,8 @@ function ClientSettingsPage() {
 
     if (isLoading) {
         return (
-            <section className="w-full p-4 sm:p-6 lg:p-8">
-                <div className="mx-auto max-w-5xl">
+            <section className="w-full px-12 py-8">
+                <div className="mx-auto max-w-7xl">
                     <p className="text-sm text-gray-500">Loading client…</p>
                 </div>
             </section>
@@ -221,8 +221,8 @@ function ClientSettingsPage() {
 
     if (!client) {
         return (
-            <section className="w-full p-4 sm:p-6 lg:p-8">
-                <div className="mx-auto max-w-5xl">
+            <section className="w-full px-12 py-8">
+                <div className="mx-auto max-w-7xl">
                     <p className="text-sm text-gray-500">Client not found.</p>
                     <button
                         type="button"
@@ -237,8 +237,8 @@ function ClientSettingsPage() {
     }
 
     return (
-        <section className="w-full p-4 sm:p-6 lg:p-8">
-            <div className="mx-auto flex max-w-5xl flex-col gap-4 sm:gap-6">
+        <section className="w-full px-12 py-8">
+            <div className="mx-auto flex max-w-7xl flex-col gap-4 sm:gap-6">
                 <header>
                     <h1 className="text-2xl font-semibold">{client.name || "Client"}</h1>
                     <p className="mt-1 text-sm text-gray-500">

@@ -512,8 +512,8 @@ function ClientsPage() {
     }
 
     return (
-        <section className="w-full p-4 sm:p-6 lg:p-8">
-            <div className="mx-auto flex max-w-5xl flex-col gap-4 sm:gap-6">
+        <section className="w-full px-12 py-8">
+            <div className="mx-auto flex max-w-7xl flex-col gap-4 sm:gap-6">
                 <header className="flex flex-wrap items-start justify-between gap-3">
                     <h1 className="text-2xl font-bold sm:text-3xl">Clients</h1>
                     <button
@@ -614,7 +614,7 @@ function ClientsPage() {
                                             <div className="flex items-center justify-end gap-2">
                                             <button
                                                 type="button"
-                                                className="rounded-md p-2 text-gray-500 hover:bg-gray-200 hover:text-gray-800"
+                                                className="rounded-md p-1.5 text-gray-500 hover:bg-gray-200 hover:text-gray-800"
                                                 onClick={(e) => {
                                                     e.stopPropagation()
                                                     toggleClientExpanded(client.id)

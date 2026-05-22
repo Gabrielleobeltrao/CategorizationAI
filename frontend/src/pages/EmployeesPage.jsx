@@ -43,10 +43,6 @@ const fallbackPermissionCatalog = [
     { key: "accounts:create", group: "Accounts", label: "Create accounts" },
     { key: "accounts:update", group: "Accounts", label: "Update accounts" },
     { key: "accounts:delete", group: "Accounts", label: "Delete accounts" },
-    { key: "categories:read", group: "Categories", label: "Read categories" },
-    { key: "categories:create", group: "Categories", label: "Create categories" },
-    { key: "categories:update", group: "Categories", label: "Update categories" },
-    { key: "categories:delete", group: "Categories", label: "Delete categories" },
     { key: "transactions:read", group: "Transactions", label: "Read transactions" },
     { key: "transactions:create", group: "Transactions", label: "Create transactions" },
     { key: "transactions:update", group: "Transactions", label: "Update transactions" },
@@ -693,8 +689,8 @@ function EmployeesPage() {
     }
 
     return (
-        <section className="w-full p-4 sm:p-6 lg:p-8">
-            <div className="mx-auto flex max-w-5xl flex-col gap-4 sm:gap-6">
+        <section className="w-full px-12 py-8">
+            <div className="mx-auto flex max-w-7xl flex-col gap-4 sm:gap-6">
                 <header className="flex flex-wrap items-start justify-between gap-3">
                     <h1 className="text-2xl font-bold sm:text-3xl">Employees</h1>
                     <div className="flex shrink-0 items-center gap-2">

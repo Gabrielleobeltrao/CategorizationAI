@@ -500,7 +500,7 @@ function BoardPage() {
     }
 
     return (
-        <section className="w-full p-4 sm:p-6 lg:p-8">
+        <section className="w-full px-12 py-8">
             <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 sm:gap-5">
                 <header className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">

@@ -71,8 +71,8 @@ function buildCsv({ clientName, asOfDate, compareDate, rows, totals }) {
 
     for (const row of rows) {
         const cells = compareDate
-            ? [row.name, row.type, row.balance, row.compareBalance ?? 0, row.delta ?? 0, row.percentChange ?? ""]
-            : [row.name, row.type, row.balance]
+            ? [row.name, row.accountType, row.balance, row.compareBalance ?? 0, row.delta ?? 0, row.percentChange ?? ""]
+            : [row.name, row.accountType, row.balance]
         lines.push(cells.map(escape).join(","))
     }
 
@@ -119,10 +119,10 @@ function buildPdfLines({ clientName, asOfDate, compareDate, rows, totals }) {
     for (const row of rows) {
         if (compareDate) {
             lines.push(
-                `${pad(row.name, 30)}  ${pad(row.type, 14)}  ${padRight(formatCurrency(row.balance), 14)}  ${padRight(formatCurrency(row.compareBalance ?? 0), 14)}  ${padRight(formatDelta(row.delta ?? 0), 12)}`,
+                `${pad(row.name, 30)}  ${pad(row.accountType, 14)}  ${padRight(formatCurrency(row.balance), 14)}  ${padRight(formatCurrency(row.compareBalance ?? 0), 14)}  ${padRight(formatDelta(row.delta ?? 0), 12)}`,
             )
         } else {
-            lines.push(`${pad(row.name, 32)}  ${pad(row.type, 14)}  ${padRight(formatCurrency(row.balance), 26)}`)
+            lines.push(`${pad(row.name, 32)}  ${pad(row.accountType, 14)}  ${padRight(formatCurrency(row.balance), 26)}`)
         }
     }
 
@@ -222,9 +222,10 @@ function AccountBalancesPage() {
     }
 
     return (
-        <section className="flex h-full flex-col gap-4 px-4 py-4 sm:px-6">
-            <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
-            <header className="flex h-full flex-wrap items-start justify-between gap-3">
+        <section className="h-full w-full px-12 py-8">
+          <div className="mx-auto flex h-full max-w-7xl flex-col gap-4">
+            <div className="grid grid-cols-1 items-stretch gap-4 md:grid-cols-2">
+            <header className="flex h-full flex-col justify-between gap-8">
                 <div className="min-w-0">
                     <h1 className="text-xl font-semibold text-gray-900">Account Balances</h1>
                     <p className="text-sm text-gray-500">
@@ -232,7 +233,7 @@ function AccountBalancesPage() {
                         {compareEnabled && compareDate ? ` (vs ${formatDateLong(compareDate)})` : ""}
                     </p>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                     <button
                         type="button"
                         onClick={handleExportCsv}
@@ -262,7 +263,7 @@ function AccountBalancesPage() {
                 </div>
             </header>
 
-            <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <div className="flex h-full flex-col justify-center rounded-xl border border-gray-200 bg-white p-4">
                 <div className="flex flex-wrap items-end gap-4">
                     <div className="flex min-w-45 flex-col gap-1.5">
                         <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
@@ -387,7 +388,7 @@ function AccountBalancesPage() {
                             {report.rows.map((row) => (
                                 <tr key={row.accountId} className="border-b border-gray-50 last:border-b-0">
                                     <td className="px-4 py-3 font-medium text-gray-900">{row.name || "—"}</td>
-                                    <td className="px-4 py-3 text-gray-500">{row.type || "—"}</td>
+                                    <td className="px-4 py-3 text-gray-500">{row.accountType || "—"}</td>
                                     <td className="px-4 py-3 text-right tabular-nums">{formatCurrency(row.balance)}</td>
                                     {compareEnabled && compareDate && (
                                         <>
@@ -434,6 +435,7 @@ function AccountBalancesPage() {
                     </table>
                 )}
             </div>
+          </div>
         </section>
     )
 }

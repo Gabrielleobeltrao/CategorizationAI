@@ -530,17 +530,17 @@ function ProfitLossPage() {
   }
 
   return (
-    <section className="w-full p-4 sm:p-6 lg:p-8">
-      <div className="flex w-full flex-col gap-4">
-        <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
-          <header className="flex h-full flex-wrap items-start justify-between gap-3">
+    <section className="w-full px-12 py-8">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
+        <div className="grid grid-cols-1 items-stretch gap-4 md:grid-cols-2">
+          <header className="flex h-full flex-col justify-between gap-8">
             <div className="min-w-0">
               <h1 className="text-xl font-semibold text-gray-900">Profit & Loss</h1>
               <p className="text-sm text-gray-500">
                 Period: {profitLoss ? formatPeriodLabel(profitLoss.period) : (isBlockingLoading ? "Loading..." : "-")}
               </p>
             </div>
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={handleDownloadCsv}
@@ -570,7 +570,7 @@ function ProfitLossPage() {
             </div>
           </header>
 
-          <div className="rounded-xl border border-gray-200 bg-white p-4">
+          <div className="flex h-full flex-col justify-center rounded-xl border border-gray-200 bg-white p-4">
           <span className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
             Period filter
           </span>

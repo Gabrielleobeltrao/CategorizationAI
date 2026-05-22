@@ -311,8 +311,8 @@ function SettingsPage() {
 
   if (isLoading) {
     return (
-      <section className="w-full p-4 sm:p-6 lg:p-8">
-        <div className="mx-auto max-w-5xl">
+      <section className="w-full px-12 py-8">
+        <div className="mx-auto max-w-7xl">
           <div className="border-b border-gray-200 py-6">
             <p className="text-sm text-gray-500">Loading settings...</p>
           </div>
@@ -323,8 +323,8 @@ function SettingsPage() {
 
   if (!canReadOffice) {
     return (
-      <section className="w-full p-4 sm:p-6 lg:p-8">
-        <div className="mx-auto max-w-5xl">
+      <section className="w-full px-12 py-8">
+        <div className="mx-auto max-w-7xl">
           <div className="border-b border-gray-200 py-6">
             <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">Settings</h1>
             <p className="mt-3 max-w-2xl text-sm text-gray-500">
@@ -339,8 +339,8 @@ function SettingsPage() {
   }
 
   return (
-    <section className="w-full p-4 sm:p-6 lg:p-8">
-      <div className="mx-auto flex max-w-5xl flex-col gap-4 sm:gap-6">
+    <section className="w-full px-12 py-8">
+      <div className="mx-auto flex max-w-7xl flex-col gap-4 sm:gap-6">
         <header className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
             <h1 className="text-2xl font-bold sm:text-3xl">Settings</h1>

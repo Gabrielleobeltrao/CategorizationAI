@@ -143,7 +143,7 @@ function Sidebar({ isCollapsed: rawCollapsed, onToggleCollapse, isMobileOpen = f
   const clientMenuItems = clientId
     ? [
         {
-          to: `/clients/${clientId}/ledger`,
+          to: `/clients/${clientId}/transactions`,
           label: "Transactions",
           icon: (
             <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -151,29 +151,6 @@ function Sidebar({ isCollapsed: rawCollapsed, onToggleCollapse, isMobileOpen = f
               <line x1="21" y1="7" x2="9" y2="7" />
               <polyline points="7 21 3 17 7 13" />
               <line x1="15" y1="17" x2="3" y2="17" />
-            </svg>
-          ),
-        },
-        {
-          to: `/clients/${clientId}/ledger/accounts`,
-          label: "Bank Accounts",
-          icon: (
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polygon points="12 3 21 8 3 8" />
-              <line x1="5" y1="11" x2="5" y2="18" />
-              <line x1="9.5" y1="11" x2="9.5" y2="18" />
-              <line x1="14.5" y1="11" x2="14.5" y2="18" />
-              <line x1="19" y1="11" x2="19" y2="18" />
-              <line x1="3" y1="21" x2="21" y2="21" />
-            </svg>
-          ),
-        },
-        {
-          to: `/clients/${clientId}/ledger/categories`,
-          label: "P&L Categories",
-          icon: (
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
             </svg>
           ),
         },
@@ -187,6 +164,18 @@ function Sidebar({ isCollapsed: rawCollapsed, onToggleCollapse, isMobileOpen = f
               <path d="M9 8v11" />
               <path d="M9 12h11" />
               <path d="M9 16h11" />
+            </svg>
+          ),
+        },
+        {
+          to: `/clients/${clientId}/reconciliation`,
+          label: "Reconciliation",
+          icon: (
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 7l4 4 4-4" />
+              <path d="M7 11V3" />
+              <path d="M21 17l-4-4-4 4" />
+              <path d="M17 13v8" />
             </svg>
           ),
         },
@@ -224,6 +213,30 @@ function Sidebar({ isCollapsed: rawCollapsed, onToggleCollapse, isMobileOpen = f
               <path d="M6 7l-3 4 3 4" />
               <path d="M18 7l3 4-3 4" />
               <path d="M3 11h18" />
+            </svg>
+          ),
+        },
+        {
+          to: `/clients/${clientId}/reports/trial-balance`,
+          label: "Trial Balance",
+          icon: (
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 12h7" />
+              <path d="M14 12h7" />
+              <path d="M12 4v16" />
+              <circle cx="12" cy="12" r="2" />
+            </svg>
+          ),
+        },
+        {
+          to: `/clients/${clientId}/reports/general-ledger`,
+          label: "General Ledger",
+          icon: (
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 4h13a3 3 0 0 1 3 3v13H7a3 3 0 0 1-3-3V4z" />
+              <path d="M4 17a3 3 0 0 1 3-3h13" />
+              <path d="M8 8h7" />
+              <path d="M8 12h5" />
             </svg>
           ),
         },

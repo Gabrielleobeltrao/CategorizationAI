@@ -55,7 +55,7 @@ function buildCsv({ clientName, asOfDate, report }) {
 
     for (const section of report?.sections || []) {
         for (const row of section.rows) {
-            lines.push([section.label, row.name, row.type, row.balance].map(escape).join(","))
+            lines.push([section.label, row.name, row.accountType, row.balance].map(escape).join(","))
         }
         lines.push([`${section.label} Total`, "", "", section.total].map(escape).join(","))
     }
@@ -134,14 +134,6 @@ function SectionBlock({ section }) {
                     >
                         <span className="flex min-w-0 items-center gap-2">
                             <span className="truncate text-gray-900">{row.name || "—"}</span>
-                            {row.isInferred && (
-                                <span
-                                    title="Classification inferred from account type — set it explicitly in the Accounts page."
-                                    className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700"
-                                >
-                                    auto
-                                </span>
-                            )}
                             {row.isDerived && (
                                 <span
                                     title="Derived from cumulative net income (P&L) up to the snapshot date."
@@ -245,16 +237,17 @@ function BalanceSheetPage() {
     const balanced = Math.abs(difference) < 0.005
 
     return (
-        <section className="flex h-full flex-col gap-4 px-4 py-4 sm:px-6">
-            <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
-                <header className="flex h-full flex-wrap items-start justify-between gap-3">
+        <section className="h-full w-full px-12 py-8">
+          <div className="mx-auto flex h-full max-w-7xl flex-col gap-4">
+            <div className="grid grid-cols-1 items-stretch gap-4 md:grid-cols-2">
+                <header className="flex h-full flex-col justify-between gap-8">
                     <div className="min-w-0">
                         <h1 className="text-xl font-semibold text-gray-900">Balance Sheet</h1>
                         <p className="text-sm text-gray-500">
                             As of: {asOfDate ? formatDateLong(asOfDate) : "-"}
                         </p>
                     </div>
-                    <div className="flex shrink-0 items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                         <button
                             type="button"
                             onClick={handleExportCsv}
@@ -284,7 +277,7 @@ function BalanceSheetPage() {
                     </div>
                 </header>
 
-                <div className="rounded-xl border border-gray-200 bg-white p-4">
+                <div className="flex h-full flex-col justify-center rounded-xl border border-gray-200 bg-white p-4">
                     <div className="flex flex-wrap items-end gap-4">
                         <div className="flex min-w-45 flex-col gap-1.5">
                             <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
@@ -396,6 +389,7 @@ function BalanceSheetPage() {
                     </div>
                 )}
             </div>
+          </div>
         </section>
     )
 }
