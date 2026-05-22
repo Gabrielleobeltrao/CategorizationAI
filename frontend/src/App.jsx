@@ -22,6 +22,8 @@ const loadTrialBalancePage = () => import('./pages/TrialBalancePage.jsx')
 const loadGeneralLedgerPage = () => import('./pages/GeneralLedgerPage.jsx')
 const loadChartOfAccountsPage = () => import('./pages/ChartOfAccountsPage.jsx')
 const loadReconciliationPage = () => import('./pages/ReconciliationPage.jsx')
+const loadPeriodClosePage = () => import('./pages/PeriodClosePage.jsx')
+const loadRecurringPage = () => import('./pages/RecurringTransactionsPage.jsx')
 const loadTransactionsPage = () => import('./pages/LedgerPage.jsx')
 const loadSettingsPage = () => import('./pages/SettingsPage.jsx')
 const loadClientSettingsPage = () => import('./pages/ClientSettingsPage.jsx')
@@ -46,6 +48,8 @@ const TrialBalancePage = lazy(loadTrialBalancePage)
 const GeneralLedgerPage = lazy(loadGeneralLedgerPage)
 const ChartOfAccountsPage = lazy(loadChartOfAccountsPage)
 const ReconciliationPage = lazy(loadReconciliationPage)
+const PeriodClosePage = lazy(loadPeriodClosePage)
+const RecurringTransactionsPage = lazy(loadRecurringPage)
 const TransactionsPage = lazy(loadTransactionsPage)
 const SettingsPage = lazy(loadSettingsPage)
 const ClientSettingsPage = lazy(loadClientSettingsPage)
@@ -192,6 +196,8 @@ function App() {
                 <Route path="/clients/:clientId/reports/general-ledger" element={<GeneralLedgerPage />} />
                 <Route path="/clients/:clientId/chart-of-accounts" element={<ChartOfAccountsPage />} />
                 <Route path="/clients/:clientId/reconciliation" element={<ReconciliationPage />} />
+                <Route path="/clients/:clientId/period-close" element={<PeriodClosePage />} />
+                <Route path="/clients/:clientId/recurring" element={<RecurringTransactionsPage />} />
                 <Route path="/clients/:clientId/transactions" element={<TransactionsPage />} />
                 <Route path="/clients/:clientId/inbox" element={<RedirectToTransactions />} />
                 <Route path="/clients/:clientId/settings" element={<ClientSettingsPage />} />

@@ -16,6 +16,8 @@ import { ensureCategoryIndexes } from "./repositories/category.repository.js"
 import { ensureCategoryTemplateIndexes } from "./repositories/categoryTemplate.repository.js"
 import { ensureCoaPresetTemplateIndexes } from "./repositories/coaPresetTemplate.repository.js"
 import { ensureReconciliationIndexes } from "./repositories/reconciliation.repository.js"
+import { ensurePeriodCloseIndexes } from "./repositories/periodClose.repository.js"
+import { ensureRecurringIndexes } from "./repositories/recurring.repository.js"
 import { ensureOfficeTagIndexes } from "./repositories/tag.repository.js"
 import { ensureOpenTestAccessCodeIndexes } from "./repositories/openTestAccessCode.repository.js"
 import { ensureTasksIndexes } from "./repositories/tasks.repository.js"
@@ -43,6 +45,8 @@ await ensureCategoryIndexes()
 await ensureCategoryTemplateIndexes()
 await ensureCoaPresetTemplateIndexes()
 await ensureReconciliationIndexes()
+await ensurePeriodCloseIndexes()
+await ensureRecurringIndexes()
 await ensureOfficeTagIndexes()
 await ensureOpenTestAccessCodeIndexes()
 await ensureTasksIndexes()

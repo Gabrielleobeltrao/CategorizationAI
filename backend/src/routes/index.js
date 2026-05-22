@@ -21,6 +21,9 @@ import tasksRoutes from "./tasks.routes.js"
 import boardRoutes from "./board.routes.js"
 import reconciliationRoutes from "./reconciliation.routes.js"
 import generalLedgerRoutes from "./generalLedger.routes.js"
+import periodCloseRoutes from "./periodClose.routes.js"
+import recurringRoutes from "./recurring.routes.js"
+import onboardingRoutes from "./onboarding.routes.js"
 
 const router = Router()
 router.use(healthRoutes)
@@ -45,5 +48,8 @@ router.use(tasksRoutes)
 router.use(boardRoutes)
 router.use(reconciliationRoutes)
 router.use(generalLedgerRoutes)
+router.use(periodCloseRoutes)
+router.use(recurringRoutes)
+router.use(onboardingRoutes)
 
 export default router

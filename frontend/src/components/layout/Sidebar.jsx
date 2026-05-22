@@ -155,6 +155,18 @@ function Sidebar({ isCollapsed: rawCollapsed, onToggleCollapse, isMobileOpen = f
           ),
         },
         {
+          to: `/clients/${clientId}/recurring`,
+          label: "Recurring",
+          icon: (
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 12a9 9 0 0 1 15-6.7l3 2.7" />
+              <path d="M21 4v5h-5" />
+              <path d="M21 12a9 9 0 0 1-15 6.7l-3-2.7" />
+              <path d="M3 20v-5h5" />
+            </svg>
+          ),
+        },
+        {
           to: `/clients/${clientId}/chart-of-accounts`,
           label: "Chart of Accounts",
           icon: (
@@ -176,6 +188,19 @@ function Sidebar({ isCollapsed: rawCollapsed, onToggleCollapse, isMobileOpen = f
               <path d="M7 11V3" />
               <path d="M21 17l-4-4-4 4" />
               <path d="M17 13v8" />
+            </svg>
+          ),
+        },
+        {
+          to: `/clients/${clientId}/period-close`,
+          label: "Period Close",
+          icon: (
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="4" y="6" width="16" height="14" rx="2" />
+              <path d="M9 3v4" />
+              <path d="M15 3v4" />
+              <path d="M4 12h16" />
+              <path d="M9 16l2 2 4-4" />
             </svg>
           ),
         },
