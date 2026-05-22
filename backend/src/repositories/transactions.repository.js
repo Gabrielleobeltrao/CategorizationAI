@@ -8,6 +8,17 @@ import {
 } from "../utils/transactionSearch.js"
 import { validateTransactionLegs } from "../config/transactionLegs.js"
 import { getOrCreateSuspenseAccountId, entryHasClearedLegs } from "./journalEntries.repository.js"
+import { isDateClosed } from "./periodClose.repository.js"
+
+async function _assertDateNotClosed(clientId, date, action = "modify") {
+  if (await isDateClosed(clientId, date)) {
+    const err = new Error(
+      `Cannot ${action} a transaction in a closed period. Reopen the period first.`,
+    )
+    err.code = "PERIOD_CLOSED"
+    throw err
+  }
+}
 
 const BATCH_SIZE = 1000
 const ATLAS_SEARCH_INDEX_NAME = String(process.env.MONGODB_ATLAS_SEARCH_INDEX_NAME || "transactions_autocomplete").trim()
@@ -1033,6 +1044,13 @@ export async function insertTransactionsInBatches(transactions) {
   const safeList = Array.isArray(transactions) ? transactions : []
   if (safeList.length === 0) return { insertedCount: 0 }
 
+  // Reject the whole import if any row's date falls in a closed period.
+  for (const t of safeList) {
+    if (t?.clientId && t?.date) {
+      await _assertDateNotClosed(t.clientId, t.date, "import")
+    }
+  }
+
   const suspenseByClient = new Map()
   async function suspenseFor(clientId) {
     const key = String(clientId)
@@ -1113,6 +1131,13 @@ export async function updateTransactionById(id, patch) {
   const { entry, legacy } = loaded
 
   const safePatch = patch || {}
+  // Period close lock: existing date inside closed period blocks any
+  // edit; moving the date INTO a closed period also blocks.
+  await _assertDateNotClosed(entry.clientId, entry.date, "edit")
+  if (typeof safePatch.date === "string" && safePatch.date !== entry.date) {
+    await _assertDateNotClosed(entry.clientId, safePatch.date, "move into")
+  }
+
   const touchesLegs =
     safePatch.accountId !== undefined ||
     safePatch.amount !== undefined ||
@@ -1231,6 +1256,12 @@ export async function listTransactionsByIds(ids = []) {
 export async function deleteTransactionById(id) {
   const db = getDB()
   if (!ObjectId.isValid(String(id))) return { deletedCount: 0 }
+  const existing = await db
+    .collection("journal_entries")
+    .findOne({ _id: new ObjectId(id) }, { projection: { clientId: 1, date: 1 } })
+  if (existing) {
+    await _assertDateNotClosed(existing.clientId, existing.date, "delete")
+  }
   if (await entryHasClearedLegs(id)) {
     const err = new Error(
       "This transaction belongs to a completed reconciliation. Reopen the reconciliation first.",
@@ -1248,7 +1279,14 @@ export async function deleteTransactionsByIds(ids = []) {
     .filter((id) => id && ObjectId.isValid(id))
     .map((id) => new ObjectId(id))
   if (objectIds.length === 0) return { deletedCount: 0 }
-  // Block if any of the requested entries is reconciled.
+
+  const existing = await db
+    .collection("journal_entries")
+    .find({ _id: { $in: objectIds } }, { projection: { clientId: 1, date: 1 } })
+    .toArray()
+  for (const entry of existing) {
+    await _assertDateNotClosed(entry.clientId, entry.date, "delete")
+  }
   for (const oid of objectIds) {
     if (await entryHasClearedLegs(String(oid))) {
       const err = new Error(

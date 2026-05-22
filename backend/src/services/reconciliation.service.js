@@ -16,6 +16,7 @@ import {
   unmarkLegsForReconciliation,
 } from "../repositories/journalEntries.repository.js"
 import { getAccountById } from "../repositories/account.repository.js"
+import { isDateClosed } from "../repositories/periodClose.repository.js"
 
 // Tolerância para o difference floating-point. Igual ao BALANCE_EPSILON
 // usado por validateTransactionLegs — meio centavo.
@@ -195,6 +196,15 @@ export async function reopenReconciliationService({ reconciliationId, clientId, 
   }
   if (rec.status !== "completed") {
     throw new AppError("Only completed reconciliations can be reopened", 409)
+  }
+
+  // Reopening a reconciliation whose statementDate is inside a closed
+  // period would unlock transactions that the period close froze. Block.
+  if (await isDateClosed(rec.clientId, rec.statementDate)) {
+    throw new AppError(
+      "This reconciliation's statement date is in a closed period. Reopen the period first.",
+      409,
+    )
   }
 
   // Only allow reopening the MOST RECENT completed reconciliation for

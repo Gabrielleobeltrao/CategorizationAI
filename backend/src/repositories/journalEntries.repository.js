@@ -1,6 +1,7 @@
 import { ObjectId } from "mongodb"
 import { getDB } from "../db.js"
 import { validateTransactionLegs } from "../config/transactionLegs.js"
+import { isDateClosed } from "./periodClose.repository.js"
 
 // Journal entries are the canonical double-entry record. One entry =
 // one user-visible transaction, with 2+ legs that net to zero (sum of
@@ -9,6 +10,19 @@ import { validateTransactionLegs } from "../config/transactionLegs.js"
 
 const COLLECTION = "journal_entries"
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/
+
+// Period-close locking helper. Throws an Error with code
+// PERIOD_CLOSED when the given date falls within a closed period for
+// the client.
+async function assertDateNotClosed(clientId, date, action = "modify") {
+  if (await isDateClosed(clientId, date)) {
+    const err = new Error(
+      `Cannot ${action} a transaction in a closed period. Reopen the period first.`,
+    )
+    err.code = "PERIOD_CLOSED"
+    throw err
+  }
+}
 
 export async function ensureJournalEntriesIndexes() {
   const db = getDB()
@@ -48,6 +62,7 @@ function buildDoc(input) {
 export async function createJournalEntry(input) {
   const db = getDB()
   const doc = buildDoc(input)
+  await assertDateNotClosed(doc.clientId, doc.date, "create")
   const result = await db.collection(COLLECTION).insertOne(doc)
   return { ...doc, _id: result.insertedId }
 }
@@ -55,6 +70,10 @@ export async function createJournalEntry(input) {
 export async function insertJournalEntriesInBatches(entries = [], { batchSize = 500 } = {}) {
   if (!Array.isArray(entries) || entries.length === 0) return { insertedCount: 0 }
   const db = getDB()
+  // Reject the whole batch if ANY entry falls inside a closed period.
+  for (const entry of entries) {
+    await assertDateNotClosed(entry?.clientId, entry?.date, "import")
+  }
   let insertedCount = 0
 
   for (let i = 0; i < entries.length; i += batchSize) {
@@ -74,6 +93,19 @@ export async function getJournalEntryById(id) {
 export async function updateJournalEntryById(id, patch) {
   const db = getDB()
   if (!ObjectId.isValid(String(id))) return null
+
+  // Lock if the EXISTING entry's date is inside a closed period, OR if
+  // the new date (when changing dates) is being moved into one.
+  const existing = await db.collection(COLLECTION).findOne(
+    { _id: new ObjectId(id) },
+    { projection: { clientId: 1, date: 1 } },
+  )
+  if (existing) {
+    await assertDateNotClosed(existing.clientId, existing.date, "edit")
+    if (typeof patch.date === "string" && patch.date !== existing.date) {
+      await assertDateNotClosed(existing.clientId, patch.date, "move into")
+    }
+  }
 
   const $set = { updatedAt: new Date() }
 
@@ -103,6 +135,12 @@ export async function updateJournalEntryById(id, patch) {
 export async function deleteJournalEntryById(id) {
   const db = getDB()
   if (!ObjectId.isValid(String(id))) return { deletedCount: 0 }
+  const existing = await db
+    .collection(COLLECTION)
+    .findOne({ _id: new ObjectId(id) }, { projection: { clientId: 1, date: 1 } })
+  if (existing) {
+    await assertDateNotClosed(existing.clientId, existing.date, "delete")
+  }
   return db.collection(COLLECTION).deleteOne({ _id: new ObjectId(id) })
 }
 
@@ -236,6 +274,8 @@ export async function categorizeEntry({ entryId, contraAccountId }) {
 
   const entry = await db.collection(COLLECTION).findOne({ _id: new ObjectId(entryId) })
   if (!entry) return null
+
+  await assertDateNotClosed(entry.clientId, entry.date, "categorize")
 
   const suspenseId = await getOrCreateSuspenseAccountId(entry.clientId)
   let replaced = false
