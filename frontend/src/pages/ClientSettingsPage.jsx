@@ -12,6 +12,12 @@ import {
     getClientById,
     updateClientById,
 } from "../services/clients.service"
+import {
+    TOGGLEABLE_MENU_ITEMS,
+    readMenuVisibility,
+    setMenuItemVisible,
+    setAllMenuItemsVisible,
+} from "../utils/clientMenuVisibility"
 
 function normalizeOwnersForDraft(owners) {
     if (!Array.isArray(owners) || owners.length === 0) {
@@ -240,9 +246,12 @@ function ClientSettingsPage() {
         <section className="w-full px-12 py-8">
             <div className="mx-auto flex max-w-7xl flex-col gap-4 sm:gap-6">
                 <header>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                        Client info
+                    </p>
                     <h1 className="text-2xl font-semibold">{client.name || "Client"}</h1>
                     <p className="mt-1 text-sm text-gray-500">
-                        Manage this client&apos;s information.
+                        Manage this client&apos;s information and which pages show up in the sidebar.
                     </p>
                 </header>
 
@@ -384,6 +393,8 @@ function ClientSettingsPage() {
                     </div>
                 </form>
 
+                <PageVisibilitySection clientId={clientId} />
+
                 <section className="rounded-2xl border border-rose-200 bg-rose-50 p-4 sm:p-5">
                     <h2 className="text-base font-semibold text-rose-900">Danger zone</h2>
                     <p className="mt-1 text-sm text-rose-700">
@@ -409,6 +420,95 @@ function ClientSettingsPage() {
                 onClose={() => !isDeleting && setIsConfirmingDelete(false)}
                 isLoading={isDeleting}
             />
+        </section>
+    )
+}
+
+function VisibilitySwitch({ checked, onClick, label }) {
+    return (
+        <button
+            type="button"
+            role="switch"
+            aria-checked={checked}
+            aria-label={label}
+            onClick={onClick}
+            className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition ${
+                checked ? "bg-gray-900" : "bg-gray-300"
+            }`}
+        >
+            <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition ${
+                    checked ? "translate-x-4" : "translate-x-0.5"
+                }`}
+            />
+        </button>
+    )
+}
+
+function PageVisibilitySection({ clientId }) {
+    const [visibility, setVisibility] = useState(() => readMenuVisibility(clientId))
+
+    useEffect(() => {
+        setVisibility(readMenuVisibility(clientId))
+    }, [clientId])
+
+    const toggle = (id) => {
+        const next = visibility?.[id] === false ? true : false
+        setMenuItemVisible(clientId, id, next)
+        setVisibility((current) => ({ ...current, [id]: next }))
+    }
+
+    const allVisible = TOGGLEABLE_MENU_ITEMS.every((m) => visibility?.[m.id] !== false)
+
+    const toggleAll = () => {
+        const next = !allVisible
+        setAllMenuItemsVisible(clientId, next)
+        if (next) {
+            setVisibility({})
+        } else {
+            const map = {}
+            for (const item of TOGGLEABLE_MENU_ITEMS) map[item.id] = false
+            setVisibility(map)
+        }
+    }
+
+    return (
+        <section className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5">
+            <div>
+                <h2 className="text-base font-semibold text-gray-900">Page visibility</h2>
+                <p className="mt-1 text-sm text-gray-500">
+                    Hide pages from this client&apos;s sidebar. The Info page itself stays visible
+                    so you can always come back here. Saved locally on this device.
+                </p>
+            </div>
+
+            <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
+                <span className="text-sm font-medium text-gray-900">All pages visible</span>
+                <VisibilitySwitch
+                    checked={allVisible}
+                    onClick={toggleAll}
+                    label="Toggle all pages"
+                />
+            </div>
+
+            <ul className="mt-2 divide-y divide-gray-100">
+                {TOGGLEABLE_MENU_ITEMS.map((item) => {
+                    const isVisible = visibility?.[item.id] !== false
+                    return (
+                        <li
+                            key={item.id}
+                            className="flex items-center justify-between gap-3 py-2.5"
+                        >
+                            <span className="text-sm text-gray-900">{item.label}</span>
+                            <VisibilitySwitch
+                                checked={isVisible}
+                                onClick={() => toggle(item.id)}
+                                label={`Toggle ${item.label}`}
+                            />
+                        </li>
+                    )
+                })}
+            </ul>
         </section>
     )
 }
