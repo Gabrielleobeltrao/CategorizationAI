@@ -24,6 +24,7 @@ import generalLedgerRoutes from "./generalLedger.routes.js"
 import periodCloseRoutes from "./periodClose.routes.js"
 import recurringRoutes from "./recurring.routes.js"
 import onboardingRoutes from "./onboarding.routes.js"
+import clientHomeRoutes from "./clientHome.routes.js"
 
 const router = Router()
 router.use(healthRoutes)
@@ -51,5 +52,6 @@ router.use(generalLedgerRoutes)
 router.use(periodCloseRoutes)
 router.use(recurringRoutes)
 router.use(onboardingRoutes)
+router.use(clientHomeRoutes)
 
 export default router

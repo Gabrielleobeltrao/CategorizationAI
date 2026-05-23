@@ -354,7 +354,7 @@ function Home() {
                   <button
                     type="button"
                     className="flex w-full items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-left hover:bg-gray-100"
-                    onClick={() => navigate(client.to || `/clients/${client.id}/ledger`)}
+                    onClick={() => navigate(client.to || `/clients/${client.id}/home`)}
                   >
                     <span className="truncate text-sm font-medium text-gray-900">{client.name}</span>
                     <span className="ml-3 shrink-0 text-xs text-gray-500">{formatOpenedAt(client.openedAt)}</span>

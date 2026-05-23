@@ -53,7 +53,11 @@ export async function getOnboardingStateService({ clientId }) {
         "Upload a bank statement CSV, add a transaction manually, or post a journal entry.",
       done: hasTransactions,
       cta: hasTransactions ? "View transactions" : "Upload or add",
-      ctaPath: `/clients/${safeClientId}/transactions`,
+      // When the step is still open, deep-link straight to the upload
+      // modal on the Transactions page (LedgerPage consumes `?action=upload`).
+      ctaPath: hasTransactions
+        ? `/clients/${safeClientId}/transactions`
+        : `/clients/${safeClientId}/transactions?action=upload`,
     },
     {
       id: "categorize",

@@ -46,7 +46,6 @@ const BALANCE_SHEET_ACCOUNT_TYPE_OPTIONS = ACCOUNT_TYPE_OPTIONS.filter((opt) =>
 
 const LedgerEntriesTable = lazy(() => import("../components/ledger/LedgerEntriesTable"))
 const JournalEntryModal = lazy(() => import("../components/ledger/JournalEntryModal"))
-const GetStartedPanel = lazy(() => import("../components/ledger/GetStartedPanel"))
 const AccountsSection = lazy(() => import("../components/ledger/AccountsSection"))
 const CategoriesSection = lazy(() => import("../components/ledger/CategoriesSection"))
 const LedgerHeader = lazy(() => import("../components/ledger/LedgerHeader"))
@@ -327,7 +326,7 @@ function LedgerPage() {
     const outletContext = useOutletContext() || {}
     const sharedScrollRef = outletContext?.contentScrollRef || null
     const { clientId: routeClientId } = useParams()
-    const [searchParams] = useSearchParams()
+    const [searchParams, setSearchParams] = useSearchParams()
     const location = useLocation()
     const navigate = useNavigate()
     const clientId = routeClientId || searchParams.get("clientId")
@@ -366,6 +365,21 @@ function LedgerPage() {
     })
     const [isLoadingTransactionsSummary, setIsLoadingTransactionsSummary] = useState(false)
     const [showUploadModal, setShowUploadModal] = useState(false)
+
+    // Deep-link support: pages like the Dashboard's Getting Started panel
+    // navigate here with `?action=upload` to open the upload modal
+    // directly. We strip the param from the URL after consuming it so a
+    // refresh doesn't keep reopening the modal.
+    useEffect(() => {
+        const action = searchParams.get("action")
+        if (action === "upload") {
+            setShowUploadModal(true)
+            const next = new URLSearchParams(searchParams)
+            next.delete("action")
+            setSearchParams(next, { replace: true })
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchParams])
 
     // Manual journal entry modal (multi-leg)
     const [isJournalEntryOpen, setIsJournalEntryOpen] = useState(false)
@@ -1599,10 +1613,6 @@ function LedgerPage() {
                     <LedgerHeader
                         clientName={client?.name || ""}
                     />
-                </Suspense>
-
-                <Suspense fallback={null}>
-                    <GetStartedPanel clientId={clientId} refreshKey={ledgerEntries.length} />
                 </Suspense>
 
                 <section className={`min-h-[460px] min-w-0 rounded-lg border border-gray-200 bg-white p-4 flex flex-col ${activeSection === "ledger" ? "overflow-visible" : "overflow-hidden"}`}>

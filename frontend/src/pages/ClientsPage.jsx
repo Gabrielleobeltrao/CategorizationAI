@@ -503,12 +503,13 @@ function ClientsPage() {
 
     const openClientLedger = (client) => {
         if (!client?.id) return
+        // Clicking a client opens its Dashboard now (was /ledger before).
         trackClientOpened({
             id: client.id,
             name: client.name,
-            to: `/clients/${client.id}/ledger`,
+            to: `/clients/${client.id}/home`,
         })
-        navigate(`/clients/${client.id}/ledger`)
+        navigate(`/clients/${client.id}/home`)
     }
 
     return (
