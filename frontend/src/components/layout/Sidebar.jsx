@@ -6,10 +6,37 @@ import { useAuth } from "../../contexts/auth.context"
 import { useNotification } from "../../contexts/notification.context"
 import { useFeature } from "../../hooks/useFeature"
 import { hasPermission } from "../../utils/permissions"
+import {
+  readMenuVisibility,
+  VISIBILITY_CHANGED_EVENT,
+} from "../../utils/clientMenuVisibility"
+
+const SIDEBAR_SECTIONS_STORAGE_KEY = "sidebar-sections-collapsed"
+
+function readCollapsedSections() {
+  if (typeof window === "undefined") return {}
+  try {
+    const raw = window.localStorage?.getItem(SIDEBAR_SECTIONS_STORAGE_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === "object" ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function writeCollapsedSections(value) {
+  if (typeof window === "undefined") return
+  try {
+    window.localStorage?.setItem(SIDEBAR_SECTIONS_STORAGE_KEY, JSON.stringify(value || {}))
+  } catch {
+    /* ignore */
+  }
+}
 
 const homeNavItem = {
   to: "/home",
-  label: "Dashboard",
+  label: "Home",
   icon: (
     <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 10.5 12 3l9 7.5" />
@@ -33,19 +60,20 @@ const boardNavItem = {
   ),
 }
 
+const overviewNavItem = {
+  to: "/overview",
+  label: "Overview",
+  icon: (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="7" height="9" rx="1" />
+      <rect x="14" y="3" width="7" height="5" rx="1" />
+      <rect x="14" y="12" width="7" height="9" rx="1" />
+      <rect x="3" y="16" width="7" height="5" rx="1" />
+    </svg>
+  ),
+}
+
 const bookkeepingNavItems = [
-  {
-    to: "/bookkeeping",
-    label: "Overview",
-    icon: (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="3" y="3" width="7" height="9" rx="1" />
-        <rect x="14" y="3" width="7" height="5" rx="1" />
-        <rect x="14" y="12" width="7" height="9" rx="1" />
-        <rect x="3" y="16" width="7" height="5" rx="1" />
-      </svg>
-    ),
-  },
   {
     to: "/clients",
     label: "Clients",
@@ -82,18 +110,6 @@ const employeesNavItem = {
 
 const crmNavItems = [
   {
-    to: "/crm",
-    label: "Overview",
-    icon: (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="3" y="3" width="18" height="18" rx="2" />
-        <path d="M8 7v7" />
-        <path d="M12 7v4" />
-        <path d="M16 7v9" />
-      </svg>
-    ),
-  },
-  {
     to: "/crm/tasks",
     label: "Tasks Manager",
     feature: "crmTasks",
@@ -120,10 +136,12 @@ const settingsNavItem = {
   ),
 }
 
-function Sidebar({ isCollapsed: rawCollapsed, onToggleCollapse, isMobileOpen = false, onCloseMobile }) {
+function Sidebar({ isCollapsed: rawCollapsed, isMobileOpen = false, onCloseMobile }) {
   // The mobile drawer is wide enough to always show labels, regardless of the
-  // collapse state used on desktop.
-  const isCollapsed = isMobileOpen ? false : rawCollapsed
+  // collapse state used on desktop. On desktop, the sidebar stays at the rail
+  // width and only expands while the pointer is hovering it (no button).
+  const [isHovering, setIsHovering] = useState(false)
+  const isCollapsed = isMobileOpen ? false : rawCollapsed && !isHovering
   const location = useLocation()
   const navigate = useNavigate()
   const { success, error } = useNotification()
@@ -139,9 +157,49 @@ function Sidebar({ isCollapsed: rawCollapsed, onToggleCollapse, isMobileOpen = f
   const clientScopeMatch = matchPath("/clients/:clientId/*", location.pathname)
   const clientId = clientScopeMatch?.params?.clientId
   const [selectedClient, setSelectedClient] = useState(null)
+  const [menuVisibility, setMenuVisibility] = useState(() => readMenuVisibility(clientId))
+  const [collapsedSections, setCollapsedSections] = useState(() => readCollapsedSections())
+
+  const toggleSection = (label) => {
+    const key = String(label || "").toLowerCase()
+    setCollapsedSections((current) => {
+      const next = { ...current, [key]: !current[key] }
+      writeCollapsedSections(next)
+      return next
+    })
+  }
+  const isSectionCollapsed = (label) =>
+    Boolean(collapsedSections?.[String(label || "").toLowerCase()])
+
+  // Subscribe to the client-menu-visibility changes dispatched by the
+  // Info page so toggling a switch immediately updates the sidebar.
+  useEffect(() => {
+    setMenuVisibility(readMenuVisibility(clientId))
+    const handler = (event) => {
+      if (!clientId) return
+      if (event?.detail?.clientId && String(event.detail.clientId) !== String(clientId)) return
+      setMenuVisibility(readMenuVisibility(clientId))
+    }
+    window.addEventListener(VISIBILITY_CHANGED_EVENT, handler)
+    return () => window.removeEventListener(VISIBILITY_CHANGED_EVENT, handler)
+  }, [clientId])
+
+  const isItemVisible = (id) => !id || menuVisibility?.[id] !== false
 
   const clientMenuItems = clientId
     ? [
+        {
+          to: `/clients/${clientId}/home`,
+          label: "Dashboard",
+          icon: (
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 19h16" />
+              <path d="M6 16V9" />
+              <path d="M12 16V6" />
+              <path d="M18 16v-4" />
+            </svg>
+          ),
+        },
         {
           to: `/clients/${clientId}/transactions`,
           label: "Transactions",
@@ -268,15 +326,26 @@ function Sidebar({ isCollapsed: rawCollapsed, onToggleCollapse, isMobileOpen = f
         { kind: "divider" },
         {
           to: `/clients/${clientId}/settings`,
-          label: "Settings",
+          label: "Info",
           icon: (
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3h.1a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8v.1a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z" />
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 8h.01" />
+              <path d="M11 12h1v5h1" />
             </svg>
           ),
         },
-      ]
+      ].filter((item) => {
+        // Section headers, dividers, Overview and Info are always shown.
+        // The rest are derived to an id from the URL and gated on the
+        // per-client visibility map.
+        if (item.kind === "section" || item.kind === "divider") return true
+        if (!item.to) return true
+        if (item.to.endsWith("/settings")) return true
+        if (item.to.endsWith("/home")) return true
+        const id = item.to.split("/").pop()
+        return isItemVisible(id)
+      })
     : []
 
   const canReadSettings = hasPermission(currentProfile?.permissions || [], "offices:read")
@@ -331,7 +400,9 @@ function Sidebar({ isCollapsed: rawCollapsed, onToggleCollapse, isMobileOpen = f
           isMobileOpen
             ? "fixed inset-y-0 left-0 z-50 w-72 md:static md:z-auto"
             : "fixed inset-y-0 left-0 z-50 w-72 -translate-x-full md:static md:z-auto md:translate-x-0"
-        } md:flex ${isCollapsed ? "md:w-16" : "md:w-60"}`}
+        } md:flex ${isCollapsed ? "md:w-16" : "md:w-60 md:shadow-lg"}`}
+        onMouseEnter={() => setIsHovering(true)}
+        onMouseLeave={() => setIsHovering(false)}
         onClick={(event) => {
           if (!onCloseMobile) return
           const target = event.target.closest("a")
@@ -340,24 +411,7 @@ function Sidebar({ isCollapsed: rawCollapsed, onToggleCollapse, isMobileOpen = f
           }
         }}
       >
-        <div className="mb-2 flex items-center justify-between">
-          <button
-            type="button"
-            className="hidden items-center justify-center rounded-lg px-2 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 md:flex"
-            onClick={onToggleCollapse}
-            title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-          >
-            <svg
-              viewBox="0 0 24 24"
-              className={`h-5 w-5 transition-transform ${isCollapsed ? "rotate-180" : ""}`}
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="m15 18-6-6 6-6" />
-            </svg>
-          </button>
+        <div className="mb-2 flex items-center justify-end md:justify-start">
           {onCloseMobile && (
             <button
               type="button"
@@ -405,55 +459,176 @@ function Sidebar({ isCollapsed: rawCollapsed, onToggleCollapse, isMobileOpen = f
               {!isCollapsed && <span>{boardNavItem.label}</span>}
             </NavLink>
           )}
+          <NavLink
+            to={overviewNavItem.to}
+            className={({ isActive }) =>
+              `flex items-center rounded-lg py-2 text-sm font-medium transition-colors ${
+                isCollapsed ? "justify-center px-2" : "gap-3 px-3"
+              } ${
+                isActive ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
+              }`
+            }
+            title={isCollapsed ? overviewNavItem.label : undefined}
+          >
+            <span>{overviewNavItem.icon}</span>
+            {!isCollapsed && <span>{overviewNavItem.label}</span>}
+          </NavLink>
         </nav>
 
-        {clientId ? (
-          <div className="mt-4 border-t border-gray-100 pt-4">
-            {!isCollapsed && (
-              <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
-                {selectedClient ? selectedClient.name : "Client"}
-              </p>
-            )}
-            <nav className="flex flex-col gap-1">
-              {clientMenuItems.map((clientItem, idx) => {
-                if (clientItem.kind === "divider") {
-                  return <div key={`divider-${idx}`} className="my-2 border-t border-gray-100" />
-                }
-                if (clientItem.kind === "section") {
-                  if (isCollapsed) {
-                    return <div key={`section-${idx}`} className="my-2 border-t border-gray-100" />
-                  }
+        {clientId ? (() => {
+          // Split the client menu into three independent groups so the
+          // user can collapse the client name (operational items) and the
+          // Reports section separately.
+          const sectionIdx = clientMenuItems.findIndex((it) => it.kind === "section")
+          const dividerAfterSectionIdx =
+            sectionIdx >= 0
+              ? clientMenuItems.findIndex(
+                  (it, i) => i > sectionIdx && it.kind === "divider",
+                )
+              : -1
+
+          const operationalBefore =
+            sectionIdx >= 0 ? clientMenuItems.slice(0, sectionIdx) : clientMenuItems
+          const reportsGroup =
+            sectionIdx >= 0
+              ? clientMenuItems.slice(
+                  sectionIdx,
+                  dividerAfterSectionIdx > sectionIdx ? dividerAfterSectionIdx : undefined,
+                )
+              : []
+          // Items after the divider that follows Reports (typically just
+          // Info) live in their own standalone block at the bottom, so
+          // they aren't hidden when the client name section collapses.
+          const infoGroup =
+            dividerAfterSectionIdx > sectionIdx
+              ? clientMenuItems.slice(dividerAfterSectionIdx + 1) // skip the divider
+              : []
+
+          // Render a flat list of menu items honoring the activeSection
+          // folding rules. Used for the operational group AND the reports
+          // group (which has its own section header inside it).
+          const renderItems = (items) => {
+            let activeSection = null
+            return items.map((clientItem, idx) => {
+              if (clientItem.kind === "divider") {
+                activeSection = null
+                return <div key={`divider-${idx}`} className="my-2 border-t border-gray-100" />
+              }
+              if (clientItem.kind === "section") {
+                const sectionLabel = clientItem.label
+                activeSection = sectionLabel
+                if (isCollapsed) {
+                  // Invisible placeholder matching the expanded header
+                  // height so the nav icons stay anchored when the
+                  // sidebar grows on hover.
                   return (
-                    <p
+                    <div
                       key={`section-${idx}`}
-                      className="mt-3 px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400"
-                    >
-                      {clientItem.label}
-                    </p>
+                      className="h-6"
+                      aria-hidden="true"
+                    />
                   )
                 }
+                const folded = isSectionCollapsed(sectionLabel)
                 return (
-                  <NavLink
-                    key={clientItem.to}
-                    to={clientItem.to}
-                    end
-                    className={({ isActive }) =>
-                      `flex items-center rounded-lg py-2 text-sm font-medium transition-colors ${
-                        isCollapsed ? "justify-center px-2" : "gap-3 px-3"
-                      } ${
-                        isActive ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
-                      }`
-                    }
-                    title={isCollapsed ? clientItem.label : undefined}
+                  <button
+                    key={`section-${idx}`}
+                    type="button"
+                    onClick={() => toggleSection(sectionLabel)}
+                    className="flex h-6 w-full items-center justify-between rounded-md px-3 text-left text-[10px] font-semibold uppercase tracking-wide text-gray-400 transition hover:text-gray-700"
+                    aria-expanded={!folded}
                   >
-                    <span>{clientItem.icon}</span>
-                    {!isCollapsed && <span>{clientItem.label}</span>}
-                  </NavLink>
+                    <span>{sectionLabel}</span>
+                    <svg
+                      viewBox="0 0 24 24"
+                      className={`h-3 w-3 transition-transform ${folded ? "-rotate-90" : ""}`}
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M6 9l6 6 6-6" />
+                    </svg>
+                  </button>
                 )
-              })}
-            </nav>
-          </div>
-        ) : (
+              }
+              if (!isCollapsed && activeSection && isSectionCollapsed(activeSection)) {
+                return null
+              }
+              return (
+                <NavLink
+                  key={clientItem.to}
+                  to={clientItem.to}
+                  end
+                  className={({ isActive }) =>
+                    `flex items-center rounded-lg py-2 text-sm font-medium transition-colors ${
+                      isCollapsed ? "justify-center px-2" : "gap-3 px-3"
+                    } ${
+                      isActive ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
+                    }`
+                  }
+                  title={isCollapsed ? clientItem.label : undefined}
+                >
+                  <span>{clientItem.icon}</span>
+                  {!isCollapsed && <span>{clientItem.label}</span>}
+                </NavLink>
+              )
+            })
+          }
+
+          const clientHeaderKey = "__client__"
+          const clientFolded = isSectionCollapsed(clientHeaderKey)
+
+          return (
+            <>
+              <div className="mt-4 border-t border-gray-100 pt-4">
+                {isCollapsed ? (
+                  // Invisible placeholder so the icons sit at the same Y
+                  // position whether the sidebar is hovered or not.
+                  <div className="h-6" aria-hidden="true" />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => toggleSection(clientHeaderKey)}
+                    className="flex h-6 w-full items-center justify-between rounded-md px-3 text-left text-[10px] font-semibold uppercase tracking-wide text-gray-400 transition hover:text-gray-700"
+                    aria-expanded={!clientFolded}
+                  >
+                    <span className="truncate">
+                      {selectedClient ? selectedClient.name : "Client"}
+                    </span>
+                    <svg
+                      viewBox="0 0 24 24"
+                      className={`h-3 w-3 shrink-0 transition-transform ${clientFolded ? "-rotate-90" : ""}`}
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M6 9l6 6 6-6" />
+                    </svg>
+                  </button>
+                )}
+                {!isCollapsed && clientFolded ? null : (
+                  <nav className="flex flex-col gap-1">{renderItems(operationalBefore)}</nav>
+                )}
+              </div>
+
+              {reportsGroup.length > 0 && (
+                <div className="mt-3">
+                  <nav className="flex flex-col gap-1">{renderItems(reportsGroup)}</nav>
+                </div>
+              )}
+
+              {infoGroup.length > 0 && (
+                <div className="mt-3 border-t border-gray-100 pt-3">
+                  <nav className="flex flex-col gap-1">{renderItems(infoGroup)}</nav>
+                </div>
+              )}
+            </>
+          )
+        })() : (
           <>
             <div className="mt-4 border-t border-gray-100 pt-4">
               {isCrmEnabled && !isCollapsed && (
@@ -553,6 +728,23 @@ function Sidebar({ isCollapsed: rawCollapsed, onToggleCollapse, isMobileOpen = f
             </NavLink>
           )}
         </>
+      )}
+
+      {clientId && (
+        <NavLink
+          to="/clients"
+          end
+          className={`mt-4 flex items-center rounded-lg py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 ${
+            isCollapsed ? "justify-center px-2" : "gap-3 px-3"
+          }`}
+          title={isCollapsed ? "Back to Clients" : undefined}
+        >
+          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5" />
+            <path d="M12 19l-7-7 7-7" />
+          </svg>
+          {!isCollapsed && <span>Back to Clients</span>}
+        </NavLink>
       )}
 
       <div className="mt-4 border-t border-gray-100 pt-3">
