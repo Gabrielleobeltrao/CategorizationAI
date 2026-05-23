@@ -105,7 +105,11 @@ function buildCrmCustomData(tasks, range) {
   }
 }
 
-function CrmDashboardPage() {
+function CrmDashboardPage({
+  scopeMode: externalScopeMode,
+  scopeId: externalScopeId,
+  onScopeChange,
+} = {}) {
   const { profile, office } = useAuth()
   const { error, success } = useNotification()
   const isCrmTasksEnabled = useFeature("crmTasks")
@@ -116,8 +120,20 @@ function CrmDashboardPage() {
   const [clients, setClients] = useState([])
   const [employees, setEmployees] = useState([])
   const [isLoading, setIsLoading] = useState(Boolean(officeId))
-  const [scopeMode, setScopeMode] = useState("team")
-  const [scopeId, setScopeId] = useState("")
+  // Controlled scope: parent (Overview) wins when provided so the
+  // filter persists across the Bookkeeping <-> CRM tab switch.
+  const isScopeControlled = externalScopeMode !== undefined
+  const [internalScopeMode, setInternalScopeMode] = useState("team")
+  const [internalScopeId, setInternalScopeId] = useState("")
+  const scopeMode = isScopeControlled ? externalScopeMode : internalScopeMode
+  const scopeId = isScopeControlled ? externalScopeId : internalScopeId
+  const updateScope = ({ mode, scopeId: nextScopeId }) => {
+    if (onScopeChange) onScopeChange({ mode, scopeId: nextScopeId })
+    if (!isScopeControlled) {
+      setInternalScopeMode(mode)
+      setInternalScopeId(nextScopeId || "")
+    }
+  }
   const [customRange, setCustomRange] = useState(null)
   const [viewingTask, setViewingTask] = useState(null)
   const [editingTask, setEditingTask] = useState(null)
@@ -276,10 +292,7 @@ function CrmDashboardPage() {
           <OverviewScopeFilter
             mode={scopeMode}
             scopeId={scopeId}
-            onChange={({ mode, scopeId: nextScopeId }) => {
-              setScopeMode(mode)
-              setScopeId(nextScopeId)
-            }}
+            onChange={updateScope}
             clients={clients}
             users={employees}
             officeName={officeName}

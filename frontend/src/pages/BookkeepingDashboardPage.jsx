@@ -30,7 +30,11 @@ function getQueueStatusClass(status) {
   return "bg-gray-100 text-gray-700"
 }
 
-function BookkeepingDashboardPage() {
+function BookkeepingDashboardPage({
+  scopeMode: externalScopeMode,
+  scopeId: externalScopeId,
+  onScopeChange,
+} = {}) {
   const { profile, office } = useAuth()
   const { error } = useNotification()
   const isOperationalStatusEnabled = useFeature("crmOperationalStatus")
@@ -40,8 +44,20 @@ function BookkeepingDashboardPage() {
   const [feed, setFeed] = useState(EMPTY_FEED)
   const [clients, setClients] = useState([])
   const [employees, setEmployees] = useState([])
-  const [scopeMode, setScopeMode] = useState("team")
-  const [scopeId, setScopeId] = useState("")
+  // Controlled mode: when the parent provides scopeMode / scopeId / onScopeChange,
+  // those win — keeps the scope shared across tabs in the Overview wrapper.
+  const isScopeControlled = externalScopeMode !== undefined
+  const [internalScopeMode, setInternalScopeMode] = useState("team")
+  const [internalScopeId, setInternalScopeId] = useState("")
+  const scopeMode = isScopeControlled ? externalScopeMode : internalScopeMode
+  const scopeId = isScopeControlled ? externalScopeId : internalScopeId
+  const updateScope = ({ mode, scopeId: nextScopeId }) => {
+    if (onScopeChange) onScopeChange({ mode, scopeId: nextScopeId })
+    if (!isScopeControlled) {
+      setInternalScopeMode(mode)
+      setInternalScopeId(nextScopeId || "")
+    }
+  }
   const [customRange, setCustomRange] = useState(null)
   const [customData, setCustomData] = useState({ kpis: [], trend: [] })
   const [isCustomLoading, setIsCustomLoading] = useState(false)
@@ -133,10 +149,7 @@ function BookkeepingDashboardPage() {
           <OverviewScopeFilter
             mode={scopeMode}
             scopeId={scopeId}
-            onChange={({ mode, scopeId: nextScopeId }) => {
-              setScopeMode(mode)
-              setScopeId(nextScopeId)
-            }}
+            onChange={updateScope}
             clients={clients}
             users={employees}
             officeName={officeName}
