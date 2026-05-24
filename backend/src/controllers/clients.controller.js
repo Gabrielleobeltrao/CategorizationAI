@@ -5,6 +5,9 @@ import {
     getClientByIdService,
     getClientLedgerBootstrapService,
     deleteClientByIdService,
+    addClientNoteService,
+    updateClientNoteService,
+    deleteClientNoteService,
 } from "../services/clients.service.js"
 import { userHasPermissionService } from "../services/roles.service.js"
 import { hydrateOfficeTagsForDocumentService } from "../services/tagCatalog.service.js"
@@ -171,6 +174,61 @@ export async function deleteClientByIdController(req, res) {
         const { id } = req.params
         await deleteClientByIdService(id)
         return res.status(204).send()
+    } catch (error) {
+        return sendErrorResponse(res, error)
+    }
+}
+
+function noteActionContext(req) {
+    const profile = req.userProfile || {}
+    return {
+        actorProfileId: profile?._id,
+        actorPermissions: profile?.permissions || [],
+        actorName:
+            String(profile?.fullName || "").trim() ||
+            String(profile?.name || "").trim() ||
+            String(profile?.email || "").trim(),
+    }
+}
+
+export async function addClientNoteController(req, res) {
+    try {
+        const client = await addClientNoteService(
+            req.params.id,
+            { body: req.body?.body },
+            noteActionContext(req)
+        )
+        const canReadOwnerInfo = await userHasPermissionService(req.userProfile, "clientsOwnerInfo:read")
+        return res.status(201).json(sanitizeClientOwnerInfo(client, canReadOwnerInfo))
+    } catch (error) {
+        return sendErrorResponse(res, error)
+    }
+}
+
+export async function updateClientNoteController(req, res) {
+    try {
+        const client = await updateClientNoteService(
+            req.params.id,
+            req.params.noteId,
+            { body: req.body?.body },
+            noteActionContext(req)
+        )
+        const canReadOwnerInfo = await userHasPermissionService(req.userProfile, "clientsOwnerInfo:read")
+        return res.status(200).json(sanitizeClientOwnerInfo(client, canReadOwnerInfo))
+    } catch (error) {
+        return sendErrorResponse(res, error)
+    }
+}
+
+export async function deleteClientNoteController(req, res) {
+    try {
+        const client = await deleteClientNoteService(
+            req.params.id,
+            req.params.noteId,
+            noteActionContext(req)
+        )
+        const canReadOwnerInfo = await userHasPermissionService(req.userProfile, "clientsOwnerInfo:read")
+        return res.status(200).json(sanitizeClientOwnerInfo(client, canReadOwnerInfo))
     } catch (error) {
         return sendErrorResponse(res, error)
     }

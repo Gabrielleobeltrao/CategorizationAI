@@ -255,3 +255,40 @@ export async function deleteClientById(clientId) {
     method: "DELETE",
   })
 }
+
+export async function addClientNote(clientId, body) {
+  const id = String(clientId || "").trim()
+  const safeBody = String(body || "").trim()
+  if (!id) throw new Error("clientId is required")
+  if (!safeBody) throw new Error("note body is required")
+
+  return api(`/api/clients/${id}/notes`, {
+    method: "POST",
+    body: JSON.stringify({ body: safeBody }),
+  })
+}
+
+export async function updateClientNote(clientId, noteId, body) {
+  const id = String(clientId || "").trim()
+  const safeNoteId = String(noteId || "").trim()
+  const safeBody = String(body || "").trim()
+  if (!id) throw new Error("clientId is required")
+  if (!safeNoteId) throw new Error("noteId is required")
+  if (!safeBody) throw new Error("note body is required")
+
+  return api(`/api/clients/${id}/notes/${safeNoteId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ body: safeBody }),
+  })
+}
+
+export async function deleteClientNote(clientId, noteId) {
+  const id = String(clientId || "").trim()
+  const safeNoteId = String(noteId || "").trim()
+  if (!id) throw new Error("clientId is required")
+  if (!safeNoteId) throw new Error("noteId is required")
+
+  return api(`/api/clients/${id}/notes/${safeNoteId}`, {
+    method: "DELETE",
+  })
+}

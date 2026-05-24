@@ -227,6 +227,7 @@ export async function getClientHomeService({ clientId }) {
       mainActivity: client.mainActivity || "",
       state: client.state || "",
       description: client.description || "",
+      notes: Array.isArray(client.notes) ? client.notes : [],
     },
     period: { fromDate: startOfMonth, toDate: today, label: "Month to date" },
     kpis: {

@@ -442,3 +442,43 @@ export async function deleteClientById(id) {
     const db = getDB()
     return db.collection("clients").deleteOne({ _id: new ObjectId(id) })
 }
+
+// notes (free-form client log entries kept inline on the client doc)
+
+export async function addClientNote(id, note) {
+    const db = getDB()
+    return db.collection("clients").findOneAndUpdate(
+        { _id: new ObjectId(id) },
+        {
+            $push: { notes: { $each: [note], $position: 0 } },
+            $set: { updatedAt: new Date() },
+        },
+        { returnDocument: "after" }
+    )
+}
+
+export async function updateClientNote(id, noteId, patch) {
+    const db = getDB()
+    const $set = { "notes.$[note].updatedAt": new Date(), updatedAt: new Date() }
+    if (typeof patch.body === "string") $set["notes.$[note].body"] = patch.body
+    return db.collection("clients").findOneAndUpdate(
+        { _id: new ObjectId(id) },
+        { $set },
+        {
+            arrayFilters: [{ "note.id": noteId }],
+            returnDocument: "after",
+        }
+    )
+}
+
+export async function deleteClientNote(id, noteId) {
+    const db = getDB()
+    return db.collection("clients").findOneAndUpdate(
+        { _id: new ObjectId(id) },
+        {
+            $pull: { notes: { id: noteId } },
+            $set: { updatedAt: new Date() },
+        },
+        { returnDocument: "after" }
+    )
+}

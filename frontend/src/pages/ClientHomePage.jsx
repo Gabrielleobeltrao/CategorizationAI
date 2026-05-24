@@ -2,7 +2,12 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { getClientHome } from "../services/clientHome.service"
 import { listEmployeesByOfficeId } from "../services/employees.service"
-import { listClientsByOfficeId } from "../services/clients.service"
+import {
+    listClientsByOfficeId,
+    addClientNote,
+    updateClientNote,
+    deleteClientNote,
+} from "../services/clients.service"
 import {
     updateTaskById as updateTask,
     addTaskComment,
@@ -188,6 +193,33 @@ function ClientHomePage() {
         }
     }
 
+    // Notes — each call returns the full client doc; we just sync the
+    // notes array into the dashboard state.
+    const setLocalNotes = (nextNotes) => {
+        setData((current) => {
+            if (!current) return current
+            return {
+                ...current,
+                client: { ...current.client, notes: Array.isArray(nextNotes) ? nextNotes : [] },
+            }
+        })
+    }
+
+    const handleAddNote = async (body) => {
+        const updatedClient = await addClientNote(clientId, body)
+        setLocalNotes(updatedClient?.notes)
+    }
+
+    const handleUpdateNote = async (noteId, body) => {
+        const updatedClient = await updateClientNote(clientId, noteId, body)
+        setLocalNotes(updatedClient?.notes)
+    }
+
+    const handleDeleteNote = async (noteId) => {
+        const updatedClient = await deleteClientNote(clientId, noteId)
+        setLocalNotes(updatedClient?.notes)
+    }
+
     if (!data && isLoading) {
         return (
             <section className="h-full w-full px-12 py-8">
@@ -270,6 +302,17 @@ function ClientHomePage() {
                         onSelectTask={setViewingTask}
                     />
                 )}
+
+                <NotesCard
+                    notes={client.notes}
+                    currentProfileId={currentProfileId}
+                    canCreate={hasPermission(profile?.permissions, "clientsNotes:create")}
+                    canUpdateAny={hasPermission(profile?.permissions, "clientsNotes:update")}
+                    canDeleteAny={hasPermission(profile?.permissions, "clientsNotes:delete")}
+                    onAdd={handleAddNote}
+                    onUpdate={handleUpdateNote}
+                    onDelete={handleDeleteNote}
+                />
 
                 <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                     <section className="rounded-xl border border-gray-200 bg-white lg:col-span-2">
@@ -673,6 +716,209 @@ function QuickActionIcon({ kind }) {
         )
     }
     return null
+}
+
+function formatNoteTimestamp(value) {
+    if (!value) return ""
+    const d = new Date(value)
+    if (Number.isNaN(d.getTime())) return ""
+    return new Intl.DateTimeFormat("en-US", {
+        month: "short",
+        day: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+    }).format(d)
+}
+
+function NotesCard({
+    notes,
+    currentProfileId,
+    canCreate,
+    canUpdateAny,
+    canDeleteAny,
+    onAdd,
+    onUpdate,
+    onDelete,
+}) {
+    const { error } = useNotification()
+    const [draft, setDraft] = useState("")
+    const [isAdding, setIsAdding] = useState(false)
+    const [editingId, setEditingId] = useState(null)
+    const [editBody, setEditBody] = useState("")
+    const [busyId, setBusyId] = useState(null)
+
+    const list = Array.isArray(notes) ? notes : []
+    const trimmed = draft.trim()
+
+    const isOwnNote = (note) => {
+        const authorId = String(note?.authorId || "").trim()
+        return Boolean(authorId && currentProfileId && authorId === currentProfileId)
+    }
+    const canEditNote = (note) => isOwnNote(note) || canUpdateAny
+    const canDeleteNote = (note) => isOwnNote(note) || canDeleteAny
+
+    const handleAdd = async (event) => {
+        event.preventDefault()
+        if (!trimmed || isAdding) return
+        setIsAdding(true)
+        try {
+            await onAdd(trimmed)
+            setDraft("")
+        } catch (err) {
+            error(err?.message || "Failed to add note")
+        } finally {
+            setIsAdding(false)
+        }
+    }
+
+    const startEdit = (note) => {
+        setEditingId(String(note.id))
+        setEditBody(String(note.body || ""))
+    }
+
+    const cancelEdit = () => {
+        setEditingId(null)
+        setEditBody("")
+    }
+
+    const handleSaveEdit = async (note) => {
+        const next = editBody.trim()
+        if (!next) return
+        setBusyId(String(note.id))
+        try {
+            await onUpdate(note.id, next)
+            cancelEdit()
+        } catch (err) {
+            error(err?.message || "Failed to update note")
+        } finally {
+            setBusyId(null)
+        }
+    }
+
+    const handleDelete = async (note) => {
+        if (typeof window !== "undefined" && !window.confirm("Delete this note?")) return
+        setBusyId(String(note.id))
+        try {
+            await onDelete(note.id)
+        } catch (err) {
+            error(err?.message || "Failed to delete note")
+        } finally {
+            setBusyId(null)
+        }
+    }
+
+    return (
+        <section className="rounded-xl border border-gray-200 bg-white">
+            <header className="flex items-center justify-between border-b border-gray-100 px-4 py-2.5">
+                <h2 className="text-sm font-semibold text-gray-900">Notes</h2>
+                <span className="text-[12px] text-gray-500">{list.length}</span>
+            </header>
+
+            {list.length === 0 ? (
+                <p className={`px-4 py-8 text-center text-sm text-gray-500 ${canCreate ? "border-b border-gray-100" : ""}`}>
+                    No notes yet.
+                </p>
+            ) : (
+                <ul className={`divide-y divide-gray-100 ${canCreate ? "border-b border-gray-100" : ""}`}>
+                    {list.map((note) => {
+                        const editing = editingId === String(note.id)
+                        const isBusy = busyId === String(note.id)
+                        return (
+                            <li key={note.id} className="px-4 py-3">
+                                <div className="flex items-center justify-between gap-2">
+                                    <div className="min-w-0 text-[12px] text-gray-500">
+                                        <span className="font-medium text-gray-700">
+                                            {note.authorName || "Unknown"}
+                                        </span>
+                                        <span> · {formatNoteTimestamp(note.createdAt)}</span>
+                                        {note.updatedAt && (
+                                            <span className="text-gray-400"> (edited)</span>
+                                        )}
+                                    </div>
+                                    {!editing && (canEditNote(note) || canDeleteNote(note)) && (
+                                        <div className="flex shrink-0 items-center gap-1">
+                                            {canEditNote(note) && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => startEdit(note)}
+                                                    className="rounded px-2 py-0.5 text-[12px] text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+                                                >
+                                                    Edit
+                                                </button>
+                                            )}
+                                            {canDeleteNote(note) && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDelete(note)}
+                                                    disabled={isBusy}
+                                                    className="rounded px-2 py-0.5 text-[12px] text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                                                >
+                                                    Delete
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                                {editing ? (
+                                    <div className="mt-2">
+                                        <textarea
+                                            value={editBody}
+                                            onChange={(e) => setEditBody(e.target.value)}
+                                            rows={2}
+                                            className="w-full resize-y rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none"
+                                        />
+                                        <div className="mt-2 flex justify-end gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={cancelEdit}
+                                                className="rounded-md px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSaveEdit(note)}
+                                                disabled={!editBody.trim() || isBusy}
+                                                className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-black disabled:opacity-50"
+                                            >
+                                                {isBusy ? "Saving…" : "Save"}
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <p className="mt-1 whitespace-pre-wrap text-sm text-gray-800">
+                                        {note.body}
+                                    </p>
+                                )}
+                            </li>
+                        )
+                    })}
+                </ul>
+            )}
+
+            {canCreate && (
+                <form onSubmit={handleAdd} className="p-4">
+                    <textarea
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        placeholder="Add a note about this client…"
+                        rows={2}
+                        className="w-full resize-y rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none"
+                    />
+                    <div className="mt-2 flex justify-end">
+                        <button
+                            type="submit"
+                            disabled={!trimmed || isAdding}
+                            className="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            {isAdding ? "Adding…" : "Add note"}
+                        </button>
+                    </div>
+                </form>
+            )}
+        </section>
+    )
 }
 
 export default ClientHomePage

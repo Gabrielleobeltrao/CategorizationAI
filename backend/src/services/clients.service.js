@@ -1,3 +1,4 @@
+import { ObjectId } from "mongodb"
 import {
   createClient,
   updateClientById,
@@ -5,7 +6,12 @@ import {
   getClientById,
   deleteClientById,
   buildOwnerSearch,
+  addClientNote,
+  updateClientNote,
+  deleteClientNote,
 } from "../repositories/clients.repository.js"
+import { AppError } from "../utils/appError.js"
+import { hasPermissionFromListService } from "./roles.service.js"
 import { listAccountsByClientIdService } from "./account.service.js"
 import { listCategoriesByClientIdService } from "./category.service.js"
 import {
@@ -278,4 +284,85 @@ export async function deleteClientByIdService(id) {
   ])
 
   return deleteClientById(id)
+}
+
+// ── Notes ───────────────────────────────────────────────────────────────────
+// Free-form client log entries embedded on the client doc as `notes`. Authors
+// can always edit/delete their own notes; touching someone else's requires
+// the clients:update permission.
+
+const MAX_NOTE_LENGTH = 4000
+
+function findClientNote(client, noteId) {
+  const notes = Array.isArray(client?.notes) ? client.notes : []
+  return notes.find((note) => String(note?.id || "") === String(noteId)) || null
+}
+
+function ensureNoteActionAllowed({ note, context, permissionKey }) {
+  const actorId = String(context?.actorProfileId || "").trim()
+  const authorId = String(note?.authorId || "").trim()
+  if (actorId && authorId && actorId === authorId) return
+  const permissions = Array.isArray(context?.actorPermissions) ? context.actorPermissions : []
+  if (hasPermissionFromListService(permissions, permissionKey)) return
+  throw new AppError("Forbidden", 403)
+}
+
+export async function addClientNoteService(clientId, input, context = {}) {
+  if (!clientId) throw new Error("clientId is required")
+  const body = String(input?.body || "").trim()
+  if (!body) throw new Error("note body is required")
+  if (body.length > MAX_NOTE_LENGTH) {
+    throw new Error(`note body must be ${MAX_NOTE_LENGTH} characters or fewer`)
+  }
+
+  const existing = await getClientById(clientId)
+  if (!existing) throw new AppError("Client not found", 404)
+
+  const now = new Date()
+  const note = {
+    id: new ObjectId().toString(),
+    body,
+    authorId: String(context?.actorProfileId || "").trim(),
+    authorName: String(context?.actorName || "").trim(),
+    createdAt: now,
+    updatedAt: null,
+  }
+
+  const result = await addClientNote(clientId, note)
+  return hydrateOfficeTagsForDocumentService(existing.officeId, result)
+}
+
+export async function updateClientNoteService(clientId, noteId, input, context = {}) {
+  if (!clientId) throw new Error("clientId is required")
+  if (!noteId) throw new Error("noteId is required")
+  const body = String(input?.body || "").trim()
+  if (!body) throw new Error("note body is required")
+  if (body.length > MAX_NOTE_LENGTH) {
+    throw new Error(`note body must be ${MAX_NOTE_LENGTH} characters or fewer`)
+  }
+
+  const existing = await getClientById(clientId)
+  if (!existing) throw new AppError("Client not found", 404)
+
+  const note = findClientNote(existing, noteId)
+  if (!note) throw new AppError("Note not found", 404)
+  ensureNoteActionAllowed({ note, context, permissionKey: "clientsNotes:update" })
+
+  const result = await updateClientNote(clientId, noteId, { body })
+  return hydrateOfficeTagsForDocumentService(existing.officeId, result)
+}
+
+export async function deleteClientNoteService(clientId, noteId, context = {}) {
+  if (!clientId) throw new Error("clientId is required")
+  if (!noteId) throw new Error("noteId is required")
+
+  const existing = await getClientById(clientId)
+  if (!existing) throw new AppError("Client not found", 404)
+
+  const note = findClientNote(existing, noteId)
+  if (!note) throw new AppError("Note not found", 404)
+  ensureNoteActionAllowed({ note, context, permissionKey: "clientsNotes:delete" })
+
+  const result = await deleteClientNote(clientId, noteId)
+  return hydrateOfficeTagsForDocumentService(existing.officeId, result)
 }
