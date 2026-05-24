@@ -17,6 +17,7 @@ import {
 } from "../repositories/journalEntries.repository.js"
 import { getAccountById } from "../repositories/account.repository.js"
 import { isDateClosed } from "../repositories/periodClose.repository.js"
+import { recordActivityForClient } from "../repositories/activityLog.repository.js"
 
 // Tolerância para o difference floating-point. Igual ao BALANCE_EPSILON
 // usado por validateTransactionLegs — meio centavo.
@@ -159,7 +160,7 @@ export async function updateReconciliationProgressService({ reconciliationId, cl
   })
 }
 
-export async function completeReconciliationService({ reconciliationId, clientId, completedBy, legRefs }) {
+export async function completeReconciliationService({ reconciliationId, clientId, completedBy, completedByName, legRefs }) {
   // Allow caller to pass final legRefs on complete (treat as final autosave).
   if (Array.isArray(legRefs)) {
     await updateReconciliationProgressService({ reconciliationId, clientId, legRefs })
@@ -185,10 +186,22 @@ export async function completeReconciliationService({ reconciliationId, clientId
   }
 
   await markLegsCleared(rec.legRefs || [], reconciliationId)
-  return markReconciliationCompleted(reconciliationId, { completedBy })
+  const result = await markReconciliationCompleted(reconciliationId, { completedBy })
+
+  recordActivityForClient({
+    clientId: rec.clientId,
+    actorId: completedBy,
+    actorName: completedByName,
+    action: "reconciliation.completed",
+    targetType: "reconciliation",
+    targetId: reconciliationId,
+    meta: { statementDate: rec.statementDate || null, accountId: String(rec.accountId || "") },
+  })
+
+  return result
 }
 
-export async function reopenReconciliationService({ reconciliationId, clientId, reopenedBy }) {
+export async function reopenReconciliationService({ reconciliationId, clientId, reopenedBy, reopenedByName }) {
   const rec = await getReconciliationById(reconciliationId)
   if (!rec) throw new AppError("Reconciliation not found", 404)
   if (clientId && String(rec.clientId) !== String(clientId)) {
@@ -218,7 +231,19 @@ export async function reopenReconciliationService({ reconciliationId, clientId, 
   }
 
   await unmarkLegsForReconciliation(reconciliationId)
-  return reopenReconciliationDoc(reconciliationId, { reopenedBy })
+  const result = await reopenReconciliationDoc(reconciliationId, { reopenedBy })
+
+  recordActivityForClient({
+    clientId: rec.clientId,
+    actorId: reopenedBy,
+    actorName: reopenedByName,
+    action: "reconciliation.reopened",
+    targetType: "reconciliation",
+    targetId: reconciliationId,
+    meta: { statementDate: rec.statementDate || null, accountId: String(rec.accountId || "") },
+  })
+
+  return result
 }
 
 export async function cancelInProgressReconciliationService({ reconciliationId, clientId }) {

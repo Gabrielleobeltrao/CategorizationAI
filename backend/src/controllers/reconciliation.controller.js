@@ -94,6 +94,9 @@ export async function completeReconciliationController(req, res) {
       reconciliationId: id,
       legRefs,
       completedBy: String(req.userProfile?._id || ""),
+      completedByName:
+        String(req.userProfile?.name || "").trim() ||
+        String(req.userProfile?.email || "").trim(),
     })
     return res.status(200).json(result)
   } catch (error) {
@@ -107,6 +110,9 @@ export async function reopenReconciliationController(req, res) {
     const result = await reopenReconciliationService({
       reconciliationId: id,
       reopenedBy: String(req.userProfile?._id || ""),
+      reopenedByName:
+        String(req.userProfile?.name || "").trim() ||
+        String(req.userProfile?.email || "").trim(),
     })
     return res.status(200).json(result)
   } catch (error) {

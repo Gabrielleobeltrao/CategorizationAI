@@ -12,6 +12,7 @@ import {
 } from "../repositories/clients.repository.js"
 import { AppError } from "../utils/appError.js"
 import { hasPermissionFromListService } from "./roles.service.js"
+import { recordActivity } from "../repositories/activityLog.repository.js"
 import { listAccountsByClientIdService } from "./account.service.js"
 import { listCategoriesByClientIdService } from "./category.service.js"
 import {
@@ -119,6 +120,17 @@ export async function createClientService(input, context = {}) {
   enqueueClientCategorySync({
     officeId: client.officeId,
     clientId: String(client._id),
+  })
+
+  recordActivity({
+    officeId: client.officeId,
+    actorId: context?.actorProfileId,
+    actorName: context?.actorName,
+    action: "client.created",
+    targetType: "client",
+    targetId: client._id,
+    clientId: client._id,
+    label: String(client.name || "Client"),
   })
 
   return hydrateOfficeTagsForDocumentService(client.officeId, client)
@@ -271,8 +283,10 @@ export async function getClientLedgerBootstrapService(clientId, query = {}) {
   }
 }
 
-export async function deleteClientByIdService(id) {
+export async function deleteClientByIdService(id, context = {}) {
   if (!id) throw new Error("id is required")
+
+  const existing = await getClientById(id)
 
   await Promise.all([
     deleteTransactionsByClientId(id),
@@ -283,7 +297,22 @@ export async function deleteClientByIdService(id) {
     deleteOperationalStatusByClientId(id),
   ])
 
-  return deleteClientById(id)
+  const result = await deleteClientById(id)
+
+  if (existing) {
+    recordActivity({
+      officeId: existing.officeId,
+      actorId: context?.actorProfileId,
+      actorName: context?.actorName,
+      action: "client.deleted",
+      targetType: "client",
+      targetId: id,
+      clientId: id,
+      label: String(existing.name || "Client"),
+    })
+  }
+
+  return result
 }
 
 // ── Notes ───────────────────────────────────────────────────────────────────
@@ -329,6 +358,18 @@ export async function addClientNoteService(clientId, input, context = {}) {
   }
 
   const result = await addClientNote(clientId, note)
+
+  recordActivity({
+    officeId: existing.officeId,
+    actorId: context?.actorProfileId,
+    actorName: context?.actorName,
+    action: "client.note.added",
+    targetType: "client",
+    targetId: clientId,
+    clientId,
+    label: String(existing.name || "Client"),
+  })
+
   return hydrateOfficeTagsForDocumentService(existing.officeId, result)
 }
 
@@ -349,6 +390,18 @@ export async function updateClientNoteService(clientId, noteId, input, context =
   ensureNoteActionAllowed({ note, context, permissionKey: "clientsNotes:update" })
 
   const result = await updateClientNote(clientId, noteId, { body })
+
+  recordActivity({
+    officeId: existing.officeId,
+    actorId: context?.actorProfileId,
+    actorName: context?.actorName,
+    action: "client.note.updated",
+    targetType: "client",
+    targetId: clientId,
+    clientId,
+    label: String(existing.name || "Client"),
+  })
+
   return hydrateOfficeTagsForDocumentService(existing.officeId, result)
 }
 
@@ -364,5 +417,17 @@ export async function deleteClientNoteService(clientId, noteId, context = {}) {
   ensureNoteActionAllowed({ note, context, permissionKey: "clientsNotes:delete" })
 
   const result = await deleteClientNote(clientId, noteId)
+
+  recordActivity({
+    officeId: existing.officeId,
+    actorId: context?.actorProfileId,
+    actorName: context?.actorName,
+    action: "client.note.deleted",
+    targetType: "client",
+    targetId: clientId,
+    clientId,
+    label: String(existing.name || "Client"),
+  })
+
   return hydrateOfficeTagsForDocumentService(existing.officeId, result)
 }

@@ -24,6 +24,7 @@ import { ensureTasksIndexes } from "./repositories/tasks.repository.js"
 import { ensureClientOperationalStatusIndexes } from "./repositories/clientOperationalStatus.repository.js"
 import { ensureBoardCollectionsIndexes } from "./repositories/boardCollections.repository.js"
 import { ensureJournalEntriesIndexes } from "./repositories/journalEntries.repository.js"
+import { ensureActivityLogIndexes } from "./repositories/activityLog.repository.js"
 import { startCategorizationWorker } from "./workers/categorization.worker.js"
 import { startCategorySyncWorker } from "./workers/categorySync.worker.js"
 
@@ -53,6 +54,7 @@ await ensureTasksIndexes()
 await ensureClientOperationalStatusIndexes()
 await ensureBoardCollectionsIndexes()
 await ensureJournalEntriesIndexes()
+await ensureActivityLogIndexes()
 
 app.locals.auth = createAuth(getDB())
 await startCategorizationWorker()

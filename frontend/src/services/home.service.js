@@ -86,6 +86,41 @@ export async function getOfficeHomeDashboardCustomRange(officeId, options = {}) 
   })
 }
 
+export async function getOfficeOverview(officeId) {
+  const safeOfficeId = String(officeId || "").trim()
+  if (!safeOfficeId) throw new Error("officeId is required")
+
+  return api(`/api/offices/${safeOfficeId}/overview?_ts=${Date.now()}`, {
+    silentLoading: true,
+  })
+}
+
+export async function getOfficeMyActivity(officeId, { limit = 30 } = {}) {
+  const safeOfficeId = String(officeId || "").trim()
+  if (!safeOfficeId) throw new Error("officeId is required")
+
+  const params = new URLSearchParams({ limit: String(limit), _ts: String(Date.now()) })
+  return api(`/api/offices/${safeOfficeId}/me/activity?${params.toString()}`, {
+    silentLoading: true,
+  })
+}
+
+export async function getOfficeActivity(officeId, { actorId, action, targetType, from, to, limit = 100 } = {}) {
+  const safeOfficeId = String(officeId || "").trim()
+  if (!safeOfficeId) throw new Error("officeId is required")
+
+  const params = new URLSearchParams({ limit: String(limit), _ts: String(Date.now()) })
+  if (actorId) params.set("actorId", String(actorId))
+  if (action) params.set("action", String(action))
+  if (targetType) params.set("targetType", String(targetType))
+  if (from) params.set("from", String(from))
+  if (to) params.set("to", String(to))
+
+  return api(`/api/offices/${safeOfficeId}/activity?${params.toString()}`, {
+    silentLoading: true,
+  })
+}
+
 export async function getOfficeHomeDashboard(officeId, options = {}) {
   const safeOfficeId = String(officeId || "").trim()
   if (!safeOfficeId) {

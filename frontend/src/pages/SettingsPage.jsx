@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
+import { Link } from "react-router-dom"
 import { updateMyProfile } from "../services/auth.service"
 import { useAuth } from "../contexts/auth.context"
 import { getCachedOfficeById, getOfficeById, updateOfficeById, updateOfficeFeatures } from "../services/office.service"
@@ -543,6 +544,45 @@ function SettingsPage() {
           )}
         </form>
 
+        {hasPermission(profile?.permissions, "activityLog:read") && (
+          <section className="border-t border-gray-200" aria-labelledby="admin-tools-heading">
+            <div className="py-4">
+              <h2 id="admin-tools-heading" className="text-lg font-semibold text-gray-900">
+                Admin tools
+              </h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Audit and observability for managers and owners.
+              </p>
+            </div>
+
+            <Link
+              to="/activity"
+              className="group flex items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white p-4 transition hover:border-gray-300 hover:bg-gray-50"
+            >
+              <div className="flex items-start gap-3">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-gray-900 text-white">
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 6h16" />
+                    <path d="M4 12h10" />
+                    <path d="M4 18h13" />
+                    <circle cx="18" cy="12" r="1.5" />
+                  </svg>
+                </span>
+                <div>
+                  <p className="font-semibold text-gray-900">Activity Log</p>
+                  <p className="text-sm text-gray-500">
+                    Office-wide audit trail — who did what across clients, tasks, period close and reconciliation.
+                  </p>
+                </div>
+              </div>
+              <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0 text-gray-400 transition group-hover:translate-x-0.5 group-hover:text-gray-700" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M5 12h14" />
+                <path d="m13 6 6 6-6 6" />
+              </svg>
+            </Link>
+          </section>
+        )}
+
         <section className="border-t border-gray-200" aria-labelledby="addons-heading">
           <div className="py-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -713,6 +753,7 @@ function SettingsPage() {
                         />
                       </button>
                     </div>
+
                   </div>
                 </div>
               )}

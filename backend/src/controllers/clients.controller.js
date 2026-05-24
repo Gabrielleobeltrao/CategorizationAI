@@ -67,6 +67,9 @@ export async function createClientController(req, res) {
 
         const client = await createClientService(req.body, {
             actorProfileId: req.userProfile?._id,
+            actorName:
+                String(req.userProfile?.name || "").trim() ||
+                String(req.userProfile?.email || "").trim(),
         })
         const canReadOwnerInfo = await userHasPermissionService(req.userProfile, "clientsOwnerInfo:read")
         return res.status(201).json(sanitizeClientOwnerInfo(client, canReadOwnerInfo))
@@ -172,7 +175,7 @@ export async function getClientLedgerBootstrapController(req, res) {
 export async function deleteClientByIdController(req, res) {
     try {
         const { id } = req.params
-        await deleteClientByIdService(id)
+        await deleteClientByIdService(id, noteActionContext(req))
         return res.status(204).send()
     } catch (error) {
         return sendErrorResponse(res, error)

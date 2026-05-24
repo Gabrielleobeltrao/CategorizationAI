@@ -14,6 +14,7 @@ export const PERMISSION_DEFINITIONS = [
   { key: "roles:delete", module: "General", group: "Roles", label: "Delete roles" },
   { key: "overview:read", module: "General", group: "Overview", label: "View team overview (full office)" },
   { key: "overview:readOwn", module: "General", group: "Overview", label: "View own overview only" },
+  { key: "activityLog:read", module: "General", group: "Activity Log", label: "View office-wide activity log" },
   // Bookkeeping — accounting data.
   // Clients group covers list-level lifecycle (view list, add, remove).
   { key: "clients:read", module: "Bookkeeping", group: "Clients", label: "Read clients" },
@@ -119,6 +120,7 @@ export const ROLE_DEFINITIONS = [
       "tasks:*",
       "board:*",
       "overview:*",
+      "activityLog:read",
     ],
   },
   {

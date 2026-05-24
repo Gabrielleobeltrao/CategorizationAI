@@ -45,7 +45,7 @@ function daysBetween(fromIso, toIso) {
 // Counts uncleared bank legs (date <= today, account is bank-like,
 // no entry in clearedLegs for that leg index). Returns the number of
 // bank accounts with at least one such leg, plus the total count.
-async function countUnreconciled(clientId) {
+export async function countUnreconciled(clientId) {
   const db = getDB()
   const accounts = await db
     .collection("coa_accounts")

@@ -10,6 +10,7 @@ import {
 } from "../repositories/tasks.repository.js"
 import { hasPermissionFromListService } from "./roles.service.js"
 import { AppError } from "../utils/appError.js"
+import { recordActivity } from "../repositories/activityLog.repository.js"
 
 function ensureSameOffice(task, actorOfficeId) {
     const safeOfficeId = String(actorOfficeId || "").trim()
@@ -23,7 +24,7 @@ export async function createTaskService(input, context = {}) {
     const officeId = String(context?.actorOfficeId || "").trim()
     if (!officeId) throw new Error("Office context required")
 
-    return createTask({
+    const task = await createTask({
         officeId,
         clientIds: input?.clientIds,
         clientId: input?.clientId,
@@ -36,6 +37,23 @@ export async function createTaskService(input, context = {}) {
         priority: input?.priority,
         createdBy: String(context?.actorProfileId || "").trim(),
     })
+
+    const taskClientIds = Array.isArray(task?.clientIds) && task.clientIds.length > 0
+        ? task.clientIds
+        : (task?.clientId ? [String(task.clientId)] : [])
+
+    recordActivity({
+        officeId,
+        actorId: context?.actorProfileId,
+        actorName: context?.actorName,
+        action: "task.created",
+        targetType: "task",
+        targetId: task?._id || task?.id,
+        clientId: taskClientIds[0] || null,
+        label: String(input?.title || "").trim() || "Task",
+    })
+
+    return task
 }
 
 export async function listTasksService(query = {}, context = {}) {
@@ -66,9 +84,30 @@ export async function updateTaskByIdService(id, patch, context = {}) {
     if (!existing) throw new Error("Task not found")
     ensureSameOffice(existing, context?.actorOfficeId)
 
-    return updateTaskById(id, patch || {}, {
+    const updated = await updateTaskById(id, patch || {}, {
         actorProfileId: String(context?.actorProfileId || "").trim(),
     })
+
+    const prevStatus = String(existing?.status || "").trim()
+    const nextStatus = String(updated?.status || "").trim()
+    if (nextStatus && prevStatus && prevStatus !== nextStatus) {
+        const taskClientIds = Array.isArray(existing?.clientIds) && existing.clientIds.length > 0
+            ? existing.clientIds
+            : (existing?.clientId ? [String(existing.clientId)] : [])
+        recordActivity({
+            officeId: existing.officeId,
+            actorId: context?.actorProfileId,
+            actorName: context?.actorName,
+            action: `task.status.${nextStatus}`,
+            targetType: "task",
+            targetId: id,
+            clientId: taskClientIds[0] || null,
+            label: String(updated?.title || existing?.title || "Task"),
+            meta: { from: prevStatus, to: nextStatus },
+        })
+    }
+
+    return updated
 }
 
 export async function deleteTaskByIdService(id, context = {}) {
@@ -78,6 +117,20 @@ export async function deleteTaskByIdService(id, context = {}) {
     ensureSameOffice(existing, context?.actorOfficeId)
 
     await deleteTaskById(id)
+
+    const deletedClientIds = Array.isArray(existing?.clientIds) && existing.clientIds.length > 0
+        ? existing.clientIds
+        : (existing?.clientId ? [String(existing.clientId)] : [])
+    recordActivity({
+        officeId: existing.officeId,
+        actorId: context?.actorProfileId,
+        actorName: context?.actorName,
+        action: "task.deleted",
+        targetType: "task",
+        targetId: id,
+        clientId: deletedClientIds[0] || null,
+        label: String(existing.title || "Task"),
+    })
 }
 
 export async function addTaskCommentService(taskId, input, context = {}) {
@@ -89,11 +142,27 @@ export async function addTaskCommentService(taskId, input, context = {}) {
     if (!existing) throw new Error("Task not found")
     ensureSameOffice(existing, context?.actorOfficeId)
 
-    return addTaskComment(taskId, {
+    const result = await addTaskComment(taskId, {
         body,
         authorId: String(context?.actorProfileId || "").trim(),
         authorName: String(context?.actorName || "").trim(),
     })
+
+    const commentClientIds = Array.isArray(existing?.clientIds) && existing.clientIds.length > 0
+        ? existing.clientIds
+        : (existing?.clientId ? [String(existing.clientId)] : [])
+    recordActivity({
+        officeId: existing.officeId,
+        actorId: context?.actorProfileId,
+        actorName: context?.actorName,
+        action: "task.comment.added",
+        targetType: "task",
+        targetId: taskId,
+        clientId: commentClientIds[0] || null,
+        label: String(existing.title || "Task"),
+    })
+
+    return result
 }
 
 // Rule: a user can always update/delete *their own* comment. The

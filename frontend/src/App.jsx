@@ -26,6 +26,7 @@ const loadPeriodClosePage = () => import('./pages/PeriodClosePage.jsx')
 const loadRecurringPage = () => import('./pages/RecurringTransactionsPage.jsx')
 const loadClientHomePage = () => import('./pages/ClientHomePage.jsx')
 const loadOverviewPage = () => import('./pages/OverviewPage.jsx')
+const loadActivityLogPage = () => import('./pages/ActivityLogPage.jsx')
 const loadTransactionsPage = () => import('./pages/LedgerPage.jsx')
 const loadSettingsPage = () => import('./pages/SettingsPage.jsx')
 const loadClientSettingsPage = () => import('./pages/ClientSettingsPage.jsx')
@@ -54,6 +55,7 @@ const PeriodClosePage = lazy(loadPeriodClosePage)
 const RecurringTransactionsPage = lazy(loadRecurringPage)
 const ClientHomePage = lazy(loadClientHomePage)
 const OverviewPage = lazy(loadOverviewPage)
+const ActivityLogPage = lazy(loadActivityLogPage)
 const TransactionsPage = lazy(loadTransactionsPage)
 const SettingsPage = lazy(loadSettingsPage)
 const ClientSettingsPage = lazy(loadClientSettingsPage)
@@ -154,6 +156,14 @@ function App() {
               >
                 <Route path="/home" element={<Home />} />
                 <Route path="/overview" element={<OverviewPage />} />
+                <Route
+                  path="/activity"
+                  element={
+                    <PermissionGate permission="activityLog:read" fallback={<Navigate to="/home" replace />}>
+                      <ActivityLogPage />
+                    </PermissionGate>
+                  }
+                />
                 <Route path="/bookkeeping" element={<BookkeepingDashboardPage />} />
                 <Route path="/clients" element={<ClientsPage />} />
                 <Route path="/employees" element={<EmployeesPage />} />

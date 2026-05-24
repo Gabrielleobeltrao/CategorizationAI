@@ -5,6 +5,8 @@ import { useNotification } from "../contexts/notification.context"
 import {
   getCachedOfficeHomeDashboard,
   getOfficeHomeDashboard,
+  getOfficeOverview,
+  getOfficeMyActivity,
 } from "../services/home.service"
 import {
   getRecentOpenedClients,
@@ -96,6 +98,12 @@ function Home() {
     role: "",
   })
   const [dashboard, setDashboard] = useState(EMPTY_DASHBOARD)
+  const [overview, setOverview] = useState(null)
+  const [myActivity, setMyActivity] = useState([])
+  // Scope toggle for the Pending / Reconciliation cards. We default to
+  // "mine" but auto-fall back to "all" until the user has any recent
+  // activity, otherwise the cards would always look empty for new users.
+  const [overviewScope, setOverviewScope] = useState("mine")
 
   const loadDashboard = useCallback(async (officeId, options = {}) => {
     const safeOfficeId = String(officeId || "").trim()
@@ -283,8 +291,25 @@ function Home() {
 
     loadDashboard(safeOfficeId, { notifyError: true })
 
+    let overviewActive = true
+    const loadOverviewBundle = () => {
+      getOfficeOverview(safeOfficeId)
+        .then((data) => {
+          if (overviewActive) setOverview(data || null)
+        })
+        .catch(() => {})
+      getOfficeMyActivity(safeOfficeId)
+        .then((payload) => {
+          if (!overviewActive) return
+          setMyActivity(Array.isArray(payload?.items) ? payload.items : [])
+        })
+        .catch(() => {})
+    }
+    loadOverviewBundle()
+
     const refreshSilently = () => {
       loadDashboard(safeOfficeId, { notifyError: false })
+      loadOverviewBundle()
     }
 
     const refreshTimer = setInterval(refreshSilently, 15000)
@@ -298,6 +323,7 @@ function Home() {
     document.addEventListener("visibilitychange", onVisibilityChange)
 
     return () => {
+      overviewActive = false
       clearInterval(refreshTimer)
       unsubscribeDashboardRefresh()
       window.removeEventListener("focus", onWindowFocus)
@@ -339,6 +365,40 @@ function Home() {
           />
         </FeatureGate>
 
+        <OfficeKpiRow kpis={overview?.kpis} />
+
+        {(() => {
+          const hasRecent = (overview?.myRecentClientCount || 0) > 0
+          const effectiveScope = !hasRecent ? "all" : overviewScope
+          const pending = effectiveScope === "mine"
+            ? (overview?.pendingCategorizationMine || [])
+            : (overview?.pendingCategorization || [])
+          const reconc = effectiveScope === "mine"
+            ? (overview?.reconciliationHealthMine || [])
+            : (overview?.reconciliationHealth || [])
+          return (
+            <>
+              <OverviewScopeToggle
+                scope={effectiveScope}
+                onChange={setOverviewScope}
+                hasRecent={hasRecent}
+              />
+              <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                <PendingCategorizationCard
+                  items={pending}
+                  scope={effectiveScope}
+                  onOpenClient={(id) => navigate(`/clients/${id}/transactions`)}
+                />
+                <ReconciliationHealthCard
+                  items={reconc}
+                  scope={effectiveScope}
+                  onOpenClient={(id) => navigate(`/clients/${id}/reconciliation`)}
+                />
+              </section>
+            </>
+          )
+        })()}
+
         <section className="rounded-xl border border-gray-200 bg-white p-4">
           <h2 className="text-lg font-semibold">Recently Opened Clients</h2>
           <p className="text-sm text-gray-500">Last 8 client contexts opened in this office</p>
@@ -367,27 +427,8 @@ function Home() {
 
 
         <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
-          <article className="rounded-xl border border-gray-200 bg-white p-4">
-            <h2 className="text-lg font-semibold">Recent Activity</h2>
-            <p className="text-sm text-gray-500">Latest office operations</p>
+          <MyActivityCard items={myActivity} />
 
-            <ul className="mt-4 flex flex-col gap-2">
-              {dashboard.recentActivities.length === 0 && (
-                <li className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
-                  No recent activities in the last 3 days
-                </li>
-              )}
-              {dashboard.recentActivities.map((activity) => (
-                <li key={activity.id} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium text-gray-900">{activity.title}</p>
-                    <span className="text-xs text-gray-500">{activity.time}</span>
-                  </div>
-                  <p className="mt-1 text-sm text-gray-600">{activity.detail}</p>
-                </li>
-              ))}
-            </ul>
-          </article>
 
           <aside className="flex flex-col gap-4">
             {/*
@@ -454,6 +495,223 @@ function Home() {
         onSubmit={handleHomeTaskEditSave}
       />
     </section>
+  )
+}
+
+const ACTIVITY_LABELS = {
+  "task.created": "Created task",
+  "task.deleted": "Deleted task",
+  "task.status.open": "Reopened task",
+  "task.status.in_progress": "Started task",
+  "task.status.done": "Completed task",
+  "task.comment.added": "Commented on task",
+  "client.created": "Created client",
+  "client.deleted": "Deleted client",
+  "client.note.added": "Added note on client",
+  "client.note.updated": "Edited note on client",
+  "client.note.deleted": "Deleted note on client",
+  "period.closed": "Closed period",
+  "period.reopened": "Reopened period",
+  "reconciliation.completed": "Completed reconciliation",
+  "reconciliation.reopened": "Reopened reconciliation",
+  "recurring.created": "Created recurring rule",
+  "recurring.runOnce": "Ran recurring rule once",
+}
+
+function formatActivityRelativeTime(value) {
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return ""
+  const diffMs = Date.now() - d.getTime()
+  const minutes = Math.floor(diffMs / 60000)
+  if (minutes < 1) return "just now"
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  return `${days}d ago`
+}
+
+function MyActivityCard({ items }) {
+  const list = Array.isArray(items) ? items : []
+  return (
+    <article className="rounded-xl border border-gray-200 bg-white p-4">
+      <h2 className="text-lg font-semibold">Your activity</h2>
+      <p className="text-sm text-gray-500">Recent actions you took in this office</p>
+
+      <ul className="mt-4 flex flex-col gap-2">
+        {list.length === 0 && (
+          <li className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
+            Nothing to show yet — actions you take will appear here.
+          </li>
+        )}
+        {list.map((entry) => {
+          const title = ACTIVITY_LABELS[entry.action] || entry.action
+          return (
+            <li key={entry.id} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-medium text-gray-900">{title}</p>
+                <span className="text-xs text-gray-500">{formatActivityRelativeTime(entry.at)}</span>
+              </div>
+              {entry.label && (
+                <p className="mt-1 text-sm text-gray-600">{entry.label}</p>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+    </article>
+  )
+}
+
+function formatNumber(value) {
+  return new Intl.NumberFormat("en-US").format(Number(value || 0))
+}
+
+function OfficeKpiRow({ kpis }) {
+  const items = [
+    { label: "Active clients", value: kpis?.activeClients ?? 0 },
+    { label: "Uncategorized", value: kpis?.uncategorizedTotal ?? 0, accent: kpis?.uncategorizedTotal > 0 ? "warn" : null },
+    { label: "Open tasks", value: kpis?.openTasks ?? 0 },
+    { label: "Unreconciled bank legs", value: kpis?.unreconciledLegs ?? 0, accent: kpis?.unreconciledLegs > 0 ? "warn" : null },
+  ]
+  return (
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      {items.map((item) => (
+        <div key={item.label} className="rounded-xl border border-gray-200 bg-white px-4 py-3">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">{item.label}</p>
+          <p
+            className={`mt-1 text-2xl font-semibold tabular-nums ${
+              item.accent === "warn" ? "text-amber-600" : "text-gray-900"
+            }`}
+          >
+            {formatNumber(item.value)}
+          </p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function OverviewScopeToggle({ scope, onChange, hasRecent }) {
+  const baseClass = "rounded-md px-3 py-1.5 text-sm font-medium transition"
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <p className="text-[11px] uppercase tracking-wide text-gray-500">
+        {scope === "mine" ? "Showing clients you worked on recently" : "Showing the whole office"}
+      </p>
+      <div className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5">
+        <button
+          type="button"
+          onClick={() => onChange("mine")}
+          disabled={!hasRecent}
+          className={`${baseClass} ${
+            scope === "mine" ? "bg-gray-900 text-white shadow-sm" : "text-gray-600 hover:text-gray-900"
+          } disabled:cursor-not-allowed disabled:opacity-50`}
+          title={hasRecent ? "Only clients you touched in the last 30 days" : "No recent activity yet — start working on clients to populate this view"}
+        >
+          Mine
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange("all")}
+          className={`${baseClass} ${
+            scope === "all" ? "bg-gray-900 text-white shadow-sm" : "text-gray-600 hover:text-gray-900"
+          }`}
+        >
+          Office
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function PendingCategorizationCard({ items, scope, onOpenClient }) {
+  return (
+    <article className="rounded-xl border border-gray-200 bg-white p-4">
+      <header className="flex items-baseline justify-between gap-2">
+        <h2 className="text-lg font-semibold">Pending Categorization</h2>
+        <span className="text-xs text-gray-500">{scope === "mine" ? "Mine" : "Top across office"}</span>
+      </header>
+      <p className="text-sm text-gray-500">Clients with transactions still in suspense</p>
+
+      {items.length === 0 ? (
+        <p className="mt-3 rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-6 text-center text-sm text-gray-500">
+          {scope === "mine"
+            ? "None of the clients you worked on recently have uncategorized transactions."
+            : "All clear — no uncategorized transactions."}
+        </p>
+      ) : (
+        <ul className="mt-3 divide-y divide-gray-100">
+          {items.map((item) => (
+            <li key={item.clientId}>
+              <button
+                type="button"
+                onClick={() => onOpenClient?.(item.clientId)}
+                className="flex w-full items-center justify-between gap-3 px-1 py-2 text-left hover:bg-gray-50"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-gray-900">
+                    {item.clientName || "Client"}
+                  </span>
+                  {item.oldestDate && (
+                    <span className="block text-[11px] text-gray-500">
+                      Oldest: {item.oldestDate}
+                    </span>
+                  )}
+                </span>
+                <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[12px] font-semibold text-amber-700 tabular-nums">
+                  {formatNumber(item.count)}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </article>
+  )
+}
+
+function ReconciliationHealthCard({ items, scope, onOpenClient }) {
+  return (
+    <article className="rounded-xl border border-gray-200 bg-white p-4">
+      <header className="flex items-baseline justify-between gap-2">
+        <h2 className="text-lg font-semibold">Reconciliation Health</h2>
+        <span className="text-xs text-gray-500">{scope === "mine" ? "Mine" : "Top across office"}</span>
+      </header>
+      <p className="text-sm text-gray-500">Bank legs not yet cleared</p>
+
+      {items.length === 0 ? (
+        <p className="mt-3 rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-6 text-center text-sm text-gray-500">
+          {scope === "mine"
+            ? "Clients you worked on recently are all clear."
+            : "Everything cleared."}
+        </p>
+      ) : (
+        <ul className="mt-3 divide-y divide-gray-100">
+          {items.map((item) => (
+            <li key={item.clientId}>
+              <button
+                type="button"
+                onClick={() => onOpenClient?.(item.clientId)}
+                className="flex w-full items-center justify-between gap-3 px-1 py-2 text-left hover:bg-gray-50"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-gray-900">
+                    {item.clientName || "Client"}
+                  </span>
+                  <span className="block text-[11px] text-gray-500">
+                    {formatNumber(item.accountsWithUncleared)} account{item.accountsWithUncleared === 1 ? "" : "s"}
+                  </span>
+                </span>
+                <span className="shrink-0 rounded-full bg-rose-100 px-2 py-0.5 text-[12px] font-semibold text-rose-700 tabular-nums">
+                  {formatNumber(item.unclearedLegs)}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </article>
   )
 }
 
