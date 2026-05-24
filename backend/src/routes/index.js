@@ -26,6 +26,7 @@ import recurringRoutes from "./recurring.routes.js"
 import onboardingRoutes from "./onboarding.routes.js"
 import clientHomeRoutes from "./clientHome.routes.js"
 import officeOverviewRoutes from "./officeOverview.routes.js"
+import chatRoutes from "./chat.routes.js"
 
 const router = Router()
 router.use(healthRoutes)
@@ -55,5 +56,6 @@ router.use(recurringRoutes)
 router.use(onboardingRoutes)
 router.use(clientHomeRoutes)
 router.use(officeOverviewRoutes)
+router.use(chatRoutes)
 
 export default router

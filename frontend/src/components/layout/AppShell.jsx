@@ -4,6 +4,7 @@ import Header from "./Header"
 import Footer from "./Footer"
 import Sidebar from "./Sidebar"
 import PopupModal from "../ui/PopupModal"
+import ChatWidget from "../chat/ChatWidget"
 import { useOpenTest } from "../../contexts/openTest.context"
 
 const PRIVATE_BETA_REVIEW_EVENT = "app:private-beta-review-required"
@@ -152,6 +153,8 @@ function AppShell() {
             </div>
           </div>
         </PopupModal>
+
+        <ChatWidget />
       </div>
     </div>
   )

@@ -7,6 +7,8 @@ export const DEFAULT_OFFICE_FEATURES = Object.freeze({
     // Tasks ship enabled by default on offices that turn CRM on, but can be
     // disabled per office for teams that don't want the Tasks workflow.
     crmTasks: true,
+    // Internal employee chat (floating widget) — off by default; opt-in.
+    crmChat: false,
     // Bookkeeping itself is always-on (core product) — its sub-features are flagged.
     bookkeepingLlm: true,
 })
@@ -31,6 +33,7 @@ export function normalizeOfficeFeatures(features) {
         // Sub-flag stays off whenever the parent CRM add-on is disabled.
         crmOperationalStatus: safeCrm && Boolean(features?.crmOperationalStatus),
         crmTasks: safeCrm && wantsCrmTasks,
+        crmChat: safeCrm && Boolean(features?.crmChat),
         bookkeepingLlm: safeBookkeepingLlm,
     }
 }

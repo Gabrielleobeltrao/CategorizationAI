@@ -48,6 +48,9 @@ export const PERMISSION_DEFINITIONS = [
   { key: "tasks:commentDelete", module: "Operations CRM", group: "Task Comments", label: "Delete any comment (other authors)" },
   { key: "board:read", module: "Operations CRM", group: "Board", label: "View task board" },
   { key: "board:manageColumns", module: "Operations CRM", group: "Board", label: "Create / rename / delete board columns" },
+  { key: "chat:read", module: "Operations CRM", group: "Team Chat", label: "Read team chat messages" },
+  { key: "chat:send", module: "Operations CRM", group: "Team Chat", label: "Send team chat messages" },
+  { key: "chat:manage", module: "Operations CRM", group: "Team Chat", label: "Manage every conversation (Chat Manager page)" },
 ]
 
 export const PERMISSION_KEYS = PERMISSION_DEFINITIONS.map((item) => item.key)
@@ -69,6 +72,7 @@ export const ROLE_DEFINITIONS = [
       "tasks:read",
       "tasks:readStatusHistory",
       "board:read",
+      "chat:read",
       "overview:readOwn",
       "overview:read",
     ],
@@ -96,6 +100,7 @@ export const ROLE_DEFINITIONS = [
       "roles:read",
       "tasks:*",
       "board:*",
+      "chat:*",
       "overview:*",
     ],
   },
@@ -119,6 +124,7 @@ export const ROLE_DEFINITIONS = [
       "roles:*",
       "tasks:*",
       "board:*",
+      "chat:*",
       "overview:*",
       "activityLog:read",
     ],

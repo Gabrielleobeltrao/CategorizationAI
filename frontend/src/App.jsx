@@ -33,6 +33,7 @@ const loadClientSettingsPage = () => import('./pages/ClientSettingsPage.jsx')
 const loadBookkeepingDashboardPage = () => import('./pages/BookkeepingDashboardPage.jsx')
 const loadCrmDashboardPage = () => import('./pages/CrmDashboardPage.jsx')
 const loadTasksPage = () => import('./pages/TasksPage.jsx')
+const loadTeamChatManagerPage = () => import('./pages/TeamChatManagerPage.jsx')
 const loadBoardPage = () => import('./pages/BoardPage.jsx')
 const loadUpdatePasswordPage = () => import('./pages/UpdatePassword.jsx')
 const loadAppShell = () => import('./components/layout/AppShell.jsx')
@@ -62,6 +63,7 @@ const ClientSettingsPage = lazy(loadClientSettingsPage)
 const BookkeepingDashboardPage = lazy(loadBookkeepingDashboardPage)
 const CrmDashboardPage = lazy(loadCrmDashboardPage)
 const TasksPage = lazy(loadTasksPage)
+const TeamChatManagerPage = lazy(loadTeamChatManagerPage)
 const BoardPage = lazy(loadBoardPage)
 const UpdatePassword = lazy(loadUpdatePasswordPage)
 const AppShell = lazy(loadAppShell)
@@ -182,6 +184,16 @@ function App() {
                     <FeatureGate flag="crmTasks" fallback={<Navigate to="/home" replace />}>
                       <PermissionGate permission="tasks:read" fallback={<Navigate to="/home" replace />}>
                         <TasksPage />
+                      </PermissionGate>
+                    </FeatureGate>
+                  }
+                />
+                <Route
+                  path="/crm/chat"
+                  element={
+                    <FeatureGate flag="crmChat" fallback={<Navigate to="/home" replace />}>
+                      <PermissionGate permission="chat:manage" fallback={<Navigate to="/home" replace />}>
+                        <TeamChatManagerPage />
                       </PermissionGate>
                     </FeatureGate>
                   }

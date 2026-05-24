@@ -5,6 +5,15 @@ import { useAuth } from "../contexts/auth.context"
 import { getCachedOfficeById, getOfficeById, updateOfficeById, updateOfficeFeatures } from "../services/office.service"
 import { hasPermission } from "../utils/permissions"
 import { useNotification } from "../contexts/notification.context"
+import { useFeature } from "../hooks/useFeature"
+import {
+  isChatNotificationsEnabled,
+  setChatNotificationsEnabled,
+  requestNotificationPermission,
+  getNotificationPermission,
+  isInAppPopupsEnabled,
+  setInAppPopupsEnabled,
+} from "../utils/chatNotifications"
 
 function normalizeAccountForm(profile) {
   return {
@@ -69,6 +78,7 @@ function SettingsPage() {
   const [isTogglingCrm, setIsTogglingCrm] = useState(false)
   const [isTogglingOperationalStatus, setIsTogglingOperationalStatus] = useState(false)
   const [isTogglingCrmTasks, setIsTogglingCrmTasks] = useState(false)
+  const [isTogglingCrmChat, setIsTogglingCrmChat] = useState(false)
   const [isTogglingBookkeepingLlm, setIsTogglingBookkeepingLlm] = useState(false)
   const { success, error } = useNotification()
 
@@ -221,6 +231,30 @@ function SettingsPage() {
       error(err.message || "Failed to update add-on")
     } finally {
       setIsTogglingCrmTasks(false)
+    }
+  }
+
+  const handleToggleCrmChat = async (nextEnabled) => {
+    if (!office?._id) {
+      error("Office not found")
+      return
+    }
+    if (!canEditOffice) {
+      error("You do not have permission to manage add-ons")
+      return
+    }
+    try {
+      setIsTogglingCrmChat(true)
+      const updatedOffice = await updateOfficeFeatures(office._id, {
+        crmChat: Boolean(nextEnabled),
+      })
+      setOffice(updatedOffice || null)
+      await refreshAuth({ force: true })
+      success(nextEnabled ? "Team Chat enabled" : "Team Chat disabled")
+    } catch (err) {
+      error(err.message || "Failed to update add-on")
+    } finally {
+      setIsTogglingCrmChat(false)
     }
   }
 
@@ -544,6 +578,8 @@ function SettingsPage() {
           )}
         </form>
 
+        <ChatNotificationsPreference />
+
         {hasPermission(profile?.permissions, "activityLog:read") && (
           <section className="border-t border-gray-200" aria-labelledby="admin-tools-heading">
             <div className="py-4">
@@ -754,6 +790,30 @@ function SettingsPage() {
                       </button>
                     </div>
 
+                    <div className="flex items-start justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900">Team Chat</p>
+                        <p className="mt-1 text-xs text-gray-500">
+                          Floating internal chat for office employees. Messages are retained for 90 days.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={Boolean(office?.features?.crmChat)}
+                        disabled={!canEditOffice || isTogglingCrmChat}
+                        onClick={() => handleToggleCrmChat(!office?.features?.crmChat)}
+                        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                          office?.features?.crmChat ? "bg-gray-900" : "bg-gray-300"
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                            office?.features?.crmChat ? "translate-x-5" : "translate-x-0.5"
+                          }`}
+                        />
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -762,6 +822,124 @@ function SettingsPage() {
         </section>
 
 
+      </div>
+    </section>
+  )
+}
+
+function ChatNotificationsPreference() {
+  const isCrmChatEnabled = useFeature("crmChat")
+  const [browserEnabled, setBrowserEnabled] = useState(() => isChatNotificationsEnabled())
+  const [permission, setPermission] = useState(() => getNotificationPermission())
+  const [inAppEnabled, setInAppEnabledState] = useState(() => isInAppPopupsEnabled())
+  const [isBusy, setIsBusy] = useState(false)
+  const { error, success } = useNotification()
+
+  if (!isCrmChatEnabled) return null
+
+  const handleToggleBrowser = async (next) => {
+    if (!next) {
+      setChatNotificationsEnabled(false)
+      setBrowserEnabled(false)
+      success("Browser notifications disabled")
+      return
+    }
+    setIsBusy(true)
+    try {
+      const result = await requestNotificationPermission()
+      setPermission(result)
+      if (result === "granted") {
+        setChatNotificationsEnabled(true)
+        setBrowserEnabled(true)
+        success("Browser notifications enabled")
+      } else if (result === "denied") {
+        setChatNotificationsEnabled(false)
+        setBrowserEnabled(false)
+        error("Browser blocked notifications. Allow them in your browser settings and try again.")
+      } else if (result === "unsupported") {
+        error("Your browser doesn't support notifications.")
+      } else {
+        setChatNotificationsEnabled(false)
+        setBrowserEnabled(false)
+      }
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
+  const handleToggleInApp = (next) => {
+    setInAppPopupsEnabled(Boolean(next))
+    setInAppEnabledState(Boolean(next))
+    success(next ? "In-app popups enabled" : "In-app popups disabled")
+  }
+
+  const blocked = permission === "denied"
+
+  return (
+    <section className="border-t border-gray-200" aria-labelledby="prefs-heading">
+      <div className="py-4">
+        <h2 id="prefs-heading" className="text-lg font-semibold text-gray-900">
+          Preferences
+        </h2>
+        <p className="mt-1 text-sm text-gray-500">
+          Personal settings that only affect this device.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div className="flex items-start justify-between gap-3 rounded-2xl border border-gray-200 bg-white p-4">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-gray-900">Browser notifications</p>
+            <p className="mt-1 text-xs text-gray-500">
+              Show the operating system / browser notification when a new chat message arrives.
+              {blocked && (
+                <span className="ml-1 font-medium text-amber-700">
+                  Browser permission is blocked — change it in your browser settings.
+                </span>
+              )}
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={Boolean(browserEnabled)}
+            disabled={isBusy || blocked}
+            onClick={() => handleToggleBrowser(!browserEnabled)}
+            className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-60 ${
+              browserEnabled ? "bg-gray-900" : "bg-gray-300"
+            }`}
+          >
+            <span
+              className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                browserEnabled ? "translate-x-5" : "translate-x-0.5"
+              }`}
+            />
+          </button>
+        </div>
+
+        <div className="flex items-start justify-between gap-3 rounded-2xl border border-gray-200 bg-white p-4">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-gray-900">In-app popups</p>
+            <p className="mt-1 text-xs text-gray-500">
+              Show a small toast in the bottom-right corner inside the app — works without browser permission.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={Boolean(inAppEnabled)}
+            onClick={() => handleToggleInApp(!inAppEnabled)}
+            className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition ${
+              inAppEnabled ? "bg-gray-900" : "bg-gray-300"
+            }`}
+          >
+            <span
+              className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                inAppEnabled ? "translate-x-5" : "translate-x-0.5"
+              }`}
+            />
+          </button>
+        </div>
       </div>
     </section>
   )

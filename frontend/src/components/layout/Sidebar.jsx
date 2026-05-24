@@ -123,6 +123,17 @@ const crmNavItems = [
       </svg>
     ),
   },
+  {
+    to: "/crm/chat",
+    label: "Team Chat Manager",
+    feature: "crmChat",
+    permission: "chat:manage",
+    icon: (
+      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+      </svg>
+    ),
+  },
 ]
 
 const settingsNavItem = {
@@ -148,7 +159,8 @@ function Sidebar({ isCollapsed: rawCollapsed, isMobileOpen = false, onCloseMobil
   const { profile: currentProfile, clearAuth } = useAuth()
   const isCrmEnabled = useFeature("crm")
   const isCrmTasksEnabled = useFeature("crmTasks")
-  const featureFlagValues = { crm: isCrmEnabled, crmTasks: isCrmTasksEnabled }
+  const isCrmChatEnabled = useFeature("crmChat")
+  const featureFlagValues = { crm: isCrmEnabled, crmTasks: isCrmTasksEnabled, crmChat: isCrmChatEnabled }
   const visibleCrmNavItems = crmNavItems.filter((item) => {
     if (item.feature && !featureFlagValues[item.feature]) return false
     if (item.permission && !hasPermission(currentProfile?.permissions, item.permission)) return false

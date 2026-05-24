@@ -25,6 +25,12 @@ import { ensureClientOperationalStatusIndexes } from "./repositories/clientOpera
 import { ensureBoardCollectionsIndexes } from "./repositories/boardCollections.repository.js"
 import { ensureJournalEntriesIndexes } from "./repositories/journalEntries.repository.js"
 import { ensureActivityLogIndexes } from "./repositories/activityLog.repository.js"
+import { ensureChatIndexes } from "./repositories/chat.repository.js"
+import {
+  ensureChatFilesIndexes,
+  pruneExpiredChatFiles,
+  pruneOrphanedChatFiles,
+} from "./repositories/chatFiles.repository.js"
 import { startCategorizationWorker } from "./workers/categorization.worker.js"
 import { startCategorySyncWorker } from "./workers/categorySync.worker.js"
 
@@ -55,6 +61,8 @@ await ensureClientOperationalStatusIndexes()
 await ensureBoardCollectionsIndexes()
 await ensureJournalEntriesIndexes()
 await ensureActivityLogIndexes()
+await ensureChatIndexes()
+await ensureChatFilesIndexes()
 
 app.locals.auth = createAuth(getDB())
 await startCategorizationWorker()
@@ -63,5 +71,22 @@ await startCategorySyncWorker()
 backfillTransactionsSearchAndDerivedFields().catch((error) => {
   console.error("[server] transactions backfill failed", error)
 })
+
+// Chat file GridFS cleanup — runs on boot, then every 24h. Drops blobs
+// older than the chat file retention plus any orphans whose message was
+// removed early. Quiet on success; warns per-file on failure.
+async function runChatFilesSweep() {
+  try {
+    const expired = await pruneExpiredChatFiles()
+    const orphans = await pruneOrphanedChatFiles()
+    if (expired || orphans) {
+      console.log(`[chatFiles] sweep removed expired=${expired} orphans=${orphans}`)
+    }
+  } catch (error) {
+    console.warn(`[chatFiles] sweep failed: ${error?.message || error}`)
+  }
+}
+runChatFilesSweep()
+setInterval(runChatFilesSweep, 24 * 60 * 60 * 1000)
 
 app.listen(PORT, () => console.log(`API running on ${PORT}`))

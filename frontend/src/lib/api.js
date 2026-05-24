@@ -1,5 +1,10 @@
 const configuredApiUrl = String(import.meta.env.VITE_API_URL || "").trim().replace(/\/+$/, "")
 const API_BASE_URL = import.meta.env.DEV ? configuredApiUrl || "http://localhost:3001" : ""
+
+export function apiUrl(path) {
+  return `${API_BASE_URL}${path}`
+}
+
 let pendingRequests = 0
 
 function emitLoadingState() {
