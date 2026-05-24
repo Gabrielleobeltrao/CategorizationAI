@@ -48,6 +48,17 @@ function normalizeStatus(value) {
   return status
 }
 
+// Normalizes the client-scope inputs. When scope === "assigned" but no client
+// IDs are provided we keep the scope but leave the list empty — the user
+// will be locked out until someone picks clients for them.
+export function normalizeClientScopeInput({ clientScope, assignedClientIds } = {}) {
+  const safeScope = clientScope === "assigned" ? "assigned" : "all"
+  const safeIds = safeScope === "assigned" && Array.isArray(assignedClientIds)
+    ? Array.from(new Set(assignedClientIds.map((id) => String(id || "").trim()).filter(Boolean)))
+    : []
+  return { clientScope: safeScope, assignedClientIds: safeIds }
+}
+
 export async function createUserProfileService(input, context = {}) {
   if (!input?.name) throw new Error("name is required")
   if (!input?.officeId) throw new Error("officeId is required")
@@ -67,6 +78,11 @@ export async function createUserProfileService(input, context = {}) {
 
   const status = input?.status === undefined ? "active" : normalizeStatus(input.status)
 
+  const { clientScope, assignedClientIds } = normalizeClientScopeInput({
+    clientScope: input?.clientScope,
+    assignedClientIds: input?.assignedClientIds,
+  })
+
   return createUserProfile({
     name: input.name.trim(),
     officeId: input.officeId,
@@ -76,6 +92,8 @@ export async function createUserProfileService(input, context = {}) {
     authUserId: input?.authUserId || undefined,
     mustChangePassword: Boolean(input?.mustChangePassword),
     passwordResetAt: input?.passwordResetAt || null,
+    clientScope,
+    assignedClientIds,
     createdBy: String(context?.actorProfileId || ""),
   })
 }
@@ -122,6 +140,15 @@ export async function updateUserProfileByIdService(id, patch) {
       }
     }
     safePatch.status = nextStatus
+  }
+
+  if (patch.clientScope !== undefined || patch.assignedClientIds !== undefined) {
+    const { clientScope, assignedClientIds } = normalizeClientScopeInput({
+      clientScope: patch.clientScope,
+      assignedClientIds: patch.assignedClientIds,
+    })
+    safePatch.clientScope = clientScope
+    safePatch.assignedClientIds = assignedClientIds
   }
 
   if (Object.keys(safePatch).length === 0) {
@@ -304,6 +331,8 @@ export async function createEmployeeAccountService(input, context = {}) {
       role,
       status: "active",
       authUserId: String(authUser._id),
+      clientScope: input?.clientScope,
+      assignedClientIds: input?.assignedClientIds,
     }, { actorProfileId: context?.actorProfileId })
 
     return {

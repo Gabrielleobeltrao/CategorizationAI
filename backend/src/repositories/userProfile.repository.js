@@ -41,6 +41,12 @@ export async function createUserProfile(input) {
         authUserId: input.authUserId,
         mustChangePassword: input.mustChangePassword ?? false,
         passwordResetAt: input.passwordResetAt ?? null,
+        // Default scope = full office. Restricted users only see clients in
+        // `assignedClientIds`.
+        clientScope: input.clientScope === "assigned" ? "assigned" : "all",
+        assignedClientIds: Array.isArray(input.assignedClientIds)
+            ? input.assignedClientIds.map((id) => String(id))
+            : [],
         createdBy: String(input.createdBy || ""),
         createdAt: new Date(),
         updatedAt: new Date(),

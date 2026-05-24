@@ -580,7 +580,7 @@ function SettingsPage() {
 
         <ChatNotificationsPreference />
 
-        {hasPermission(profile?.permissions, "activityLog:read") && (
+        {hasPermission(profile?.permissions, "activityLog:read") && String(profile?.clientScope || "all") !== "assigned" && (
           <section className="border-t border-gray-200" aria-labelledby="admin-tools-heading">
             <div className="py-4">
               <h2 id="admin-tools-heading" className="text-lg font-semibold text-gray-900">

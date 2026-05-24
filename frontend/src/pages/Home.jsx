@@ -365,11 +365,16 @@ function Home() {
           />
         </FeatureGate>
 
-        <OfficeKpiRow kpis={overview?.kpis} />
+        {String(profile?.clientScope || "all") !== "assigned" && (
+          <OfficeKpiRow kpis={overview?.kpis} />
+        )}
 
         {(() => {
+          const isRestricted = String(profile?.clientScope || "all") === "assigned"
           const hasRecent = (overview?.myRecentClientCount || 0) > 0
-          const effectiveScope = !hasRecent ? "all" : overviewScope
+          // Restricted users always run in "mine" scope — they shouldn't see
+          // office-wide totals, and the backend already filters per-client.
+          const effectiveScope = isRestricted ? "mine" : (!hasRecent ? "all" : overviewScope)
           const pending = effectiveScope === "mine"
             ? (overview?.pendingCategorizationMine || [])
             : (overview?.pendingCategorization || [])
@@ -378,11 +383,13 @@ function Home() {
             : (overview?.reconciliationHealth || [])
           return (
             <>
-              <OverviewScopeToggle
-                scope={effectiveScope}
-                onChange={setOverviewScope}
-                hasRecent={hasRecent}
-              />
+              {!isRestricted && (
+                <OverviewScopeToggle
+                  scope={effectiveScope}
+                  onChange={setOverviewScope}
+                  hasRecent={hasRecent}
+                />
+              )}
               <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
                 <PendingCategorizationCard
                   items={pending}

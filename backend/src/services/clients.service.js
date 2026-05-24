@@ -11,7 +11,7 @@ import {
   deleteClientNote,
 } from "../repositories/clients.repository.js"
 import { AppError } from "../utils/appError.js"
-import { hasPermissionFromListService } from "./roles.service.js"
+import { hasPermissionFromListService, isClientScopeRestricted } from "./roles.service.js"
 import { recordActivity } from "../repositories/activityLog.repository.js"
 import { listAccountsByClientIdService } from "./account.service.js"
 import { listCategoriesByClientIdService } from "./category.service.js"
@@ -224,7 +224,7 @@ export async function updateClientByIdService(id, patch, context = {}) {
   return hydrateOfficeTagsForDocumentService(current.officeId, updatedClient)
 }
 
-export async function listClientsByOfficeIdService(officeId, query = {}) {
+export async function listClientsByOfficeIdService(officeId, query = {}, options = {}) {
   if (!officeId) throw new Error("officeId is required")
 
   const rawPage = Number(query.page ?? 1)
@@ -236,7 +236,20 @@ export async function listClientsByOfficeIdService(officeId, query = {}) {
   const limit = Math.min(safeLimit, 100)
 
   const result = await listClientsByOfficeId(officeId, { page, limit, search })
-  const items = await hydrateOfficeTagsForDocumentsService(officeId, result?.items)
+  let items = await hydrateOfficeTagsForDocumentsService(officeId, result?.items)
+
+  // Restrict to the actor's assigned client whitelist when applicable. We
+  // filter in-memory so existing pagination logic (search index, offsets)
+  // stays untouched — the trade-off is the returned page may be shorter than
+  // the requested limit when most matches aren't assigned to the user.
+  const actorProfile = options?.actorProfile
+  if (actorProfile && isClientScopeRestricted(actorProfile)) {
+    const assigned = new Set(
+      (Array.isArray(actorProfile.assignedClientIds) ? actorProfile.assignedClientIds : [])
+        .map((id) => String(id)),
+    )
+    items = (items || []).filter((doc) => assigned.has(String(doc?._id)))
+  }
 
   return {
     ...result,

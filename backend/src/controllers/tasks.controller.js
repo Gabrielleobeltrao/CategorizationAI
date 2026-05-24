@@ -16,6 +16,7 @@ function buildContext(req) {
         actorProfileId: req.userProfile?._id ? String(req.userProfile._id) : "",
         actorName: String(req.userProfile?.name || req.userProfile?.email || ""),
         actorPermissions: Array.isArray(req.userProfile?.permissions) ? req.userProfile.permissions : [],
+        actorProfile: req.userProfile,
     }
 }
 

@@ -8,7 +8,7 @@ import {
     updateTaskComment,
     deleteTaskComment,
 } from "../repositories/tasks.repository.js"
-import { hasPermissionFromListService } from "./roles.service.js"
+import { hasPermissionFromListService, isClientScopeRestricted } from "./roles.service.js"
 import { AppError } from "../utils/appError.js"
 import { recordActivity } from "../repositories/activityLog.repository.js"
 
@@ -60,7 +60,7 @@ export async function listTasksService(query = {}, context = {}) {
     const officeId = String(context?.actorOfficeId || "").trim()
     if (!officeId) throw new Error("Office context required")
 
-    return listTasksByOfficeId(officeId, {
+    const tasks = await listTasksByOfficeId(officeId, {
         clientId: query?.clientId,
         assigneeId: query?.assigneeId,
         status: query?.status,
@@ -68,6 +68,26 @@ export async function listTasksService(query = {}, context = {}) {
         from: query?.from,
         to: query?.to,
     })
+
+    // For restricted users, hide any task whose linked clients aren't on
+    // their assignment list. Office-wide tasks (no clientIds at all) stay
+    // visible since they're not tied to a specific client.
+    const actorProfile = context?.actorProfile
+    if (Array.isArray(tasks) && actorProfile && isClientScopeRestricted(actorProfile)) {
+        const assigned = new Set(
+            (Array.isArray(actorProfile.assignedClientIds) ? actorProfile.assignedClientIds : [])
+                .map((id) => String(id)),
+        )
+        return tasks.filter((task) => {
+            const ids = Array.isArray(task?.clientIds) && task.clientIds.length > 0
+                ? task.clientIds.map((id) => String(id))
+                : (task?.clientId ? [String(task.clientId)] : [])
+            if (ids.length === 0) return true
+            return ids.some((id) => assigned.has(id))
+        })
+    }
+
+    return tasks
 }
 
 export async function getTaskByIdService(id, context = {}) {

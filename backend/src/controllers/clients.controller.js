@@ -121,7 +121,7 @@ export async function updateClientByIdController(req, res) {
 export async function listClientsByOfficeIdController(req, res) {
     try {
         const { officeId } = req.params
-        const clients = await listClientsByOfficeIdService(officeId, req.query)
+        const clients = await listClientsByOfficeIdService(officeId, req.query, { actorProfile: req.userProfile })
         const canReadOwnerInfo = await userHasPermissionService(req.userProfile, "clientsOwnerInfo:read")
 
         const items = Array.isArray(clients?.items)

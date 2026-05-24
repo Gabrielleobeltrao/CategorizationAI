@@ -471,20 +471,22 @@ function Sidebar({ isCollapsed: rawCollapsed, isMobileOpen = false, onCloseMobil
               {!isCollapsed && <span>{boardNavItem.label}</span>}
             </NavLink>
           )}
-          <NavLink
-            to={overviewNavItem.to}
-            className={({ isActive }) =>
-              `flex items-center rounded-lg py-2 text-sm font-medium transition-colors ${
-                isCollapsed ? "justify-center px-2" : "gap-3 px-3"
-              } ${
-                isActive ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
-              }`
-            }
-            title={isCollapsed ? overviewNavItem.label : undefined}
-          >
-            <span>{overviewNavItem.icon}</span>
-            {!isCollapsed && <span>{overviewNavItem.label}</span>}
-          </NavLink>
+          {String(currentProfile?.clientScope || "all") !== "assigned" && (
+            <NavLink
+              to={overviewNavItem.to}
+              className={({ isActive }) =>
+                `flex items-center rounded-lg py-2 text-sm font-medium transition-colors ${
+                  isCollapsed ? "justify-center px-2" : "gap-3 px-3"
+                } ${
+                  isActive ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-100"
+                }`
+              }
+              title={isCollapsed ? overviewNavItem.label : undefined}
+            >
+              <span>{overviewNavItem.icon}</span>
+              {!isCollapsed && <span>{overviewNavItem.label}</span>}
+            </NavLink>
+          )}
         </nav>
 
         {clientId ? (() => {

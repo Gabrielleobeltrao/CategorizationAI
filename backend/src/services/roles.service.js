@@ -107,6 +107,23 @@ export function hasPermissionFromListService(permissions, permission) {
   return safePermissions.includes(`${resource}:*`)
 }
 
+// Client scoping — returns true when the user's profile permits accessing
+// the given client. Default scope ("all") grants access to anything in the
+// office; "assigned" restricts to a whitelist on the profile.
+export function userClientScopeAllowsClient(userProfile, clientId) {
+  if (!userProfile) return false
+  const scope = String(userProfile.clientScope || "all")
+  if (scope !== "assigned") return true
+  const assigned = Array.isArray(userProfile.assignedClientIds)
+    ? userProfile.assignedClientIds.map((id) => String(id))
+    : []
+  return assigned.includes(String(clientId || ""))
+}
+
+export function isClientScopeRestricted(userProfile) {
+  return String(userProfile?.clientScope || "all") === "assigned"
+}
+
 export async function userHasPermissionService(userProfile, permission) {
   const role = String(userProfile?.role || "").toLowerCase()
   const officeId = String(userProfile?.officeId || "")

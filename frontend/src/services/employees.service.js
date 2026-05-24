@@ -106,6 +106,10 @@ export async function createEmployeeAccount(input) {
   const password = input?.password
   const officeId = input?.officeId?.trim()
   const role = input?.role?.trim()
+  const clientScope = input?.clientScope === "assigned" ? "assigned" : "all"
+  const assignedClientIds = Array.isArray(input?.assignedClientIds)
+    ? input.assignedClientIds.map((id) => String(id || "").trim()).filter(Boolean)
+    : []
 
   if (!name) throw new Error("name is required")
   if (!email) throw new Error("email is required")
@@ -121,6 +125,8 @@ export async function createEmployeeAccount(input) {
       password,
       officeId,
       role,
+      clientScope,
+      assignedClientIds: clientScope === "assigned" ? assignedClientIds : [],
     }),
   })
 }

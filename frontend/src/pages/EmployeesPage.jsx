@@ -20,6 +20,7 @@ import {
     updateCustomRoleById,
     updateEmployeeById,
 } from "../services/employees.service"
+import { listClientsByOfficeId } from "../services/clients.service"
 import { useNotification } from "../contexts/notification.context"
 
 const fallbackRoles = [
@@ -107,6 +108,10 @@ function mapEmployeeItem(item = {}) {
         email: item?.email || "",
         role: item?.role || "staff",
         status: item?.status || "active",
+        clientScope: item?.clientScope === "assigned" ? "assigned" : "all",
+        assignedClientIds: Array.isArray(item?.assignedClientIds)
+            ? item.assignedClientIds.map((id) => String(id))
+            : [],
     }
 }
 
@@ -129,6 +134,15 @@ function EmployeesPage() {
     const [newEmployeeEmail, setNewEmployeeEmail] = useState("")
     const [newEmployeePassword, setNewEmployeePassword] = useState("")
     const [newEmployeeRole, setNewEmployeeRole] = useState("")
+    const [newEmployeeClientScope, setNewEmployeeClientScope] = useState("all")
+    const [newEmployeeAssignedClientIds, setNewEmployeeAssignedClientIds] = useState([])
+    const [clientPickerQuery, setClientPickerQuery] = useState("")
+    const [officeClients, setOfficeClients] = useState([])
+    const [clientAccessEmployee, setClientAccessEmployee] = useState(null)
+    const [clientAccessScope, setClientAccessScope] = useState("all")
+    const [clientAccessIds, setClientAccessIds] = useState([])
+    const [clientAccessQuery, setClientAccessQuery] = useState("")
+    const [isSavingClientAccess, setIsSavingClientAccess] = useState(false)
     const [editingEmployeeId, setEditingEmployeeId] = useState("")
     const [editingDraft, setEditingDraft] = useState({
         name: "",
@@ -258,6 +272,28 @@ function EmployeesPage() {
                 String(a.name || "").toLowerCase().localeCompare(String(b.name || "").toLowerCase())
             )
     }, [employees, searchTerm, roleFilter])
+
+    // Load the office's client directory for the per-employee client picker.
+    // Pull a large page (500) — way past the size of a typical accounting
+    // office. Silent on failure since the picker just stays empty.
+    useEffect(() => {
+        if (!officeId) return undefined
+        let active = true
+        listClientsByOfficeId(officeId, { limit: 500 })
+            .then((payload) => {
+                if (!active) return
+                const items = Array.isArray(payload?.items)
+                    ? payload.items
+                    : Array.isArray(payload)
+                        ? payload
+                        : []
+                setOfficeClients(items)
+            })
+            .catch(() => {})
+        return () => {
+            active = false
+        }
+    }, [officeId])
 
     useEffect(() => {
         let active = true
@@ -415,6 +451,8 @@ function EmployeesPage() {
                 email: newEmployeeEmail,
                 password: newEmployeePassword,
                 role: newEmployeeRole || "staff",
+                clientScope: newEmployeeClientScope,
+                assignedClientIds: newEmployeeAssignedClientIds,
             })
 
             setEmployees((current) => [
@@ -435,6 +473,9 @@ function EmployeesPage() {
             setNewEmployeeEmail("")
             setNewEmployeePassword("")
             setNewEmployeeRole("staff")
+            setNewEmployeeClientScope("all")
+            setNewEmployeeAssignedClientIds([])
+            setClientPickerQuery("")
             setShowEmployeeForm(false)
         } catch (err) {
             error(err.message || "Failed to create employee")
@@ -451,6 +492,53 @@ function EmployeesPage() {
             role: employeeItem.role || "staff",
             status: employeeItem.status || "active",
         })
+    }
+
+    const openClientAccessModal = (employeeItem) => {
+        setClientAccessEmployee(employeeItem)
+        setClientAccessScope(employeeItem.clientScope === "assigned" ? "assigned" : "all")
+        setClientAccessIds(Array.isArray(employeeItem.assignedClientIds) ? employeeItem.assignedClientIds : [])
+        setClientAccessQuery("")
+    }
+
+    const closeClientAccessModal = () => {
+        if (isSavingClientAccess) return
+        setClientAccessEmployee(null)
+        setClientAccessScope("all")
+        setClientAccessIds([])
+        setClientAccessQuery("")
+    }
+
+    const handleSaveClientAccess = async () => {
+        if (!clientAccessEmployee) return
+        setIsSavingClientAccess(true)
+        try {
+            const updated = await updateEmployeeById(clientAccessEmployee.id, {
+                clientScope: clientAccessScope,
+                assignedClientIds: clientAccessScope === "assigned" ? clientAccessIds : [],
+            })
+            setEmployees((current) =>
+                current.map((item) =>
+                    item.id === clientAccessEmployee.id
+                        ? {
+                            ...item,
+                            clientScope: updated?.clientScope || clientAccessScope,
+                            assignedClientIds: updated?.assignedClientIds || clientAccessIds,
+                        }
+                        : item,
+                ),
+            )
+            clearEmployeesCache(officeId)
+            success("Client access updated")
+            setClientAccessEmployee(null)
+            setClientAccessScope("all")
+            setClientAccessIds([])
+            setClientAccessQuery("")
+        } catch (err) {
+            error(err?.message || "Failed to update client access")
+        } finally {
+            setIsSavingClientAccess(false)
+        }
     }
 
     const cancelEditEmployee = () => {
@@ -1040,6 +1128,26 @@ function EmployeesPage() {
                                                             </button>
                                                             <button
                                                                 type="button"
+                                                                className={`rounded-md p-1 transition hover:bg-gray-200 ${
+                                                                    employeeItem.clientScope === "assigned"
+                                                                        ? "text-amber-700 hover:text-amber-900"
+                                                                        : "text-gray-500 hover:text-emerald-700"
+                                                                }`}
+                                                                onClick={() => openClientAccessModal(employeeItem)}
+                                                                title={employeeItem.clientScope === "assigned"
+                                                                    ? `Restricted to ${employeeItem.assignedClientIds?.length || 0} clients — click to manage`
+                                                                    : "All clients — click to restrict"}
+                                                                aria-label="Manage client access"
+                                                            >
+                                                                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                                    <rect x="4" y="2" width="16" height="20" rx="2" />
+                                                                    <path d="M9 22v-4h6v4" />
+                                                                    <path d="M8 6h.01M12 6h.01M16 6h.01" />
+                                                                    <path d="M8 10h.01M12 10h.01M16 10h.01" />
+                                                                </svg>
+                                                            </button>
+                                                            <button
+                                                                type="button"
                                                                 className="rounded-md p-1 text-gray-500 hover:bg-gray-200 hover:text-amber-700"
                                                                 onClick={() => setEmployeeToResetPassword(employeeItem)}
                                                                 title="Reset password"
@@ -1299,6 +1407,7 @@ function EmployeesPage() {
                     isOpen={showEmployeeForm}
                     title="Create Employee Account"
                     onClose={() => setShowEmployeeForm(false)}
+                    maxWidthClass="max-w-3xl"
                 >
                     <form className="flex flex-col gap-4" onSubmit={handleCreateEmployee}>
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1368,6 +1477,17 @@ function EmployeesPage() {
                                 {displayedRoles.find((role) => role.key === newEmployeeRole)?.description || "Select a role"}
                             </div>
                         )}
+
+                        <ClientScopeSection
+                            scope={newEmployeeClientScope}
+                            onScopeChange={setNewEmployeeClientScope}
+                            assignedIds={newEmployeeAssignedClientIds}
+                            onAssignedChange={setNewEmployeeAssignedClientIds}
+                            clients={officeClients}
+                            query={clientPickerQuery}
+                            onQueryChange={setClientPickerQuery}
+                        />
+
                         {!officeId && (
                             <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
                                 {isResolvingOfficeContext
@@ -1379,7 +1499,12 @@ function EmployeesPage() {
                             <button
                                 type="button"
                                 className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                                onClick={() => setShowEmployeeForm(false)}
+                                onClick={() => {
+                                    setShowEmployeeForm(false)
+                                    setNewEmployeeClientScope("all")
+                                    setNewEmployeeAssignedClientIds([])
+                                    setClientPickerQuery("")
+                                }}
                             >
                                 Cancel
                             </button>
@@ -1392,6 +1517,43 @@ function EmployeesPage() {
                             </button>
                         </div>
                     </form>
+                </PopupModal>
+
+                <PopupModal
+                    isOpen={Boolean(clientAccessEmployee)}
+                    title={`Client access — ${clientAccessEmployee?.name || ""}`}
+                    onClose={closeClientAccessModal}
+                    maxWidthClass="max-w-2xl"
+                >
+                    <div className="flex flex-col gap-4">
+                        <ClientScopeSection
+                            scope={clientAccessScope}
+                            onScopeChange={setClientAccessScope}
+                            assignedIds={clientAccessIds}
+                            onAssignedChange={setClientAccessIds}
+                            clients={officeClients}
+                            query={clientAccessQuery}
+                            onQueryChange={setClientAccessQuery}
+                        />
+                        <div className="flex items-center justify-end gap-2">
+                            <button
+                                type="button"
+                                className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                onClick={closeClientAccessModal}
+                                disabled={isSavingClientAccess}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-black disabled:opacity-60"
+                                onClick={handleSaveClientAccess}
+                                disabled={isSavingClientAccess}
+                            >
+                                {isSavingClientAccess ? "Saving…" : "Save access"}
+                            </button>
+                        </div>
+                    </div>
                 </PopupModal>
 
                 <ConfirmModal
@@ -1478,6 +1640,120 @@ function EmployeesPage() {
                 </PopupModal>
             </div>
         </section>
+    )
+}
+
+function ClientScopeSection({ scope, onScopeChange, assignedIds, onAssignedChange, clients, query, onQueryChange }) {
+    const safeAssigned = new Set((assignedIds || []).map(String))
+    const filtered = (clients || []).filter((client) => {
+        const q = String(query || "").trim().toLowerCase()
+        if (!q) return true
+        return String(client?.name || "").toLowerCase().includes(q)
+    })
+
+    const toggle = (clientId) => {
+        const id = String(clientId)
+        const next = new Set(safeAssigned)
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        onAssignedChange([...next])
+    }
+
+    return (
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Client access
+            </p>
+            <p className="mt-1 text-xs text-gray-500">
+                Restrict this employee to specific clients (great for freelancers). Office-wide
+                chat and tasks tied to their assigned clients stay accessible.
+            </p>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <button
+                    type="button"
+                    onClick={() => onScopeChange("all")}
+                    className={`rounded-lg border px-3 py-2.5 text-left text-sm transition ${
+                        scope === "all"
+                            ? "border-gray-900 bg-white ring-2 ring-gray-100"
+                            : "border-gray-200 bg-white hover:border-gray-300"
+                    }`}
+                >
+                    <p className="font-medium text-gray-900">All clients in the office</p>
+                    <p className="mt-0.5 text-[11px] text-gray-500">
+                        Default. Full access to every client.
+                    </p>
+                </button>
+                <button
+                    type="button"
+                    onClick={() => onScopeChange("assigned")}
+                    className={`rounded-lg border px-3 py-2.5 text-left text-sm transition ${
+                        scope === "assigned"
+                            ? "border-gray-900 bg-white ring-2 ring-gray-100"
+                            : "border-gray-200 bg-white hover:border-gray-300"
+                    }`}
+                >
+                    <p className="font-medium text-gray-900">Specific clients only</p>
+                    <p className="mt-0.5 text-[11px] text-gray-500">
+                        Pick which clients this employee can see and work on.
+                    </p>
+                </button>
+            </div>
+
+            {scope === "assigned" && (
+                <div className="mt-3 flex flex-col gap-2">
+                    <input
+                        type="text"
+                        value={query || ""}
+                        onChange={(e) => onQueryChange(e.target.value)}
+                        placeholder="Search clients…"
+                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-gray-400"
+                    />
+                    <div className="max-h-56 overflow-y-auto rounded-lg border border-gray-200 bg-white">
+                        {filtered.length === 0 ? (
+                            <p className="px-3 py-6 text-center text-sm text-gray-500">
+                                {clients?.length === 0 ? "No clients in this office yet." : "No clients match the search."}
+                            </p>
+                        ) : (
+                            <ul className="divide-y divide-gray-100">
+                                {filtered.map((client) => {
+                                    const id = String(client?._id)
+                                    const checked = safeAssigned.has(id)
+                                    return (
+                                        <li key={id}>
+                                            <button
+                                                type="button"
+                                                onClick={() => toggle(id)}
+                                                className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition ${
+                                                    checked ? "bg-gray-100" : "hover:bg-gray-50"
+                                                }`}
+                                            >
+                                                <span className={`grid h-5 w-5 shrink-0 place-items-center rounded border ${
+                                                    checked ? "border-gray-900 bg-gray-900 text-white" : "border-gray-300 bg-white"
+                                                }`}>
+                                                    {checked && (
+                                                        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                                            <path d="M5 12l5 5L20 7" />
+                                                        </svg>
+                                                    )}
+                                                </span>
+                                                <span className="min-w-0 flex-1 truncate text-gray-900">{client?.name || "Unnamed client"}</span>
+                                                {client?.businessType && (
+                                                    <span className="shrink-0 text-[11px] text-gray-500">{client.businessType}</span>
+                                                )}
+                                            </button>
+                                        </li>
+                                    )
+                                })}
+                            </ul>
+                        )}
+                    </div>
+                    <p className="text-[11px] text-gray-500">
+                        {safeAssigned.size} client{safeAssigned.size === 1 ? "" : "s"} selected
+                        {safeAssigned.size === 0 && " — they'll be locked out until you pick at least one."}
+                    </p>
+                </div>
+            )}
+        </div>
     )
 }
 
