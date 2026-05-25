@@ -77,29 +77,6 @@ function permissionListHasPermission(permissions, permission) {
     return safePermissions.includes(`${resource}:*`)
 }
 
-function getEmployeeStatusStyles(status) {
-    const safeStatus = String(status || "").toLowerCase()
-
-    if (safeStatus === "active") {
-        return {
-            label: "Active",
-            className: "border-gray-300 bg-white text-gray-900",
-        }
-    }
-
-    if (safeStatus === "inactive") {
-        return {
-            label: "Inactive",
-            className: "border-gray-300 bg-gray-200 text-gray-700",
-        }
-    }
-
-    return {
-        label: safeStatus ? `${safeStatus.charAt(0).toUpperCase()}${safeStatus.slice(1)}` : "Unknown",
-        className: "border-gray-300 bg-gray-100 text-gray-700",
-    }
-}
-
 function mapEmployeeItem(item = {}) {
     return {
         id: item?._id || item?.id || `${Date.now()}`,
@@ -1047,28 +1024,55 @@ function EmployeesPage() {
                                             )}
                                         </div>
 
-                                        <div className="min-w-0 flex items-center max-md:col-start-2 max-md:row-start-1 max-md:justify-end">
+                                        <div className="flex min-w-[96px] items-center max-md:col-start-2 max-md:row-start-1 max-md:justify-end md:justify-start">
                                             {(() => {
                                                 const currentStatus = isEditing ? editingDraft.status : employeeItem.status
-                                                const statusUi = getEmployeeStatusStyles(currentStatus)
+                                                const isActive = String(currentStatus || "").toLowerCase() === "active"
+
+                                                if (!isEditing) {
+                                                    return (
+                                                        <span
+                                                            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${
+                                                                isActive
+                                                                    ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                                                                    : "bg-gray-100 text-gray-600 ring-gray-200"
+                                                            }`}
+                                                            title={`Status: ${isActive ? "Active" : "Inactive"}`}
+                                                        >
+                                                            <span
+                                                                className={`h-1.5 w-1.5 rounded-full ${
+                                                                    isActive ? "bg-emerald-500" : "bg-gray-400"
+                                                                }`}
+                                                            />
+                                                            {isActive ? "Active" : "Inactive"}
+                                                        </span>
+                                                    )
+                                                }
 
                                                 return (
                                                     <button
                                                         type="button"
-                                                        className={`inline-flex min-w-[88px] items-center justify-center rounded-full border px-3 py-1 text-xs font-semibold transition ${statusUi.className} ${
-                                                            isEditing ? "hover:brightness-95" : "cursor-default"
-                                                        }`}
+                                                        role="switch"
+                                                        aria-checked={isActive}
                                                         onClick={() => {
-                                                            if (!isEditing) return
                                                             setEditingDraft((current) => ({
                                                                 ...current,
                                                                 status: current.status === "active" ? "inactive" : "active",
                                                             }))
                                                         }}
-                                                        title={isEditing ? "Toggle status" : `Status: ${statusUi.label}`}
-                                                        aria-label={isEditing ? "Toggle status" : `Status: ${statusUi.label}`}
+                                                        title={isActive ? "Active — click to deactivate" : "Inactive — click to activate"}
+                                                        aria-label="Toggle employee status"
+                                                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                                                            isActive
+                                                                ? "bg-emerald-500 focus:ring-emerald-400"
+                                                                : "bg-gray-300 focus:ring-gray-400"
+                                                        }`}
                                                     >
-                                                        {statusUi.label}
+                                                        <span
+                                                            className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform ${
+                                                                isActive ? "translate-x-5" : "translate-x-0.5"
+                                                            }`}
+                                                        />
                                                     </button>
                                                 )
                                             })()}
