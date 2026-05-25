@@ -110,6 +110,7 @@ export async function createClientService(input, context = {}) {
     description: input.description.trim(),
     mainActivity: input.mainActivity.trim(),
     state: input.state.trim(),
+    address: normalizeOptionalText(input.address),
     tagIds: resolvedTags.tagIds,
     owners: normalizeOwners(input.owners),
     ownerEmail: normalizeOptionalText(input.ownerEmail),
@@ -173,6 +174,10 @@ export async function updateClientByIdService(id, patch, context = {}) {
     const state = patch.state.trim()
     if (!state) throw new Error("state cannot be empty")
     safePatch.state = state
+  }
+
+  if (patch.address !== undefined) {
+    safePatch.address = normalizeOptionalText(patch.address)
   }
 
   if (patch.tags !== undefined) {

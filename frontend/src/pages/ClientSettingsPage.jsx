@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom"
 import ConfirmModal from "../components/ui/ConfirmModal"
 import TagsInput from "../components/ui/TagsInput"
 import TagRulesHelp from "../components/ui/TagRulesHelp"
+import BusinessTypeSelect from "../components/ui/BusinessTypeSelect"
 import { useNotification } from "../contexts/notification.context"
 import { useAuth } from "../contexts/auth.context"
 import { useOfficeTags } from "../hooks/useOfficeTags"
@@ -62,6 +63,7 @@ function emptyDraft() {
         description: "",
         mainActivity: "",
         state: "",
+        address: "",
         tags: [],
         owners: [{ name: "", email: "", phone: "" }],
     }
@@ -101,6 +103,7 @@ function ClientSettingsPage() {
                     description: String(data?.description || ""),
                     mainActivity: String(data?.mainActivity || ""),
                     state: String(data?.state || ""),
+                    address: String(data?.address || ""),
                     tags: Array.isArray(data?.tags) ? data.tags : [],
                     owners: normalizeOwnersForDraft(data?.owners),
                 })
@@ -122,6 +125,7 @@ function ClientSettingsPage() {
             description: String(client.description || ""),
             mainActivity: String(client.mainActivity || ""),
             state: String(client.state || ""),
+            address: String(client.address || ""),
             tags: Array.isArray(client.tags) ? client.tags : [],
             owners: normalizeOwnersForDraft(client.owners),
         })
@@ -180,6 +184,7 @@ function ClientSettingsPage() {
                 description: draft.description.trim(),
                 mainActivity: draft.mainActivity.trim(),
                 state: draft.state.trim(),
+                address: String(draft.address || "").trim(),
                 tags: draft.tags,
                 owners: normalizeOwnersForPayload(draft.owners),
             }
@@ -274,11 +279,9 @@ function ClientSettingsPage() {
 
                         <label className="flex flex-col gap-1.5">
                             <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Business type</span>
-                            <input
-                                type="text"
+                            <BusinessTypeSelect
                                 value={draft.businessType}
-                                onChange={(e) => updateDraft({ businessType: e.target.value })}
-                                className="rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-gray-500"
+                                onChange={(next) => updateDraft({ businessType: next })}
                             />
                         </label>
 
@@ -308,6 +311,17 @@ function ClientSettingsPage() {
                                 rows={3}
                                 value={draft.description}
                                 onChange={(e) => updateDraft({ description: e.target.value })}
+                                className="rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-gray-500"
+                            />
+                        </label>
+
+                        <label className="flex flex-col gap-1.5 md:col-span-2">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Address</span>
+                            <textarea
+                                rows={2}
+                                placeholder="123 Main St, Miami, FL 33101"
+                                value={draft.address || ""}
+                                onChange={(e) => updateDraft({ address: e.target.value })}
                                 className="rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-gray-500"
                             />
                         </label>

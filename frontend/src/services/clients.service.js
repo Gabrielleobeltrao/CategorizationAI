@@ -82,6 +82,7 @@ export async function createClient(input) {
   const description = String(input?.description || "").trim()
   const mainActivity = String(input?.mainActivity || "").trim()
   const state = String(input?.state || "").trim()
+  const address = String(input?.address || "").trim()
   const tags = Array.isArray(input?.tags)
     ? input.tags.map((tag) => String(tag || "").trim()).filter(Boolean)
     : []
@@ -119,6 +120,7 @@ export async function createClient(input) {
     description,
     mainActivity,
     state,
+    address,
     tags,
     owners,
   }

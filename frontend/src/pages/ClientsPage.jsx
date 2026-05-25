@@ -13,6 +13,7 @@ import { useResolvedOfficeContext } from "../hooks/useResolvedOfficeContext"
 import { useFeature } from "../hooks/useFeature"
 import { trackClientOpened } from "../utils/recentClients"
 import { DEFAULT_OPERATIONAL_STATUS } from "../constants/operationalStatuses"
+import BusinessTypeSelect from "../components/ui/BusinessTypeSelect"
 import { listOperationalStatusesByOfficeId } from "../services/operationalStatus.service"
 import {
     clearClientsListCache,
@@ -99,6 +100,7 @@ function getEmptyClientDraft() {
         description: "",
         mainActivity: "",
         state: "",
+        address: "",
         tags: [],
         owners: [{ name: "", email: "", phone: "" }],
     }
@@ -112,6 +114,7 @@ function mapClientItem(item = {}) {
         description: item?.description || "",
         mainActivity: item?.mainActivity || "",
         state: item?.state || "",
+        address: item?.address || "",
         tags: Array.isArray(item?.tags) ? item.tags : [],
         owners: normalizeOwnersForDraft(item?.owners),
         ownerEmail: String(item?.ownerEmail || ""),
@@ -173,6 +176,7 @@ function ClientsPage() {
     const [newClientDescription, setNewClientDescription] = useState("")
     const [newClientMainActivity, setNewClientMainActivity] = useState("")
     const [newClientState, setNewClientState] = useState("")
+    const [newClientAddress, setNewClientAddress] = useState("")
     const [newClientTags, setNewClientTags] = useState([])
     const [newClientOwners, setNewClientOwners] = useState([{ name: "", email: "", phone: "" }])
 
@@ -321,6 +325,7 @@ function ClientsPage() {
                 description: newClientDescription,
                 mainActivity: newClientMainActivity,
                 state: newClientState,
+                address: newClientAddress,
                 tags: newClientTags,
                 owners: normalizeOwnersList(newClientOwners),
             })
@@ -344,6 +349,7 @@ function ClientsPage() {
             setNewClientDescription("")
             setNewClientMainActivity("")
             setNewClientState("")
+            setNewClientAddress("")
             setNewClientTags([])
             setNewClientOwners([{ name: "", email: "", phone: "" }])
             setShowClientForm(false)
@@ -376,6 +382,7 @@ function ClientsPage() {
                 description: editingClientDraft.description,
                 mainActivity: editingClientDraft.mainActivity,
                 state: editingClientDraft.state,
+                address: editingClientDraft.address || "",
                 tags: editingClientDraft.tags,
                 owners: normalizeOwnersList(editingClientDraft.owners),
             }
@@ -783,12 +790,9 @@ function ClientsPage() {
                             </label>
                             <label className="flex flex-col gap-1">
                                 <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Business type</span>
-                                <input
-                                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none transition focus:border-gray-400 focus:bg-white"
-                                    type="text"
-                                    placeholder="1120"
+                                <BusinessTypeSelect
                                     value={newClientBusinessType}
-                                    onChange={(e) => setNewClientBusinessType(e.target.value)}
+                                    onChange={setNewClientBusinessType}
                                 />
                             </label>
                         </div>
@@ -821,6 +825,15 @@ function ClientsPage() {
                                 placeholder="Construction and painting services"
                                 value={newClientDescription}
                                 onChange={(e) => setNewClientDescription(e.target.value)}
+                            />
+                        </label>
+                        <label className="flex flex-col gap-1">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Address</span>
+                            <textarea
+                                className="min-h-16 w-full resize-y rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none transition focus:border-gray-400 focus:bg-white"
+                                placeholder="123 Main St, Miami, FL 33101"
+                                value={newClientAddress}
+                                onChange={(e) => setNewClientAddress(e.target.value)}
                             />
                         </label>
                         <label className="flex flex-col gap-1">
@@ -930,12 +943,9 @@ function ClientsPage() {
                             </label>
                             <label className="flex flex-col gap-1">
                                 <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Business type</span>
-                                <input
-                                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none transition focus:border-gray-400 focus:bg-white"
-                                    type="text"
-                                    placeholder="1120"
+                                <BusinessTypeSelect
                                     value={editingClientDraft.businessType}
-                                    onChange={(e) => handleChangeEditingDraft({ businessType: e.target.value })}
+                                    onChange={(next) => handleChangeEditingDraft({ businessType: next })}
                                 />
                             </label>
                         </div>
@@ -968,6 +978,15 @@ function ClientsPage() {
                                 placeholder="Construction and painting services"
                                 value={editingClientDraft.description}
                                 onChange={(e) => handleChangeEditingDraft({ description: e.target.value })}
+                            />
+                        </label>
+                        <label className="flex flex-col gap-1">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Address</span>
+                            <textarea
+                                className="min-h-16 w-full resize-y rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none transition focus:border-gray-400 focus:bg-white"
+                                placeholder="123 Main St, Miami, FL 33101"
+                                value={editingClientDraft.address || ""}
+                                onChange={(e) => handleChangeEditingDraft({ address: e.target.value })}
                             />
                         </label>
                         <label className="flex flex-col gap-1">
