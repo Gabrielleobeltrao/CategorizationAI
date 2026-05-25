@@ -1,12 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import ConfirmModal from "../components/ui/ConfirmModal"
-import TagsInput from "../components/ui/TagsInput"
-import TagRulesHelp from "../components/ui/TagRulesHelp"
 import BusinessTypeSelect from "../components/ui/BusinessTypeSelect"
 import { useNotification } from "../contexts/notification.context"
 import { useAuth } from "../contexts/auth.context"
-import { useOfficeTags } from "../hooks/useOfficeTags"
 import {
     clearClientsListCache,
     deleteClientById,
@@ -64,7 +61,6 @@ function emptyDraft() {
         mainActivity: "",
         state: "",
         address: "",
-        tags: [],
         owners: [{ name: "", email: "", phone: "" }],
     }
 }
@@ -83,10 +79,6 @@ function ClientSettingsPage() {
     const [isConfirmingDelete, setIsConfirmingDelete] = useState(false)
     const [isDeleting, setIsDeleting] = useState(false)
 
-    const { tags: officeTags, reloadTags, deleteTag, deletingTag } = useOfficeTags(officeId, {
-        autoLoad: true,
-    })
-
     useEffect(() => {
         if (!clientId) {
             setIsLoading(false)
@@ -104,7 +96,6 @@ function ClientSettingsPage() {
                     mainActivity: String(data?.mainActivity || ""),
                     state: String(data?.state || ""),
                     address: String(data?.address || ""),
-                    tags: Array.isArray(data?.tags) ? data.tags : [],
                     owners: normalizeOwnersForDraft(data?.owners),
                 })
             })
@@ -126,7 +117,6 @@ function ClientSettingsPage() {
             mainActivity: String(client.mainActivity || ""),
             state: String(client.state || ""),
             address: String(client.address || ""),
-            tags: Array.isArray(client.tags) ? client.tags : [],
             owners: normalizeOwnersForDraft(client.owners),
         })
     }, [client])
@@ -185,7 +175,6 @@ function ClientSettingsPage() {
                 mainActivity: draft.mainActivity.trim(),
                 state: draft.state.trim(),
                 address: String(draft.address || "").trim(),
-                tags: draft.tags,
                 owners: normalizeOwnersForPayload(draft.owners),
             }
             const updated = await updateClientById(clientId, payload)
@@ -193,10 +182,8 @@ function ClientSettingsPage() {
             setDraft((current) => ({
                 ...current,
                 owners: normalizeOwnersForDraft(updated?.owners),
-                tags: Array.isArray(updated?.tags) ? updated.tags : current.tags,
             }))
             clearClientsListCache(officeId)
-            reloadTags()
             success("Client updated")
         } catch (err) {
             error(err.message || "Failed to update client")
@@ -326,20 +313,6 @@ function ClientSettingsPage() {
                             />
                         </label>
 
-                        <label className="flex flex-col gap-1.5 md:col-span-2">
-                            <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                <span>Tags</span>
-                                <TagRulesHelp />
-                            </span>
-                            <TagsInput
-                                value={draft.tags}
-                                onChange={(nextTags) => updateDraft({ tags: nextTags })}
-                                options={officeTags}
-                                placeholder="Add tags for this client"
-                                onDeleteOption={deleteTag}
-                                deletingOption={deletingTag}
-                            />
-                        </label>
                     </div>
 
                     <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">

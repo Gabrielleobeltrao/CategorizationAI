@@ -2,14 +2,11 @@ import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react"
 import { useLocation, useNavigate, useOutletContext, useParams, useSearchParams } from "react-router-dom"
 import PopupModal from "../components/ui/PopupModal"
 import ConfirmModal from "../components/ui/ConfirmModal"
-import TagsInput from "../components/ui/TagsInput"
-import TagRulesHelp from "../components/ui/TagRulesHelp"
 import { getCachedClientLedgerBootstrap, getClientLedgerBootstrap } from "../services/clients.service"
 import {
     createAccount,
     deleteAccountsByIds,
     deleteAccountById,
-    listAccountsByClientId,
     updateAccountById,
 } from "../services/accounts.service"
 import {
@@ -31,11 +28,9 @@ import {
 } from "../services/transactions.service"
 import { useNotification } from "../contexts/notification.context"
 import { useCategorizationJobs } from "../contexts/categorizationJobs.context"
-import { useAuth } from "../contexts/auth.context"
-import { useOfficeTags } from "../hooks/useOfficeTags"
 import { trackClientOpened } from "../utils/recentClients"
 import { emitDashboardRefresh } from "../utils/dashboardRefresh"
-import { CATEGORY_TYPE_OPTIONS, getCategoryTypeLabel, normalizeCategoryType } from "../constants/categoryTypes"
+import { CATEGORY_TYPE_OPTIONS, normalizeCategoryType } from "../constants/categoryTypes"
 import { ACCOUNT_TYPE_OPTIONS, BALANCE_SHEET_ACCOUNT_TYPES } from "../constants/accountTypes"
 import { createHalfEntry } from "../services/journalEntries.service"
 import { showApiError } from "../utils/errorPresentation"
@@ -160,7 +155,6 @@ function mapCategory(item = {}) {
         name: item?.name || "",
         type: normalizeCategoryType(item?.type) || "",
         description: item?.description || "",
-        tags: Array.isArray(item?.tags) ? item.tags : [],
     }
 }
 
@@ -334,13 +328,6 @@ function LedgerPage() {
     const preselectedCategoryName = String(searchParams.get("category") || "").trim()
     const { success, error } = useNotification()
     const { jobs, startCategorizationJob, startTransactionsImportJob } = useCategorizationJobs()
-    const { profile } = useAuth()
-    const officeId = String(profile?.officeId || "").trim()
-    const { tags: officeTags, reloadTags, deleteTag, deletingTag } = useOfficeTags(officeId, {
-        onError: (err) => error(err.message || "Failed to delete tag"),
-        onDeleteSuccess: (tag) => success(`Tag "${tag}" deleted successfully`),
-    })
-
     const [client, setClient] = useState(null)
     const [accounts, setAccounts] = useState([])
     const [categoryList, setCategoryList] = useState([])
@@ -412,7 +399,6 @@ function LedgerPage() {
     const [newCategoryName, setNewCategoryName] = useState("")
     const [newCategoryType, setNewCategoryType] = useState("")
     const [newCategoryDescription, setNewCategoryDescription] = useState("")
-    const [newCategoryTags, setNewCategoryTags] = useState([])
 
     const [accountToDelete, setAccountToDelete] = useState(null)
     const [categoryToDelete, setCategoryToDelete] = useState(null)
@@ -1417,17 +1403,14 @@ function LedgerPage() {
                 name: newCategoryName,
                 type: newCategoryType,
                 description: newCategoryDescription,
-                tags: newCategoryTags,
             })
 
             setCategoryList((current) => [mapCategory(created), ...current])
             setNewCategoryName("")
             setNewCategoryType("")
             setNewCategoryDescription("")
-            setNewCategoryTags([])
             setShowCategoryForm(false)
             success("Category created successfully")
-            reloadTags()
         } catch (err) {
             error(err.message || "Failed to create category")
         } finally {
@@ -1442,12 +1425,10 @@ function LedgerPage() {
                 name: input?.name,
                 type: input?.type,
                 description: input?.description,
-                tags: input?.tags,
             })
             const mappedCategory = mapCategory(created)
             setCategoryList((current) => [mappedCategory, ...current])
             success("Category created successfully")
-            reloadTags()
             return mappedCategory
         } catch (err) {
             error(err.message || "Failed to create category")
@@ -1484,7 +1465,6 @@ function LedgerPage() {
                 current.map((item) => (item.id === categoryId ? mapCategory(updated) : item))
             )
             success("Category updated successfully")
-            reloadTags()
             return updated
         } catch (err) {
             error(err.message || "Failed to update category")
@@ -1541,7 +1521,6 @@ function LedgerPage() {
             setCategoryList((current) => current.filter((item) => item.id !== categoryToDelete.id))
             setCategoryToDelete(null)
             success("Category deleted successfully")
-            reloadTags()
         } catch (err) {
             error(err.message || "Failed to delete category")
         } finally {
@@ -1564,7 +1543,6 @@ function LedgerPage() {
                     ? "Category deleted successfully"
                     : `${targetIds.length} categories deleted successfully`
             )
-            reloadTags()
         } catch (err) {
             error(err.message || "Failed to delete selected categories")
         } finally {
@@ -1732,9 +1710,6 @@ function LedgerPage() {
                                 onSaveEdit={handleSaveCategoryEdit}
                                 onDelete={setCategoryToDelete}
                                 onDeleteMany={setCategoryIdsToDelete}
-                                tagOptions={officeTags}
-                                onDeleteTag={deleteTag}
-                                deletingTag={deletingTag}
                             />
                         </Suspense>
                     )}
@@ -1839,20 +1814,6 @@ function LedgerPage() {
                             placeholder="Materials and supplies"
                             value={newCategoryDescription}
                             onChange={(e) => setNewCategoryDescription(e.target.value)}
-                        />
-                    </label>
-                    <label className="flex flex-col gap-1">
-                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                            <span>Tags</span>
-                            <TagRulesHelp />
-                        </span>
-                        <TagsInput
-                            value={newCategoryTags}
-                            onChange={setNewCategoryTags}
-                            options={officeTags}
-                            placeholder="Add tags for this category"
-                            onDeleteOption={deleteTag}
-                            deletingOption={deletingTag}
                         />
                     </label>
                     <div className="mt-1 flex items-center justify-end gap-2">

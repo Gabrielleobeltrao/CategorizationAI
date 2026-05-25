@@ -16,11 +16,6 @@ import {
 import { normalizeCategoryType } from "../config/categoryTypes.js"
 import { AppError } from "../utils/appError.js"
 import { getCategoryIdentityKey } from "../utils/categoryIdentity.js"
-import {
-  hydrateOfficeTagsForDocumentService,
-  hydrateOfficeTagsForDocumentsService,
-  resolveOfficeTagRefsService,
-} from "./tagCatalog.service.js"
 
 async function assertCategoryIsUnique({ clientId, name, type, excludeId = "" }) {
   const safeClientId = String(clientId || "").trim()
@@ -59,17 +54,14 @@ export async function createCategoryService(input, context = {}) {
     type,
   })
 
-  const resolvedTags = await resolveOfficeTagRefsService(client.officeId, input.tags, context)
-
   const category = await createCategory({
     name,
     type,
     description,
     clientId: input.clientId,
-    tagIds: resolvedTags.tagIds,
   })
 
-  return hydrateOfficeTagsForDocumentService(client.officeId, category)
+  return category
 }
 
 export async function updateCategoryByIdService(id, patch, context = {}) {
@@ -115,12 +107,6 @@ export async function updateCategoryByIdService(id, patch, context = {}) {
     nextClient = targetClient
   }
 
-  if (patch.tags !== undefined) {
-    const resolvedTags = await resolveOfficeTagRefsService(nextClient.officeId, patch.tags, context)
-    safePatch.tagIds = resolvedTags.tagIds
-    safePatch.clearLegacyTags = true
-  }
-
   if (Object.keys(safePatch).length === 0) {
     throw new Error("no valid fields to update")
   }
@@ -136,8 +122,7 @@ export async function updateCategoryByIdService(id, patch, context = {}) {
     excludeId: id,
   })
 
-  const updated = await updateCategoryById(id, safePatch)
-  return hydrateOfficeTagsForDocumentService(nextClient.officeId, updated)
+  return updateCategoryById(id, safePatch)
 }
 
 export async function listCategoriesByClientIdService(clientId) {
@@ -146,8 +131,7 @@ export async function listCategoriesByClientIdService(clientId) {
   const client = await getClientById(clientId)
   if (!client) throw new Error("Client not found")
 
-  const categories = await listCategoriesByClientId(clientId)
-  return hydrateOfficeTagsForDocumentsService(client.officeId, categories)
+  return listCategoriesByClientId(clientId)
 }
 
 export async function getCategoryByIdService(id) {
@@ -156,10 +140,7 @@ export async function getCategoryByIdService(id) {
   const category = await getCategoryById(id)
   if (!category) return null
 
-  const client = await getClientById(category.clientId)
-  if (!client) return category
-
-  return hydrateOfficeTagsForDocumentService(client.officeId, category)
+  return category
 }
 
 export async function deleteCategoryByIdService(id) {

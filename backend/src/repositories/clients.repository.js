@@ -15,7 +15,6 @@ const CLIENTS_SEARCH_STORED_SOURCE_FIELDS = [
     "description",
     "mainActivity",
     "state",
-    "tagIds",
     "owners",
     "ownerEmail",
     "ownerPhone",
@@ -271,7 +270,6 @@ export async function ensureClientsIndexes() {
     await Promise.all([
         collection.createIndex({ officeId: 1, createdAt: -1 }),
         collection.createIndex({ officeId: 1, name: 1 }),
-        collection.createIndex({ officeId: 1, tagIds: 1 }),
         collection.createIndex({ officeId: 1, createdBy: 1, createdAt: -1 }),
     ])
 
@@ -292,7 +290,6 @@ export async function createClient(input) {
         mainActivity: input.mainActivity,
         state: input.state,
         address: input.address || "",
-        tagIds: Array.isArray(input.tagIds) ? input.tagIds : [],
         owners: Array.isArray(input.owners) ? input.owners : [],
         ownerEmail: input.ownerEmail,
         ownerPhone: input.ownerPhone,
@@ -319,7 +316,6 @@ export async function updateClientById(id, patch) {
         mainActivity: patch.mainActivity,
         state: patch.state,
         address: patch.address,
-        tagIds: patch.tagIds,
         owners: patch.owners,
         ownerEmail: patch.ownerEmail,
         ownerPhone: patch.ownerPhone,
@@ -332,10 +328,6 @@ export async function updateClientById(id, patch) {
     )
 
     const update = { $set }
-
-    if (patch.clearLegacyTags) {
-        update.$unset = { tags: "" }
-    }
 
     return db.collection("clients").findOneAndUpdate(
         { _id: new ObjectId(id) },

@@ -25,12 +25,6 @@ import { deleteTransactionsByClientId } from "../repositories/transactions.repos
 import { deleteTransactionMemoriesByClientId } from "../repositories/transactionMemory.repository.js"
 import { deleteCategorizationJobsByClientId } from "../repositories/categorizationJob.repository.js"
 import { deleteOperationalStatusByClientId } from "../repositories/clientOperationalStatus.repository.js"
-import {
-  hydrateOfficeTagsForDocumentService,
-  hydrateOfficeTagsForDocumentsService,
-  resolveOfficeTagRefsService,
-} from "./tagCatalog.service.js"
-import { enqueueClientCategorySync } from "../workers/categorySync.worker.js"
 
 const LEDGER_BOOTSTRAP_OPTIONAL_TIMEOUT_MS = Math.max(
   0,
@@ -101,8 +95,6 @@ export async function createClientService(input, context = {}) {
     throw new Error("owners must be an array")
   }
 
-  const resolvedTags = await resolveOfficeTagRefsService(input.officeId, input.tags, context)
-
   const client = await createClient({
     officeId: input.officeId,
     name: input.name.trim(),
@@ -111,16 +103,10 @@ export async function createClientService(input, context = {}) {
     mainActivity: input.mainActivity.trim(),
     state: input.state.trim(),
     address: normalizeOptionalText(input.address),
-    tagIds: resolvedTags.tagIds,
     owners: normalizeOwners(input.owners),
     ownerEmail: normalizeOptionalText(input.ownerEmail),
     ownerPhone: normalizeOptionalText(input.ownerPhone),
     createdBy: String(context?.actorProfileId || ""),
-  })
-
-  enqueueClientCategorySync({
-    officeId: client.officeId,
-    clientId: String(client._id),
   })
 
   recordActivity({
@@ -134,7 +120,7 @@ export async function createClientService(input, context = {}) {
     label: String(client.name || "Client"),
   })
 
-  return hydrateOfficeTagsForDocumentService(client.officeId, client)
+  return client
 }
 
 export async function updateClientByIdService(id, patch, context = {}) {
@@ -180,12 +166,6 @@ export async function updateClientByIdService(id, patch, context = {}) {
     safePatch.address = normalizeOptionalText(patch.address)
   }
 
-  if (patch.tags !== undefined) {
-    const resolvedTags = await resolveOfficeTagRefsService(current.officeId, patch.tags, context)
-    safePatch.tagIds = resolvedTags.tagIds
-    safePatch.clearLegacyTags = true
-  }
-
   if (patch.owners !== undefined) {
     if (!Array.isArray(patch.owners)) {
       throw new Error("owners must be an array")
@@ -219,14 +199,7 @@ export async function updateClientByIdService(id, patch, context = {}) {
 
   const updatedClient = await updateClientById(id, safePatch)
 
-  if (safePatch.tagIds !== undefined) {
-    enqueueClientCategorySync({
-      officeId: updatedClient?.officeId,
-      clientId: String(updatedClient?._id || id),
-    })
-  }
-
-  return hydrateOfficeTagsForDocumentService(current.officeId, updatedClient)
+  return updatedClient
 }
 
 export async function listClientsByOfficeIdService(officeId, query = {}, options = {}) {
@@ -241,7 +214,7 @@ export async function listClientsByOfficeIdService(officeId, query = {}, options
   const limit = Math.min(safeLimit, 100)
 
   const result = await listClientsByOfficeId(officeId, { page, limit, search })
-  let items = await hydrateOfficeTagsForDocumentsService(officeId, result?.items)
+  let items = Array.isArray(result?.items) ? result.items : []
 
   // Restrict to the actor's assigned client whitelist when applicable. We
   // filter in-memory so existing pagination logic (search index, offsets)
@@ -268,7 +241,7 @@ export async function getClientByIdService(id) {
   const client = await getClientById(id)
   if (!client) return null
 
-  return hydrateOfficeTagsForDocumentService(client.officeId, client)
+  return client
 }
 
 export async function getClientLedgerBootstrapService(clientId, query = {}) {
@@ -388,7 +361,7 @@ export async function addClientNoteService(clientId, input, context = {}) {
     label: String(existing.name || "Client"),
   })
 
-  return hydrateOfficeTagsForDocumentService(existing.officeId, result)
+  return result
 }
 
 export async function updateClientNoteService(clientId, noteId, input, context = {}) {
@@ -420,7 +393,7 @@ export async function updateClientNoteService(clientId, noteId, input, context =
     label: String(existing.name || "Client"),
   })
 
-  return hydrateOfficeTagsForDocumentService(existing.officeId, result)
+  return result
 }
 
 export async function deleteClientNoteService(clientId, noteId, context = {}) {
@@ -447,5 +420,5 @@ export async function deleteClientNoteService(clientId, noteId, context = {}) {
     label: String(existing.name || "Client"),
   })
 
-  return hydrateOfficeTagsForDocumentService(existing.officeId, result)
+  return result
 }

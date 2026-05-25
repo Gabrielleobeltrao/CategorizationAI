@@ -3,18 +3,10 @@ import {
   deleteCategoryTemplateById,
   getCategoryTemplateById,
   listCategoryTemplatesByOfficeId,
-  listCategoryTemplatesByOfficeIdAndTags,
   updateCategoryTemplateById,
 } from "../repositories/categoryTemplate.repository.js"
 import { normalizeCategoryType } from "../config/categoryTypes.js"
 import { getCategoryIdentityKey } from "../utils/categoryIdentity.js"
-import { hasIntersection, normalizeTags } from "../utils/tags.js"
-import {
-  hydrateOfficeTagsForDocumentService,
-  hydrateOfficeTagsForDocumentsService,
-  resolveOfficeTagRefsService,
-} from "./tagCatalog.service.js"
-import { enqueueOfficeCategorySync } from "../workers/categorySync.worker.js"
 
 function normalizeOptionalText(value) {
   if (value === undefined || value === null) return ""
@@ -55,25 +47,9 @@ export async function createCategoryTemplateService(input, context = {}) {
   const name = String(input.name).trim()
   const description = String(input.description).trim()
 
-  await assertCategoryTemplateIsUnique({
-    officeId,
-    name,
-    type,
-  })
+  await assertCategoryTemplateIsUnique({ officeId, name, type })
 
-  const resolvedTags = await resolveOfficeTagRefsService(officeId, input.tags, context)
-
-  const template = await createCategoryTemplate({
-    officeId,
-    name,
-    type,
-    description,
-    tagIds: resolvedTags.tagIds,
-  })
-
-  enqueueOfficeCategorySync(officeId)
-
-  return hydrateOfficeTagsForDocumentService(officeId, template)
+  return createCategoryTemplate({ officeId, name, type, description })
 }
 
 export async function listCategoryTemplatesByOfficeIdService(officeId, context = {}) {
@@ -85,8 +61,7 @@ export async function listCategoryTemplatesByOfficeIdService(officeId, context =
     throw new Error("Forbidden for this office")
   }
 
-  const templates = await listCategoryTemplatesByOfficeId(safeOfficeId)
-  return hydrateOfficeTagsForDocumentsService(safeOfficeId, templates)
+  return listCategoryTemplatesByOfficeId(safeOfficeId)
 }
 
 export async function updateCategoryTemplateByIdService(id, patch, context = {}) {
@@ -121,12 +96,6 @@ export async function updateCategoryTemplateByIdService(id, patch, context = {})
     safePatch.description = description
   }
 
-  if (patch.tags !== undefined) {
-    const resolvedTags = await resolveOfficeTagRefsService(current.officeId, patch.tags, context)
-    safePatch.tagIds = resolvedTags.tagIds
-    safePatch.clearLegacyTags = true
-  }
-
   if (Object.keys(safePatch).length === 0) {
     throw new Error("no valid fields to update")
   }
@@ -141,10 +110,7 @@ export async function updateCategoryTemplateByIdService(id, patch, context = {})
     excludeId: id,
   })
 
-  const updated = await updateCategoryTemplateById(id, safePatch)
-  enqueueOfficeCategorySync(String(current.officeId || ""))
-
-  return hydrateOfficeTagsForDocumentService(current.officeId, updated)
+  return updateCategoryTemplateById(id, safePatch)
 }
 
 export async function deleteCategoryTemplateByIdService(id, context = {}) {
@@ -158,23 +124,13 @@ export async function deleteCategoryTemplateByIdService(id, context = {}) {
     throw new Error("Forbidden for this office")
   }
 
-  const result = await deleteCategoryTemplateById(id)
-  enqueueOfficeCategorySync(String(current.officeId || ""))
-  return result
+  return deleteCategoryTemplateById(id)
 }
 
-export async function listMatchingCategoryTemplatesForClientService(input = {}) {
-  const officeId = String(input?.officeId || "").trim()
-  const clientTags = normalizeTags(input?.clientTags)
-
-  if (!officeId) throw new Error("officeId is required")
-  if (clientTags.length === 0) return []
-
-  const resolvedTags = await resolveOfficeTagRefsService(officeId, clientTags, input?.context)
-  const templates = await listCategoryTemplatesByOfficeIdAndTags(officeId, resolvedTags.tagIds)
-  const hydratedTemplates = await hydrateOfficeTagsForDocumentsService(officeId, templates)
-
-  return hydratedTemplates.filter((template) => hasIntersection(template?.tags, clientTags))
+// Tag-driven matching was retired together with the tag system. Kept as a
+// stub returning [] so any lingering caller stays compatible.
+export async function listMatchingCategoryTemplatesForClientService() {
+  return []
 }
 
 export function mapCategoryTemplateToClientCategoryInput(template, clientId) {
@@ -183,7 +139,5 @@ export function mapCategoryTemplateToClientCategoryInput(template, clientId) {
     name: String(template?.name || "").trim(),
     type: String(template?.type || "").trim(),
     description: normalizeOptionalText(template?.description),
-    tags: normalizeTags(template?.tags),
-    tagIds: Array.isArray(template?.tagIds) ? template.tagIds : [],
   }
 }

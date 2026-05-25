@@ -19,7 +19,6 @@ function accountToCategory(doc) {
     type: doc.accountType || "",
     description: typeof doc.description === "string" ? doc.description : "",
     clientId: doc.clientId,
-    tagIds: Array.isArray(doc.tagIds) ? doc.tagIds : [],
     templateCategoryId: doc.templateCategoryId ?? null,
     isTemplateSynced: Boolean(doc.isTemplateSynced),
     isActive: doc.isActive !== false,
@@ -43,7 +42,6 @@ export async function createCategory(input) {
     accountType: input.type,
     description: input.description,
     clientId: input.clientId,
-    tagIds: Array.isArray(input.tagIds) ? input.tagIds : [],
     templateCategoryId: input.templateCategoryId ?? null,
     isTemplateSynced: Boolean(input.isTemplateSynced),
     isActive: true,
@@ -63,7 +61,6 @@ export async function updateCategoryById(id, patch) {
     accountType: patch.type,
     description: patch.description,
     clientId: patch.clientId,
-    tagIds: patch.tagIds,
     templateCategoryId: patch.templateCategoryId,
     isTemplateSynced: patch.isTemplateSynced,
     isActive: patch.isActive,
@@ -75,9 +72,6 @@ export async function updateCategoryById(id, patch) {
   )
 
   const update = { $set }
-  if (patch.clearLegacyTags) {
-    update.$unset = { tags: "" }
-  }
 
   const result = await db.collection("coa_accounts").findOneAndUpdate(
     { _id: new ObjectId(id) },
@@ -96,7 +90,6 @@ export async function createCategoriesBulk(input = []) {
     accountType: item.type,
     description: item.description,
     clientId: item.clientId,
-    tagIds: Array.isArray(item.tagIds) ? item.tagIds : [],
     templateCategoryId: item.templateCategoryId ?? null,
     isTemplateSynced: Boolean(item.isTemplateSynced),
     isActive: true,

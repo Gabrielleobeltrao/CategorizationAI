@@ -1,14 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import PopupModal from "../components/ui/PopupModal"
 import ConfirmModal from "../components/ui/ConfirmModal"
-import TagsInput from "../components/ui/TagsInput"
-import TagRulesHelp from "../components/ui/TagRulesHelp"
 import OperationalStatusBadge from "../components/crm/OperationalStatusBadge"
 import OperationalStatusHelp from "../components/crm/OperationalStatusHelp"
 import OperationalStatusFilter from "../components/crm/OperationalStatusFilter"
 import { useNotification } from "../contexts/notification.context"
-import { useOfficeTags } from "../hooks/useOfficeTags"
 import { useResolvedOfficeContext } from "../hooks/useResolvedOfficeContext"
 import { useFeature } from "../hooks/useFeature"
 import { trackClientOpened } from "../utils/recentClients"
@@ -101,7 +98,6 @@ function getEmptyClientDraft() {
         mainActivity: "",
         state: "",
         address: "",
-        tags: [],
         owners: [{ name: "", email: "", phone: "" }],
     }
 }
@@ -115,7 +111,6 @@ function mapClientItem(item = {}) {
         mainActivity: item?.mainActivity || "",
         state: item?.state || "",
         address: item?.address || "",
-        tags: Array.isArray(item?.tags) ? item.tags : [],
         owners: normalizeOwnersForDraft(item?.owners),
         ownerEmail: String(item?.ownerEmail || ""),
         ownerPhone: String(item?.ownerPhone || ""),
@@ -177,7 +172,6 @@ function ClientsPage() {
     const [newClientMainActivity, setNewClientMainActivity] = useState("")
     const [newClientState, setNewClientState] = useState("")
     const [newClientAddress, setNewClientAddress] = useState("")
-    const [newClientTags, setNewClientTags] = useState([])
     const [newClientOwners, setNewClientOwners] = useState([{ name: "", email: "", phone: "" }])
 
     const [editingClientId, setEditingClientId] = useState("")
@@ -189,16 +183,6 @@ function ClientsPage() {
     const isOperationalStatusEnabled = useFeature("crmOperationalStatus")
     const [operationalStatusMap, setOperationalStatusMap] = useState({})
     const [statusFilter, setStatusFilter] = useState("")
-    const handleOfficeTagError = useCallback((err) => {
-        error(err.message || "Failed to delete tag")
-    }, [error])
-    const handleOfficeTagDeleteSuccess = useCallback((tag) => {
-        success(`Tag "${tag}" deleted successfully`)
-    }, [success])
-    const { tags: officeTags, reloadTags, deleteTag, deletingTag } = useOfficeTags(officeId, {
-        onError: handleOfficeTagError,
-        onDeleteSuccess: handleOfficeTagDeleteSuccess,
-    })
     const canSubmitNewClient = Boolean(
         !isSubmitting &&
         !isResolvingOfficeContext &&
@@ -326,7 +310,6 @@ function ClientsPage() {
                 mainActivity: newClientMainActivity,
                 state: newClientState,
                 address: newClientAddress,
-                tags: newClientTags,
                 owners: normalizeOwnersList(newClientOwners),
             })
 
@@ -350,13 +333,11 @@ function ClientsPage() {
             setNewClientMainActivity("")
             setNewClientState("")
             setNewClientAddress("")
-            setNewClientTags([])
             setNewClientOwners([{ name: "", email: "", phone: "" }])
             setShowClientForm(false)
             if (page !== 1) {
                 setPage(1)
             }
-            reloadTags()
         } catch (err) {
             error(err.message || "Failed to create client")
         } finally {
@@ -383,7 +364,6 @@ function ClientsPage() {
                 mainActivity: editingClientDraft.mainActivity,
                 state: editingClientDraft.state,
                 address: editingClientDraft.address || "",
-                tags: editingClientDraft.tags,
                 owners: normalizeOwnersList(editingClientDraft.owners),
             }
 
@@ -396,7 +376,6 @@ function ClientsPage() {
             success("Client updated successfully")
             clearClientsListCache(officeId)
             closeEditClientModal()
-            reloadTags()
         } catch (err) {
             error(err.message || "Failed to update client")
         } finally {
@@ -492,7 +471,6 @@ function ClientsPage() {
             if (clients.length === 1 && page > 1) {
                 setPage((current) => Math.max(1, current - 1))
             }
-            reloadTags()
         } catch (err) {
             error(err.message || "Failed to delete client")
         } finally {
@@ -702,22 +680,6 @@ function ClientsPage() {
                                                     )}
                                                 </div>
                                             </section>
-
-                                            {Array.isArray(client.tags) && client.tags.length > 0 && (
-                                                <section className="mt-3">
-                                                    <h3 className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Tags</h3>
-                                                    <div className="mt-1 flex flex-wrap gap-1.5">
-                                                        {client.tags.map((tag) => (
-                                                            <span
-                                                                key={`${client.id}-tag-${tag}`}
-                                                                className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-xs font-medium text-gray-700"
-                                                            >
-                                                                {tag}
-                                                            </span>
-                                                        ))}
-                                                    </div>
-                                                </section>
-                                            )}
                                         </div>
                                     )}
                                 </div>
@@ -834,20 +796,6 @@ function ClientsPage() {
                                 placeholder="123 Main St, Miami, FL 33101"
                                 value={newClientAddress}
                                 onChange={(e) => setNewClientAddress(e.target.value)}
-                            />
-                        </label>
-                        <label className="flex flex-col gap-1">
-                            <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                <span>Tags</span>
-                                <TagRulesHelp />
-                            </span>
-                            <TagsInput
-                                value={newClientTags}
-                                onChange={setNewClientTags}
-                                options={officeTags}
-                                placeholder="Add tags for this client"
-                                onDeleteOption={deleteTag}
-                                deletingOption={deletingTag}
                             />
                         </label>
                         <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
@@ -987,20 +935,6 @@ function ClientsPage() {
                                 placeholder="123 Main St, Miami, FL 33101"
                                 value={editingClientDraft.address || ""}
                                 onChange={(e) => handleChangeEditingDraft({ address: e.target.value })}
-                            />
-                        </label>
-                        <label className="flex flex-col gap-1">
-                            <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                <span>Tags</span>
-                                <TagRulesHelp />
-                            </span>
-                            <TagsInput
-                                value={editingClientDraft.tags}
-                                onChange={(nextTags) => handleChangeEditingDraft({ tags: nextTags })}
-                                options={officeTags}
-                                placeholder="Add tags for this client"
-                                onDeleteOption={deleteTag}
-                                deletingOption={deletingTag}
                             />
                         </label>
                         <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
