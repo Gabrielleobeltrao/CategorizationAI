@@ -9,7 +9,6 @@ export async function ensureCategoryTemplateIndexes() {
 
   await Promise.all([
     collection.createIndex({ officeId: 1, createdAt: -1 }),
-    collection.createIndex({ officeId: 1, tagIds: 1 }),
     collection.createIndex({ officeId: 1, name: 1, type: 1 }),
   ])
 }
@@ -22,7 +21,6 @@ export async function createCategoryTemplate(input) {
     name: input.name,
     type: input.type,
     description: input.description,
-    tagIds: Array.isArray(input.tagIds) ? input.tagIds : [],
     createdAt: new Date(),
     updatedAt: new Date(),
   }
@@ -34,17 +32,6 @@ export async function createCategoryTemplate(input) {
 export async function listCategoryTemplatesByOfficeId(officeId) {
   const db = getDB()
   return db.collection(COLLECTION).find({ officeId }).sort({ createdAt: -1 }).toArray()
-}
-
-export async function listCategoryTemplatesByOfficeIdAndTags(officeId, tags = []) {
-  const db = getDB()
-  const safeTagIds = Array.isArray(tags) ? tags.filter(Boolean) : []
-  if (safeTagIds.length === 0) return []
-
-  return db.collection(COLLECTION).find({
-    officeId,
-    tagIds: { $in: safeTagIds },
-  }).toArray()
 }
 
 export async function getCategoryTemplateById(id) {
@@ -59,7 +46,6 @@ export async function updateCategoryTemplateById(id, patch) {
     name: patch.name,
     type: patch.type,
     description: patch.description,
-    tagIds: patch.tagIds,
     updatedAt: new Date(),
   }
 
@@ -67,15 +53,9 @@ export async function updateCategoryTemplateById(id, patch) {
     Object.entries(allowed).filter(([, value]) => value !== undefined)
   )
 
-  const update = { $set }
-
-  if (patch.clearLegacyTags) {
-    update.$unset = { tags: "" }
-  }
-
   return db.collection(COLLECTION).findOneAndUpdate(
     { _id: new ObjectId(id) },
-    update,
+    { $set },
     { returnDocument: "after" }
   )
 }

@@ -82,6 +82,7 @@ export async function createClient(input) {
   const description = String(input?.description || "").trim()
   const mainActivity = String(input?.mainActivity || "").trim()
   const state = String(input?.state || "").trim()
+  const address = String(input?.address || "").trim()
   const tags = Array.isArray(input?.tags)
     ? input.tags.map((tag) => String(tag || "").trim()).filter(Boolean)
     : []
@@ -119,6 +120,7 @@ export async function createClient(input) {
     description,
     mainActivity,
     state,
+    address,
     tags,
     owners,
   }
@@ -252,6 +254,43 @@ export async function deleteClientById(clientId) {
   if (!id) throw new Error("clientId is required")
 
   return api(`/api/clients/${id}`, {
+    method: "DELETE",
+  })
+}
+
+export async function addClientNote(clientId, body) {
+  const id = String(clientId || "").trim()
+  const safeBody = String(body || "").trim()
+  if (!id) throw new Error("clientId is required")
+  if (!safeBody) throw new Error("note body is required")
+
+  return api(`/api/clients/${id}/notes`, {
+    method: "POST",
+    body: JSON.stringify({ body: safeBody }),
+  })
+}
+
+export async function updateClientNote(clientId, noteId, body) {
+  const id = String(clientId || "").trim()
+  const safeNoteId = String(noteId || "").trim()
+  const safeBody = String(body || "").trim()
+  if (!id) throw new Error("clientId is required")
+  if (!safeNoteId) throw new Error("noteId is required")
+  if (!safeBody) throw new Error("note body is required")
+
+  return api(`/api/clients/${id}/notes/${safeNoteId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ body: safeBody }),
+  })
+}
+
+export async function deleteClientNote(clientId, noteId) {
+  const id = String(clientId || "").trim()
+  const safeNoteId = String(noteId || "").trim()
+  if (!id) throw new Error("clientId is required")
+  if (!safeNoteId) throw new Error("noteId is required")
+
+  return api(`/api/clients/${id}/notes/${safeNoteId}`, {
     method: "DELETE",
   })
 }

@@ -3,11 +3,10 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { getAuthBootstrap } from "../services/auth.service"
 import { hydrateAvailableRolesCache, hydrateRolePermissionsCache } from "../services/employees.service"
 import { hydrateOfficeCache } from "../services/office.service"
-import { hydrateOfficeTagsCache } from "../hooks/useOfficeTags"
 import { readSessionCache, removeSessionCache, writeSessionCache } from "../utils/sessionCache"
 
 const AuthContext = createContext(null)
-const AUTH_SNAPSHOT_CACHE_KEY = "auth:snapshot:v1"
+const AUTH_SNAPSHOT_CACHE_KEY = "auth:snapshot:v2"
 
 const DEFAULT_FEATURES = Object.freeze({
   crm: false,
@@ -28,7 +27,6 @@ let bootstrapCache = readSessionCache(AUTH_SNAPSHOT_CACHE_KEY, null)
 function hydrateBootstrapCaches(snapshot) {
   const officeId = String(snapshot?.profile?.officeId || snapshot?.office?._id || "").trim()
   if (snapshot?.office) hydrateOfficeCache(snapshot.office)
-  if (officeId && Array.isArray(snapshot?.officeTags)) hydrateOfficeTagsCache(officeId, snapshot.officeTags)
   if (officeId && Array.isArray(snapshot?.roles)) hydrateAvailableRolesCache(officeId, snapshot.roles)
   if (Array.isArray(snapshot?.permissionCatalog)) hydrateRolePermissionsCache(snapshot.permissionCatalog)
 }
@@ -41,7 +39,6 @@ async function loadAuthSnapshot() {
     isAuthenticated: Boolean(snapshot?.isAuthenticated),
     profile: snapshot?.profile || null,
     office: snapshot?.office || null,
-    officeTags: Array.isArray(snapshot?.officeTags) ? snapshot.officeTags : [],
     roles: Array.isArray(snapshot?.roles) ? snapshot.roles : [],
     permissionCatalog: Array.isArray(snapshot?.permissionCatalog) ? snapshot.permissionCatalog : [],
   }

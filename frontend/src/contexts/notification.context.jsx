@@ -23,6 +23,7 @@ export function NotificationProvider({ children }) {
       type,
       message,
       persist,
+      action: options?.action || null,
     })
   }, [])
 
@@ -39,9 +40,9 @@ export function NotificationProvider({ children }) {
   const value = useMemo(
     () => ({
       notify,
-      success: (message) => notify(message, "success"),
-      error: (message) => notify(message, "error"),
-      info: (message) => notify(message, "info"),
+      success: (message, options) => notify(message, "success", options),
+      error: (message, options) => notify(message, "error", options),
+      info: (message, options) => notify(message, "info", options),
       showLoading: (message, id = "loading") => notify(message, "loading", { id, persist: true }),
       hideNotification: hide,
     }),

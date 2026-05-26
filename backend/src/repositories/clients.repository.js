@@ -15,7 +15,6 @@ const CLIENTS_SEARCH_STORED_SOURCE_FIELDS = [
     "description",
     "mainActivity",
     "state",
-    "tagIds",
     "owners",
     "ownerEmail",
     "ownerPhone",
@@ -271,7 +270,7 @@ export async function ensureClientsIndexes() {
     await Promise.all([
         collection.createIndex({ officeId: 1, createdAt: -1 }),
         collection.createIndex({ officeId: 1, name: 1 }),
-        collection.createIndex({ officeId: 1, tagIds: 1 }),
+        collection.createIndex({ officeId: 1, createdBy: 1, createdAt: -1 }),
     ])
 
     await ensureClientsSearchIndex()
@@ -290,11 +289,12 @@ export async function createClient(input) {
         description: input.description,
         mainActivity: input.mainActivity,
         state: input.state,
-        tagIds: Array.isArray(input.tagIds) ? input.tagIds : [],
+        address: input.address || "",
         owners: Array.isArray(input.owners) ? input.owners : [],
         ownerEmail: input.ownerEmail,
         ownerPhone: input.ownerPhone,
         ownerSearch: buildOwnerSearch(input.owners, input.ownerEmail, input.ownerPhone),
+        createdBy: String(input.createdBy || ""),
         createdAt: new Date(),
         updatedAt: new Date(),
     }
@@ -315,7 +315,7 @@ export async function updateClientById(id, patch) {
         description: patch.description,
         mainActivity: patch.mainActivity,
         state: patch.state,
-        tagIds: patch.tagIds,
+        address: patch.address,
         owners: patch.owners,
         ownerEmail: patch.ownerEmail,
         ownerPhone: patch.ownerPhone,
@@ -328,10 +328,6 @@ export async function updateClientById(id, patch) {
     )
 
     const update = { $set }
-
-    if (patch.clearLegacyTags) {
-        update.$unset = { tags: "" }
-    }
 
     return db.collection("clients").findOneAndUpdate(
         { _id: new ObjectId(id) },
@@ -439,4 +435,44 @@ export async function listAllClientsByOfficeId(officeId) {
 export async function deleteClientById(id) {
     const db = getDB()
     return db.collection("clients").deleteOne({ _id: new ObjectId(id) })
+}
+
+// notes (free-form client log entries kept inline on the client doc)
+
+export async function addClientNote(id, note) {
+    const db = getDB()
+    return db.collection("clients").findOneAndUpdate(
+        { _id: new ObjectId(id) },
+        {
+            $push: { notes: { $each: [note], $position: 0 } },
+            $set: { updatedAt: new Date() },
+        },
+        { returnDocument: "after" }
+    )
+}
+
+export async function updateClientNote(id, noteId, patch) {
+    const db = getDB()
+    const $set = { "notes.$[note].updatedAt": new Date(), updatedAt: new Date() }
+    if (typeof patch.body === "string") $set["notes.$[note].body"] = patch.body
+    return db.collection("clients").findOneAndUpdate(
+        { _id: new ObjectId(id) },
+        { $set },
+        {
+            arrayFilters: [{ "note.id": noteId }],
+            returnDocument: "after",
+        }
+    )
+}
+
+export async function deleteClientNote(id, noteId) {
+    const db = getDB()
+    return db.collection("clients").findOneAndUpdate(
+        { _id: new ObjectId(id) },
+        {
+            $pull: { notes: { id: noteId } },
+            $set: { updatedAt: new Date() },
+        },
+        { returnDocument: "after" }
+    )
 }

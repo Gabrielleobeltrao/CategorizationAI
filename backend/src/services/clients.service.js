@@ -1,3 +1,4 @@
+import { ObjectId } from "mongodb"
 import {
   createClient,
   updateClientById,
@@ -5,7 +6,13 @@ import {
   getClientById,
   deleteClientById,
   buildOwnerSearch,
+  addClientNote,
+  updateClientNote,
+  deleteClientNote,
 } from "../repositories/clients.repository.js"
+import { AppError } from "../utils/appError.js"
+import { hasPermissionFromListService, isClientScopeRestricted } from "./roles.service.js"
+import { recordActivity } from "../repositories/activityLog.repository.js"
 import { listAccountsByClientIdService } from "./account.service.js"
 import { listCategoriesByClientIdService } from "./category.service.js"
 import {
@@ -17,12 +24,7 @@ import { deleteCategoriesByClientIdService } from "./category.service.js"
 import { deleteTransactionsByClientId } from "../repositories/transactions.repository.js"
 import { deleteTransactionMemoriesByClientId } from "../repositories/transactionMemory.repository.js"
 import { deleteCategorizationJobsByClientId } from "../repositories/categorizationJob.repository.js"
-import {
-  hydrateOfficeTagsForDocumentService,
-  hydrateOfficeTagsForDocumentsService,
-  resolveOfficeTagRefsService,
-} from "./tagCatalog.service.js"
-import { enqueueClientCategorySync } from "../workers/categorySync.worker.js"
+import { deleteOperationalStatusByClientId } from "../repositories/clientOperationalStatus.repository.js"
 
 const LEDGER_BOOTSTRAP_OPTIONAL_TIMEOUT_MS = Math.max(
   0,
@@ -93,8 +95,6 @@ export async function createClientService(input, context = {}) {
     throw new Error("owners must be an array")
   }
 
-  const resolvedTags = await resolveOfficeTagRefsService(input.officeId, input.tags, context)
-
   const client = await createClient({
     officeId: input.officeId,
     name: input.name.trim(),
@@ -102,18 +102,25 @@ export async function createClientService(input, context = {}) {
     description: input.description.trim(),
     mainActivity: input.mainActivity.trim(),
     state: input.state.trim(),
-    tagIds: resolvedTags.tagIds,
+    address: normalizeOptionalText(input.address),
     owners: normalizeOwners(input.owners),
     ownerEmail: normalizeOptionalText(input.ownerEmail),
     ownerPhone: normalizeOptionalText(input.ownerPhone),
+    createdBy: String(context?.actorProfileId || ""),
   })
 
-  enqueueClientCategorySync({
+  recordActivity({
     officeId: client.officeId,
-    clientId: String(client._id),
+    actorId: context?.actorProfileId,
+    actorName: context?.actorName,
+    action: "client.created",
+    targetType: "client",
+    targetId: client._id,
+    clientId: client._id,
+    label: String(client.name || "Client"),
   })
 
-  return hydrateOfficeTagsForDocumentService(client.officeId, client)
+  return client
 }
 
 export async function updateClientByIdService(id, patch, context = {}) {
@@ -155,10 +162,8 @@ export async function updateClientByIdService(id, patch, context = {}) {
     safePatch.state = state
   }
 
-  if (patch.tags !== undefined) {
-    const resolvedTags = await resolveOfficeTagRefsService(current.officeId, patch.tags, context)
-    safePatch.tagIds = resolvedTags.tagIds
-    safePatch.clearLegacyTags = true
+  if (patch.address !== undefined) {
+    safePatch.address = normalizeOptionalText(patch.address)
   }
 
   if (patch.owners !== undefined) {
@@ -194,17 +199,10 @@ export async function updateClientByIdService(id, patch, context = {}) {
 
   const updatedClient = await updateClientById(id, safePatch)
 
-  if (safePatch.tagIds !== undefined) {
-    enqueueClientCategorySync({
-      officeId: updatedClient?.officeId,
-      clientId: String(updatedClient?._id || id),
-    })
-  }
-
-  return hydrateOfficeTagsForDocumentService(current.officeId, updatedClient)
+  return updatedClient
 }
 
-export async function listClientsByOfficeIdService(officeId, query = {}) {
+export async function listClientsByOfficeIdService(officeId, query = {}, options = {}) {
   if (!officeId) throw new Error("officeId is required")
 
   const rawPage = Number(query.page ?? 1)
@@ -216,7 +214,20 @@ export async function listClientsByOfficeIdService(officeId, query = {}) {
   const limit = Math.min(safeLimit, 100)
 
   const result = await listClientsByOfficeId(officeId, { page, limit, search })
-  const items = await hydrateOfficeTagsForDocumentsService(officeId, result?.items)
+  let items = Array.isArray(result?.items) ? result.items : []
+
+  // Restrict to the actor's assigned client whitelist when applicable. We
+  // filter in-memory so existing pagination logic (search index, offsets)
+  // stays untouched — the trade-off is the returned page may be shorter than
+  // the requested limit when most matches aren't assigned to the user.
+  const actorProfile = options?.actorProfile
+  if (actorProfile && isClientScopeRestricted(actorProfile)) {
+    const assigned = new Set(
+      (Array.isArray(actorProfile.assignedClientIds) ? actorProfile.assignedClientIds : [])
+        .map((id) => String(id)),
+    )
+    items = (items || []).filter((doc) => assigned.has(String(doc?._id)))
+  }
 
   return {
     ...result,
@@ -230,7 +241,7 @@ export async function getClientByIdService(id) {
   const client = await getClientById(id)
   if (!client) return null
 
-  return hydrateOfficeTagsForDocumentService(client.officeId, client)
+  return client
 }
 
 export async function getClientLedgerBootstrapService(clientId, query = {}) {
@@ -263,8 +274,10 @@ export async function getClientLedgerBootstrapService(clientId, query = {}) {
   }
 }
 
-export async function deleteClientByIdService(id) {
+export async function deleteClientByIdService(id, context = {}) {
   if (!id) throw new Error("id is required")
+
+  const existing = await getClientById(id)
 
   await Promise.all([
     deleteTransactionsByClientId(id),
@@ -272,7 +285,140 @@ export async function deleteClientByIdService(id) {
     deleteCategoriesByClientIdService(id),
     deleteTransactionMemoriesByClientId(id),
     deleteCategorizationJobsByClientId(id),
+    deleteOperationalStatusByClientId(id),
   ])
 
-  return deleteClientById(id)
+  const result = await deleteClientById(id)
+
+  if (existing) {
+    recordActivity({
+      officeId: existing.officeId,
+      actorId: context?.actorProfileId,
+      actorName: context?.actorName,
+      action: "client.deleted",
+      targetType: "client",
+      targetId: id,
+      clientId: id,
+      label: String(existing.name || "Client"),
+    })
+  }
+
+  return result
+}
+
+// ── Notes ───────────────────────────────────────────────────────────────────
+// Free-form client log entries embedded on the client doc as `notes`. Authors
+// can always edit/delete their own notes; touching someone else's requires
+// the clients:update permission.
+
+const MAX_NOTE_LENGTH = 4000
+
+function findClientNote(client, noteId) {
+  const notes = Array.isArray(client?.notes) ? client.notes : []
+  return notes.find((note) => String(note?.id || "") === String(noteId)) || null
+}
+
+function ensureNoteActionAllowed({ note, context, permissionKey }) {
+  const actorId = String(context?.actorProfileId || "").trim()
+  const authorId = String(note?.authorId || "").trim()
+  if (actorId && authorId && actorId === authorId) return
+  const permissions = Array.isArray(context?.actorPermissions) ? context.actorPermissions : []
+  if (hasPermissionFromListService(permissions, permissionKey)) return
+  throw new AppError("Forbidden", 403)
+}
+
+export async function addClientNoteService(clientId, input, context = {}) {
+  if (!clientId) throw new Error("clientId is required")
+  const body = String(input?.body || "").trim()
+  if (!body) throw new Error("note body is required")
+  if (body.length > MAX_NOTE_LENGTH) {
+    throw new Error(`note body must be ${MAX_NOTE_LENGTH} characters or fewer`)
+  }
+
+  const existing = await getClientById(clientId)
+  if (!existing) throw new AppError("Client not found", 404)
+
+  const now = new Date()
+  const note = {
+    id: new ObjectId().toString(),
+    body,
+    authorId: String(context?.actorProfileId || "").trim(),
+    authorName: String(context?.actorName || "").trim(),
+    createdAt: now,
+    updatedAt: null,
+  }
+
+  const result = await addClientNote(clientId, note)
+
+  recordActivity({
+    officeId: existing.officeId,
+    actorId: context?.actorProfileId,
+    actorName: context?.actorName,
+    action: "client.note.added",
+    targetType: "client",
+    targetId: clientId,
+    clientId,
+    label: String(existing.name || "Client"),
+  })
+
+  return result
+}
+
+export async function updateClientNoteService(clientId, noteId, input, context = {}) {
+  if (!clientId) throw new Error("clientId is required")
+  if (!noteId) throw new Error("noteId is required")
+  const body = String(input?.body || "").trim()
+  if (!body) throw new Error("note body is required")
+  if (body.length > MAX_NOTE_LENGTH) {
+    throw new Error(`note body must be ${MAX_NOTE_LENGTH} characters or fewer`)
+  }
+
+  const existing = await getClientById(clientId)
+  if (!existing) throw new AppError("Client not found", 404)
+
+  const note = findClientNote(existing, noteId)
+  if (!note) throw new AppError("Note not found", 404)
+  ensureNoteActionAllowed({ note, context, permissionKey: "clientsNotes:update" })
+
+  const result = await updateClientNote(clientId, noteId, { body })
+
+  recordActivity({
+    officeId: existing.officeId,
+    actorId: context?.actorProfileId,
+    actorName: context?.actorName,
+    action: "client.note.updated",
+    targetType: "client",
+    targetId: clientId,
+    clientId,
+    label: String(existing.name || "Client"),
+  })
+
+  return result
+}
+
+export async function deleteClientNoteService(clientId, noteId, context = {}) {
+  if (!clientId) throw new Error("clientId is required")
+  if (!noteId) throw new Error("noteId is required")
+
+  const existing = await getClientById(clientId)
+  if (!existing) throw new AppError("Client not found", 404)
+
+  const note = findClientNote(existing, noteId)
+  if (!note) throw new AppError("Note not found", 404)
+  ensureNoteActionAllowed({ note, context, permissionKey: "clientsNotes:delete" })
+
+  const result = await deleteClientNote(clientId, noteId)
+
+  recordActivity({
+    officeId: existing.officeId,
+    actorId: context?.actorProfileId,
+    actorName: context?.actorName,
+    action: "client.note.deleted",
+    targetType: "client",
+    targetId: clientId,
+    clientId,
+    label: String(existing.name || "Client"),
+  })
+
+  return result
 }

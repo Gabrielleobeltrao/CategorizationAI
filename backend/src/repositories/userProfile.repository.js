@@ -16,6 +16,7 @@ export async function ensureUserProfileIndexes() {
         ),
         collection.createIndex({ officeId: 1, createdAt: -1 }),
         collection.createIndex({ officeId: 1, role: 1 }),
+        collection.createIndex({ officeId: 1, createdBy: 1, createdAt: -1 }),
         authUsersCollection.createIndex(
             { email: 1 },
             {
@@ -40,6 +41,13 @@ export async function createUserProfile(input) {
         authUserId: input.authUserId,
         mustChangePassword: input.mustChangePassword ?? false,
         passwordResetAt: input.passwordResetAt ?? null,
+        // Default scope = full office. Restricted users only see clients in
+        // `assignedClientIds`.
+        clientScope: input.clientScope === "assigned" ? "assigned" : "all",
+        assignedClientIds: Array.isArray(input.assignedClientIds)
+            ? input.assignedClientIds.map((id) => String(id))
+            : [],
+        createdBy: String(input.createdBy || ""),
         createdAt: new Date(),
         updatedAt: new Date(),
     }
@@ -70,6 +78,17 @@ export async function getUserProfileById(id) {
 export async function listUserProfilesByOfficeId(officeId) {
     const db = getDB()
     return db.collection("user_profile").find({ officeId }).sort({ createdAt: -1 }).toArray()
+}
+
+export async function getProfilesByIds(ids = []) {
+    const objectIds = []
+    for (const id of ids) {
+        const safe = String(id || "").trim()
+        if (ObjectId.isValid(safe)) objectIds.push(new ObjectId(safe))
+    }
+    if (objectIds.length === 0) return []
+    const db = getDB()
+    return db.collection("user_profile").find({ _id: { $in: objectIds } }).toArray()
 }
 
 export async function countUserProfilesByOfficeIdAndRole(officeId, role) {

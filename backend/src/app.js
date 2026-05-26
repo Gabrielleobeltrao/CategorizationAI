@@ -45,7 +45,7 @@ app.all("/api/auth/*splat", async (req, res, next) => {
   }
 })
 
-app.use(express.json({ limit: "1mb" }))
+app.use(express.json({ limit: "2mb" }))
 
 app.use("/api", routes)
 

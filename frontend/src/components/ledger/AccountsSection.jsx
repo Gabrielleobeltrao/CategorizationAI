@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react"
+import { ACCOUNT_TYPE_OPTIONS, ACCOUNT_TYPE_LABELS, BALANCE_SHEET_ACCOUNT_TYPES } from "../../constants/accountTypes"
 
-function formatOptionLabel(value = "") {
-    return String(value || "")
-        .split("_")
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-        .join(" ")
+const BALANCE_SHEET_TYPE_OPTIONS = ACCOUNT_TYPE_OPTIONS.filter((opt) =>
+    BALANCE_SHEET_ACCOUNT_TYPES.includes(opt.value),
+)
+
+function formatTypeLabel(value = "") {
+    return ACCOUNT_TYPE_LABELS[value] || value
 }
 
 function AccountsSection({ accounts, onCreate, onSaveEdit, onDelete, onDeleteMany }) {
@@ -20,13 +22,7 @@ function AccountsSection({ accounts, onCreate, onSaveEdit, onDelete, onDeleteMan
         setSelectedIds((current) => current.filter((id) => validIds.has(id)))
     }, [accounts])
 
-    const accountTypeOptions = useMemo(() => {
-        const defaults = ["checking", "savings", "credit_card", "cash", "loan", "other"]
-        const existing = (Array.isArray(accounts) ? accounts : [])
-            .map((account) => String(account?.type || "").trim())
-            .filter(Boolean)
-        return Array.from(new Set([...existing, ...defaults]))
-    }, [accounts])
+    const accountTypeOptions = BALANCE_SHEET_TYPE_OPTIONS
 
     const startEdit = (account) => {
         setEditingId(account.id)
@@ -46,7 +42,7 @@ function AccountsSection({ accounts, onCreate, onSaveEdit, onDelete, onDeleteMan
             setIsSaving(true)
             await onSaveEdit?.(editingId, {
                 name: draftName,
-                type: draftType,
+                accountType: draftType,
             })
             cancelEdit()
         } finally {
@@ -140,8 +136,8 @@ function AccountsSection({ accounts, onCreate, onSaveEdit, onDelete, onDeleteMan
                                         >
                                             <option value="">Select type</option>
                                             {accountTypeOptions.map((typeOption) => (
-                                                <option key={typeOption} value={typeOption}>
-                                                    {formatOptionLabel(typeOption)}
+                                                <option key={typeOption.value} value={typeOption.value}>
+                                                    {typeOption.label}
                                                 </option>
                                             ))}
                                         </select>
@@ -199,7 +195,7 @@ function AccountsSection({ accounts, onCreate, onSaveEdit, onDelete, onDeleteMan
                             </div>
                             <div className="min-w-0 flex-1 text-left">
                                 <h3 className="text-sm font-semibold truncate">{account.name}</h3>
-                                <p className="text-xs text-gray-500">{account.type}</p>
+                                <p className="text-xs text-gray-500">{formatTypeLabel(account.type)}</p>
                             </div>
                             <div className="flex items-center gap-2">
                                 <button

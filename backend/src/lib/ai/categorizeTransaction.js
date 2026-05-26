@@ -14,10 +14,14 @@ const DEFAULT_LLM_TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS || 60_000)
 const DEFAULT_LLM_MAX_RETRIES = Number(process.env.LLM_MAX_RETRIES || 4)
 const DEFAULT_LLM_BACKOFF_MS = Number(process.env.LLM_BACKOFF_MS || 1200)
 
-const CategorySchema = z.object({
+// Input shape after the double-entry migration: each candidate is an
+// account from `coa_accounts` whose accountType is a P&L bucket. The
+// `description` is the user-authored "AI hint" — the most important
+// field for the model when deciding where to put a transaction.
+const AccountSchema = z.object({
   id: z.union([z.string(), z.number()]),
   name: z.string().trim().min(1),
-  type: z.string().optional().nullable(),
+  accountType: z.string().trim().min(1),
   description: z.string().optional().nullable(),
 })
 
@@ -37,7 +41,7 @@ const BusinessSchema = z.object({
 
 const CategorizationItemSchema = z.object({
   id: z.union([z.string(), z.number()]),
-  categoryId: z.string(),
+  accountId: z.string(),
   confidence: z.number().min(0).max(1),
   ambiguous: z.boolean(),
 })
@@ -72,25 +76,32 @@ function chunkArray(items, size) {
   return chunks
 }
 
-function promptCategories(categories) {
-  return categories
-    .map(
-      (category) =>
-        `id: ${category.id}, name: ${category.name}, type: ${category.type || ""}, description: ${
-          category.description || ""
-        }`
-    )
+const ACCOUNT_TYPE_HUMAN = {
+  income: "Income (revenue earned from main business activity)",
+  cost_of_goods_sold: "Cost of Goods Sold (direct cost of products/services sold)",
+  operating_expense: "Operating Expense (recurring costs to run the business: rent, marketing, software, utilities…)",
+  other_income: "Other Income (non-operating income: interest received, gains, refunds)",
+  other_expense: "Other Expense (non-operating expense: interest paid, bank fees, one-off losses)",
+  tax_expense: "Tax Expense (income tax, distinct from operating expenses)",
+}
+
+function promptAccounts(accounts) {
+  return accounts
+    .map((account) => {
+      const description = String(account.description || "").trim()
+      const hint = description ? ` | description: ${description}` : ""
+      return `id: ${account.id} | name: ${account.name} | type: ${account.accountType}${hint}`
+    })
     .join("\n")
 }
 
 function promptTransactions(transactions) {
   return transactions
-    .map(
-      (transaction) =>
-        `id: ${transaction.id}, description: ${transaction.description || ""}, amount: ${
-          transaction.amount
-        }${transaction.memoryHint ? `, historical_hint: ${transaction.memoryHint}` : ""}`
-    )
+    .map((transaction) => {
+      const memo = transaction.memoryHint ? ` | historical_hint: ${transaction.memoryHint}` : ""
+      const direction = Number(transaction.amount) >= 0 ? "money_in" : "money_out"
+      return `id: ${transaction.id} | description: ${transaction.description || ""} | amount: ${transaction.amount} (${direction})${memo}`
+    })
     .join("\n")
 }
 
@@ -102,25 +113,25 @@ function promptBusiness(business) {
   } else {
     chunks.push("You are an accountant.")
   }
+  if (business?.businessType) chunks.push(`Business type: ${business.businessType}.`)
+  if (business?.mainActivity) chunks.push(`Main activity: ${business.mainActivity}.`)
+  if (business?.description) chunks.push(`Business context: ${business.description}.`)
 
-  if (business?.businessType) {
-    chunks.push(`Business type: ${business.businessType}.`)
-  }
-
-  if (business?.mainActivity) {
-    chunks.push(`Main activity: ${business.mainActivity}.`)
-  }
-
-  if (business?.description) {
-    chunks.push(`Business context: ${business.description}.`)
-  }
-
-  chunks.push("Always choose the most appropriate accounting category.")
+  chunks.push(
+    "Each bank transaction must be assigned to exactly one P&L account from the chart of accounts. Read every account's description carefully — those descriptions are the user's authoritative hint about when an account applies. Match transaction descriptions to account descriptions first; the account type guides direction (money_in → income/other_income; money_out → expense types).",
+  )
   return chunks.join(" ")
 }
 
+function describeAccountTypesUsed(accounts) {
+  const types = new Set(accounts.map((a) => a.accountType))
+  return [...types]
+    .map((type) => `- ${type}: ${ACCOUNT_TYPE_HUMAN[type] || ""}`)
+    .join("\n")
+}
+
 async function categorizeBatch({
-  categories,
+  accounts,
   transactions,
   business,
   model,
@@ -130,8 +141,8 @@ async function categorizeBatch({
   batchIndex,
   totalBatches,
 }) {
-  const allowedCategoryIds = categories.map((category) => String(category.id))
-  const allowedCategoryIdsWithBlank = [...allowedCategoryIds, ""]
+  const allowedAccountIds = accounts.map((account) => String(account.id))
+  const allowedAccountIdsWithBlank = [...allowedAccountIds, ""]
 
   let lastError = null
   for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
@@ -148,28 +159,33 @@ async function categorizeBatch({
             {
               role: "user",
               content: `
-Available categories:
-${promptCategories(categories)}
+Account types in this batch:
+${describeAccountTypesUsed(accounts)}
 
-Transaction list:
+Available accounts (read the descriptions carefully — they're the user's instructions for when each account applies):
+${promptAccounts(accounts)}
+
+Transactions to categorize:
 ${promptTransactions(transactions)}
 
 Return ONLY valid JSON in this format:
 {
   "results": [
-    { "id": "transaction-id", "categoryId": "category-id-or-empty", "confidence": 0.0, "ambiguous": false }
+    { "id": "transaction-id", "accountId": "account-id-or-empty", "confidence": 0.0, "ambiguous": false }
   ]
 }
 
 Rules:
-- categoryId must be exactly one of the available category ids.
-- if unclear, categoryId must be "".
-- confidence must be a number from 0 to 1.
-- confidence should reflect how certain you are about the chosen category.
-- historical_hint is optional compact history metadata from prior client patterns. Treat it only as supporting evidence.
-- ambiguous must be true when the merchant or description could reasonably fit more than one category.
-- if ambiguous is true, prefer categoryId = "" unless the description is still clearly decisive.
-- if confidence is low, prefer categoryId = "".
+- accountId must be exactly one of the available account ids.
+- if unclear, leave accountId as "".
+- confidence must be a number from 0 to 1 reflecting how certain you are.
+- if accountId is "" (no account chosen), confidence MUST be ≤ 0.3 — never claim high confidence in a refusal.
+- historical_hint is optional compact history from prior client patterns — treat as supporting evidence, not decisive.
+- ambiguous must be true when the description could reasonably fit more than one account.
+- if ambiguous is true, prefer accountId = "" unless the description is still clearly decisive.
+- if confidence is low, prefer accountId = "".
+- money_in transactions must use income / other_income accounts. money_out transactions must use cost_of_goods_sold / operating_expense / other_expense / tax_expense accounts. Never mix directions.
+- TRANSFERS BETWEEN OWN ACCOUNTS are NOT P&L events. When the description contains TRANSFER, XFER, INTERNAL, "FROM SAVINGS", "TO CHECKING", "BETWEEN", or similar movement between the user's own bank/credit accounts, return accountId = "" with low confidence (≤ 0.2) and ambiguous = true. The worker will handle these separately as balance-sheet transfers.
 - every transaction id in this batch should appear once in the output.
               `.trim(),
             },
@@ -189,11 +205,11 @@ Rules:
                       additionalProperties: false,
                       properties: {
                         id: { type: ["string", "number"] },
-                        categoryId: { type: "string", enum: allowedCategoryIdsWithBlank },
+                        accountId: { type: "string", enum: allowedAccountIdsWithBlank },
                         confidence: { type: "number", minimum: 0, maximum: 1 },
                         ambiguous: { type: "boolean" },
                       },
-                      required: ["id", "categoryId", "confidence", "ambiguous"],
+                      required: ["id", "accountId", "confidence", "ambiguous"],
                     },
                   },
                 },
@@ -202,7 +218,7 @@ Rules:
             },
           },
         }),
-        timeoutMs
+        timeoutMs,
       )
 
       const messageContent = response?.choices?.[0]?.message?.content
@@ -212,7 +228,7 @@ Rules:
       console.info(
         `[categorizeTransaction] batch=${batchIndex}/${totalBatches} attempt=${attempt} requestId=${
           response?.id || "n/a"
-        } tx=${transactions.length} ms=${elapsedMs}`
+        } tx=${transactions.length} ms=${elapsedMs}`,
       )
 
       return parsed.results
@@ -223,7 +239,7 @@ Rules:
       console.warn(
         `[categorizeTransaction] batch=${batchIndex}/${totalBatches} attempt=${attempt} failed: ${
           error?.message || error
-        }${shouldRetry ? " (retrying)" : ""}`
+        }${shouldRetry ? " (retrying)" : ""}`,
       )
       if (!shouldRetry) break
       await sleep(backoffMs * attempt)
@@ -233,8 +249,8 @@ Rules:
   throw normalizeLlmError(lastError)
 }
 
-async function categorizeTransaction(categories, transactions, business, options = {}) {
-  const safeCategories = z.array(CategorySchema).parse(categories)
+async function categorizeTransaction(accounts, transactions, business, options = {}) {
+  const safeAccounts = z.array(AccountSchema).parse(accounts)
   const safeTransactions = z.array(TransactionSchema).parse(transactions)
   const safeBusiness = BusinessSchema.parse(business)
 
@@ -254,7 +270,7 @@ async function categorizeTransaction(categories, transactions, business, options
   for (let index = 0; index < batches.length; index += 1) {
     const batch = batches[index]
     const results = await categorizeBatch({
-      categories: safeCategories,
+      accounts: safeAccounts,
       transactions: batch,
       business: safeBusiness,
       model,
@@ -267,18 +283,18 @@ async function categorizeTransaction(categories, transactions, business, options
     batchResults.push(...results)
   }
 
-  const allowedCategoryIds = new Set(safeCategories.map((category) => String(category.id)))
+  const allowedAccountIds = new Set(safeAccounts.map((account) => String(account.id)))
   const resultById = new Map()
 
   for (const item of batchResults) {
     const idKey = toIdKey(item.id)
     if (!txById.has(idKey)) continue
-    const normalizedCategoryId = allowedCategoryIds.has(String(item.categoryId))
-      ? String(item.categoryId)
+    const normalizedAccountId = allowedAccountIds.has(String(item.accountId))
+      ? String(item.accountId)
       : ""
     resultById.set(idKey, {
       id: txById.get(idKey).id,
-      categoryId: normalizedCategoryId || null,
+      accountId: normalizedAccountId || null,
       confidence: Number(item.confidence || 0),
       ambiguous: Boolean(item.ambiguous),
     })
@@ -289,7 +305,7 @@ async function categorizeTransaction(categories, transactions, business, options
     return (
       resultById.get(idKey) || {
         id: transaction.id,
-        categoryId: null,
+        accountId: null,
         confidence: 0,
         ambiguous: true,
       }

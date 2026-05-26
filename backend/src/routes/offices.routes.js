@@ -1,16 +1,19 @@
 import { Router } from "express"
 import {
   createOfficeController,
-  deleteOfficeTagController,
   updateOfficeByIdController,
   getOfficeByIdController,
   getOfficeDashboardByIdController,
-  listOfficeTagsController,
+  getOfficeDashboardCustomRangeController,
+  getOfficeDashboardFeedController,
+  setOfficeFeaturesController,
 } from "../controllers/office.controller.js"
 import { requireAuth } from "../middlewares/requireAuth.js"
 import { validateObjectIdParam } from "../middlewares/validateObjectId.js"
 import { ensureResourceExists } from "../middlewares/authorizeScope.js"
 import { requirePermission } from "../middlewares/requirePermission.js"
+import { requireFeature } from "../middlewares/requireFeature.js"
+import { listOfficeOperationalStatusesController } from "../controllers/operationalStatus.controller.js"
 
 const router = Router()
 
@@ -23,6 +26,15 @@ router.patch(
   validateObjectIdParam("id"),
   ensureResourceExists({ collection: "offices", from: "params", field: "id", assignKey: "office" }),
   updateOfficeByIdController
+)
+
+router.patch(
+  "/offices/:id/features",
+  requireAuth,
+  requirePermission("offices:update"),
+  validateObjectIdParam("id"),
+  ensureResourceExists({ collection: "offices", from: "params", field: "id", assignKey: "office" }),
+  setOfficeFeaturesController
 )
 
 router.get(
@@ -44,21 +56,31 @@ router.get(
 )
 
 router.get(
-  "/offices/:id/tags",
+  "/offices/:id/dashboard/feed",
   requireAuth,
   requirePermission("offices:read"),
   validateObjectIdParam("id"),
   ensureResourceExists({ collection: "offices", from: "params", field: "id", assignKey: "office" }),
-  listOfficeTagsController
+  getOfficeDashboardFeedController
 )
 
-router.delete(
-  "/offices/:id/tags",
+router.get(
+  "/offices/:id/dashboard/custom-range",
   requireAuth,
-  requirePermission("offices:update"),
+  requirePermission("offices:read"),
   validateObjectIdParam("id"),
   ensureResourceExists({ collection: "offices", from: "params", field: "id", assignKey: "office" }),
-  deleteOfficeTagController
+  getOfficeDashboardCustomRangeController
+)
+
+router.get(
+  "/offices/:id/operational-status",
+  requireAuth,
+  requirePermission("clients:read"),
+  requireFeature("crmOperationalStatus"),
+  validateObjectIdParam("id"),
+  ensureResourceExists({ collection: "offices", from: "params", field: "id", assignKey: "office" }),
+  listOfficeOperationalStatusesController
 )
 
 export default router

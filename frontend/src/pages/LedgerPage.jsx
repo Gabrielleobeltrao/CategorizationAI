@@ -1,15 +1,12 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react"
-import { useLocation, useOutletContext, useParams, useSearchParams } from "react-router-dom"
+import { useLocation, useNavigate, useOutletContext, useParams, useSearchParams } from "react-router-dom"
 import PopupModal from "../components/ui/PopupModal"
 import ConfirmModal from "../components/ui/ConfirmModal"
-import TagsInput from "../components/ui/TagsInput"
-import TagRulesHelp from "../components/ui/TagRulesHelp"
 import { getCachedClientLedgerBootstrap, getClientLedgerBootstrap } from "../services/clients.service"
 import {
     createAccount,
     deleteAccountsByIds,
     deleteAccountById,
-    listAccountsByClientId,
     updateAccountById,
 } from "../services/accounts.service"
 import {
@@ -31,13 +28,19 @@ import {
 } from "../services/transactions.service"
 import { useNotification } from "../contexts/notification.context"
 import { useCategorizationJobs } from "../contexts/categorizationJobs.context"
-import { useAuth } from "../contexts/auth.context"
-import { useOfficeTags } from "../hooks/useOfficeTags"
 import { trackClientOpened } from "../utils/recentClients"
 import { emitDashboardRefresh } from "../utils/dashboardRefresh"
-import { CATEGORY_TYPE_OPTIONS, getCategoryTypeLabel, normalizeCategoryType } from "../constants/categoryTypes"
+import { CATEGORY_TYPE_OPTIONS, normalizeCategoryType } from "../constants/categoryTypes"
+import { ACCOUNT_TYPE_OPTIONS, BALANCE_SHEET_ACCOUNT_TYPES } from "../constants/accountTypes"
+import { createHalfEntry } from "../services/journalEntries.service"
+import { showApiError } from "../utils/errorPresentation"
+
+const BALANCE_SHEET_ACCOUNT_TYPE_OPTIONS = ACCOUNT_TYPE_OPTIONS.filter((opt) =>
+    BALANCE_SHEET_ACCOUNT_TYPES.includes(opt.value),
+)
 
 const LedgerEntriesTable = lazy(() => import("../components/ledger/LedgerEntriesTable"))
+const JournalEntryModal = lazy(() => import("../components/ledger/JournalEntryModal"))
 const AccountsSection = lazy(() => import("../components/ledger/AccountsSection"))
 const CategoriesSection = lazy(() => import("../components/ledger/CategoriesSection"))
 const LedgerHeader = lazy(() => import("../components/ledger/LedgerHeader"))
@@ -141,7 +144,7 @@ function mapAccount(item = {}) {
         id: item?._id || item?.id || "",
         clientId: item?.clientId || "",
         name: item?.name || "",
-        type: item?.type || "",
+        type: item?.type || item?.accountType || "",
     }
 }
 
@@ -152,7 +155,6 @@ function mapCategory(item = {}) {
         name: item?.name || "",
         type: normalizeCategoryType(item?.type) || "",
         description: item?.description || "",
-        tags: Array.isArray(item?.tags) ? item.tags : [],
     }
 }
 
@@ -318,20 +320,14 @@ function LedgerPage() {
     const outletContext = useOutletContext() || {}
     const sharedScrollRef = outletContext?.contentScrollRef || null
     const { clientId: routeClientId } = useParams()
-    const [searchParams] = useSearchParams()
+    const [searchParams, setSearchParams] = useSearchParams()
     const location = useLocation()
+    const navigate = useNavigate()
     const clientId = routeClientId || searchParams.get("clientId")
     const persistedState = readPersistedLedgerState(clientId)
     const preselectedCategoryName = String(searchParams.get("category") || "").trim()
     const { success, error } = useNotification()
     const { jobs, startCategorizationJob, startTransactionsImportJob } = useCategorizationJobs()
-    const { profile } = useAuth()
-    const officeId = String(profile?.officeId || "").trim()
-    const { tags: officeTags, reloadTags, deleteTag, deletingTag } = useOfficeTags(officeId, {
-        onError: (err) => error(err.message || "Failed to delete tag"),
-        onDeleteSuccess: (tag) => success(`Tag "${tag}" deleted successfully`),
-    })
-
     const [client, setClient] = useState(null)
     const [accounts, setAccounts] = useState([])
     const [categoryList, setCategoryList] = useState([])
@@ -356,6 +352,38 @@ function LedgerPage() {
     })
     const [isLoadingTransactionsSummary, setIsLoadingTransactionsSummary] = useState(false)
     const [showUploadModal, setShowUploadModal] = useState(false)
+
+    // Deep-link support: pages like the Dashboard's Getting Started panel
+    // navigate here with `?action=upload` to open the upload modal
+    // directly. We strip the param from the URL after consuming it so a
+    // refresh doesn't keep reopening the modal.
+    useEffect(() => {
+        const action = searchParams.get("action")
+        if (action === "upload") {
+            setShowUploadModal(true)
+            const next = new URLSearchParams(searchParams)
+            next.delete("action")
+            setSearchParams(next, { replace: true })
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchParams])
+
+    // Manual journal entry modal (multi-leg)
+    const [isJournalEntryOpen, setIsJournalEntryOpen] = useState(false)
+
+    // Manual "Add transaction" modal
+    const [isAddTxnOpen, setIsAddTxnOpen] = useState(false)
+    const [newTxnAccountId, setNewTxnAccountId] = useState("")
+    const [newTxnDate, setNewTxnDate] = useState(() => {
+        const now = new Date()
+        return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()))
+            .toISOString()
+            .slice(0, 10)
+    })
+    const [newTxnDescription, setNewTxnDescription] = useState("")
+    const [newTxnAmount, setNewTxnAmount] = useState("")
+    const [newTxnDirection, setNewTxnDirection] = useState("out")
+    const [isSavingNewTxn, setIsSavingNewTxn] = useState(false)
     const [isBaseDataLoaded, setIsBaseDataLoaded] = useState(false)
     const skipNextTransactionsFetchKeyRef = useRef("")
     const skipNextPeriodOptionsFetchRef = useRef(false)
@@ -371,7 +399,6 @@ function LedgerPage() {
     const [newCategoryName, setNewCategoryName] = useState("")
     const [newCategoryType, setNewCategoryType] = useState("")
     const [newCategoryDescription, setNewCategoryDescription] = useState("")
-    const [newCategoryTags, setNewCategoryTags] = useState([])
 
     const [accountToDelete, setAccountToDelete] = useState(null)
     const [categoryToDelete, setCategoryToDelete] = useState(null)
@@ -1003,7 +1030,7 @@ function LedgerPage() {
                     current.map((item) => (item.id === id ? previousEntry : item))
                 )
             }
-            error(err.message || "Failed to update transaction")
+            showApiError({ error, err, fallbackMessage: "Failed to update transaction", navigate, clientId })
             throw err
         }
     }
@@ -1058,7 +1085,7 @@ function LedgerPage() {
                     current.map((entry) => previousEntriesById.get(entry.id) || entry)
                 )
             }
-            error(err.message || "Failed to update transactions")
+            showApiError({ error, err, fallbackMessage: "Failed to update transactions", navigate, clientId })
             throw err
         }
     }
@@ -1078,7 +1105,7 @@ function LedgerPage() {
             emitDashboardRefresh("transaction-deleted")
             success("Transaction deleted successfully")
         } catch (err) {
-            error(err.message || "Failed to delete transaction")
+            showApiError({ error, err, fallbackMessage: "Failed to delete transaction", navigate, clientId })
             throw err
         }
     }
@@ -1110,8 +1137,58 @@ function LedgerPage() {
                     : `${targetIds.length} transactions deleted successfully`
             )
         } catch (err) {
-            error(err.message || "Failed to delete transactions")
+            showApiError({ error, err, fallbackMessage: "Failed to delete transactions", navigate, clientId })
             throw err
+        }
+    }
+
+    const openAddTxnModal = () => {
+        setNewTxnAccountId(accounts.length === 1 ? accounts[0].id : "")
+        setNewTxnDate(() => {
+            const now = new Date()
+            return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()))
+                .toISOString()
+                .slice(0, 10)
+        })
+        setNewTxnDescription("")
+        setNewTxnAmount("")
+        setNewTxnDirection("out")
+        setIsAddTxnOpen(true)
+    }
+
+    const handleAddTransaction = async (e) => {
+        e?.preventDefault?.()
+        if (!newTxnAccountId) {
+            error("Pick an account")
+            return
+        }
+        const amountAbs = Number(newTxnAmount)
+        if (!Number.isFinite(amountAbs) || amountAbs <= 0) {
+            error("Amount must be a positive number")
+            return
+        }
+        const description = newTxnDescription.trim()
+        if (!description) {
+            error("Description is required")
+            return
+        }
+        const signed = newTxnDirection === "in" ? amountAbs : -amountAbs
+        try {
+            setIsSavingNewTxn(true)
+            await createHalfEntry({
+                clientId,
+                bankAccountId: newTxnAccountId,
+                date: newTxnDate,
+                description,
+                amount: signed,
+            })
+            success("Transaction added")
+            setIsAddTxnOpen(false)
+            await refreshLedgerAfterImport()
+        } catch (err) {
+            showApiError({ error, err, fallbackMessage: "Failed to add transaction", navigate, clientId })
+        } finally {
+            setIsSavingNewTxn(false)
         }
     }
 
@@ -1300,7 +1377,7 @@ function LedgerPage() {
             const created = await createAccount({
                 clientId,
                 name: newAccountName,
-                type: newAccountType,
+                accountType: newAccountType,
             })
 
             setAccounts((current) => [mapAccount(created), ...current])
@@ -1326,17 +1403,14 @@ function LedgerPage() {
                 name: newCategoryName,
                 type: newCategoryType,
                 description: newCategoryDescription,
-                tags: newCategoryTags,
             })
 
             setCategoryList((current) => [mapCategory(created), ...current])
             setNewCategoryName("")
             setNewCategoryType("")
             setNewCategoryDescription("")
-            setNewCategoryTags([])
             setShowCategoryForm(false)
             success("Category created successfully")
-            reloadTags()
         } catch (err) {
             error(err.message || "Failed to create category")
         } finally {
@@ -1351,12 +1425,10 @@ function LedgerPage() {
                 name: input?.name,
                 type: input?.type,
                 description: input?.description,
-                tags: input?.tags,
             })
             const mappedCategory = mapCategory(created)
             setCategoryList((current) => [mappedCategory, ...current])
             success("Category created successfully")
-            reloadTags()
             return mappedCategory
         } catch (err) {
             error(err.message || "Failed to create category")
@@ -1393,7 +1465,6 @@ function LedgerPage() {
                 current.map((item) => (item.id === categoryId ? mapCategory(updated) : item))
             )
             success("Category updated successfully")
-            reloadTags()
             return updated
         } catch (err) {
             error(err.message || "Failed to update category")
@@ -1450,7 +1521,6 @@ function LedgerPage() {
             setCategoryList((current) => current.filter((item) => item.id !== categoryToDelete.id))
             setCategoryToDelete(null)
             success("Category deleted successfully")
-            reloadTags()
         } catch (err) {
             error(err.message || "Failed to delete category")
         } finally {
@@ -1473,7 +1543,6 @@ function LedgerPage() {
                     ? "Category deleted successfully"
                     : `${targetIds.length} categories deleted successfully`
             )
-            reloadTags()
         } catch (err) {
             error(err.message || "Failed to delete selected categories")
         } finally {
@@ -1515,9 +1584,9 @@ function LedgerPage() {
     return (
         <section
             ref={sharedScrollRef ? undefined : localPageScrollRef}
-            className="relative w-full min-w-0 box-border p-4"
+            className="relative w-full min-w-0 box-border px-12 py-8"
         >
-            <div className="min-h-full min-w-0 flex flex-col gap-4 pb-4">
+            <div className="mx-auto min-h-full min-w-0 max-w-7xl flex flex-col gap-4 pb-4">
                 <Suspense fallback={<LedgerSectionFallback />}>
                     <LedgerHeader
                         clientName={client?.name || ""}
@@ -1543,18 +1612,46 @@ function LedgerPage() {
                                         )}
                                     </p>
                                 </div>
-                                <button
-                                    type="button"
-                                    className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                                    onClick={() => setShowUploadModal(true)}
-                                >
-                                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M12 16V4" />
-                                        <path d="m7 9 5-5 5 5" />
-                                        <path d="M20 16v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-3" />
-                                    </svg>
-                                    <span>Upload Files</span>
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                                        onClick={openAddTxnModal}
+                                    >
+                                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M12 5v14" />
+                                            <path d="M5 12h14" />
+                                        </svg>
+                                        <span>Add Transaction</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                                        onClick={() => setIsJournalEntryOpen(true)}
+                                        title="Create a multi-line journal entry (depreciation, accruals, reclassifications)"
+                                    >
+                                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M4 6h16" />
+                                            <path d="M4 12h16" />
+                                            <path d="M4 18h10" />
+                                            <path d="M18 16v6" />
+                                            <path d="M15 19h6" />
+                                        </svg>
+                                        <span>Journal Entry</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                                        onClick={() => setShowUploadModal(true)}
+                                    >
+                                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M12 16V4" />
+                                            <path d="m7 9 5-5 5 5" />
+                                            <path d="M20 16v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-3" />
+                                        </svg>
+                                        <span>Upload Files</span>
+                                    </button>
+                                </div>
                             </div>
                             <div className="min-h-0 min-w-0 flex-1">
                                 <Suspense fallback={<LedgerSectionFallback className="h-full min-h-[320px]" />}>
@@ -1613,9 +1710,6 @@ function LedgerPage() {
                                 onSaveEdit={handleSaveCategoryEdit}
                                 onDelete={setCategoryToDelete}
                                 onDeleteMany={setCategoryIdsToDelete}
-                                tagOptions={officeTags}
-                                onDeleteTag={deleteTag}
-                                deletingTag={deletingTag}
                             />
                         </Suspense>
                     )}
@@ -1640,13 +1734,18 @@ function LedgerPage() {
                     </label>
                     <label className="flex flex-col gap-1">
                         <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Type</span>
-                        <input
+                        <select
                             className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none transition focus:border-gray-400 focus:bg-white"
-                            type="text"
-                            placeholder="checking"
                             value={newAccountType}
                             onChange={(e) => setNewAccountType(e.target.value)}
-                        />
+                        >
+                            <option value="">Select type</option>
+                            {BALANCE_SHEET_ACCOUNT_TYPE_OPTIONS.map((opt) => (
+                                <option key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                </option>
+                            ))}
+                        </select>
                     </label>
                     <div className="mt-1 flex items-center justify-end gap-2">
                         <button
@@ -1717,20 +1816,6 @@ function LedgerPage() {
                             onChange={(e) => setNewCategoryDescription(e.target.value)}
                         />
                     </label>
-                    <label className="flex flex-col gap-1">
-                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                            <span>Tags</span>
-                            <TagRulesHelp />
-                        </span>
-                        <TagsInput
-                            value={newCategoryTags}
-                            onChange={setNewCategoryTags}
-                            options={officeTags}
-                            placeholder="Add tags for this category"
-                            onDeleteOption={deleteTag}
-                            deletingOption={deletingTag}
-                        />
-                    </label>
                     <div className="mt-1 flex items-center justify-end gap-2">
                         <button
                             type="button"
@@ -1795,6 +1880,142 @@ function LedgerPage() {
                 onClose={() => setIsClearUnusedCategoriesModalOpen(false)}
                 isLoading={isSubmitting}
             />
+
+            <PopupModal
+                isOpen={isAddTxnOpen}
+                title="Add transaction"
+                onClose={() => (isSavingNewTxn ? undefined : setIsAddTxnOpen(false))}
+                maxWidthClass="max-w-lg"
+            >
+                <form className="flex flex-col gap-4" onSubmit={handleAddTransaction}>
+                    <p className="text-[12px] text-gray-500">
+                        Creates an <strong>uncategorized</strong> transaction on the chosen account. Pick the
+                        contra-category later by clicking the transaction row in the list.
+                    </p>
+
+                    <label className="flex flex-col gap-1.5">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Account</span>
+                        <div className="relative">
+                            <select
+                                value={newTxnAccountId}
+                                onChange={(e) => setNewTxnAccountId(e.target.value)}
+                                className="w-full appearance-none rounded-md border border-gray-300 bg-white px-3 py-2 pr-8 text-sm text-gray-900 outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900"
+                            >
+                                <option value="">Select…</option>
+                                {accounts.map((acc) => (
+                                    <option key={acc.id} value={acc.id}>
+                                        {acc.name}
+                                    </option>
+                                ))}
+                            </select>
+                            <svg
+                                className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            >
+                                <path d="M6 9l6 6 6-6" />
+                            </svg>
+                        </div>
+                    </label>
+
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        <label className="flex flex-col gap-1.5">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Date</span>
+                            <input
+                                type="date"
+                                value={newTxnDate}
+                                onChange={(e) => setNewTxnDate(e.target.value)}
+                                className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900"
+                            />
+                        </label>
+                        <label className="flex flex-col gap-1.5">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Direction</span>
+                            <div className="relative">
+                                <select
+                                    value={newTxnDirection}
+                                    onChange={(e) => setNewTxnDirection(e.target.value)}
+                                    className="w-full appearance-none rounded-md border border-gray-300 bg-white px-3 py-2 pr-8 text-sm text-gray-900 outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900"
+                                >
+                                    <option value="in">Money in (deposit / credit)</option>
+                                    <option value="out">Money out (withdrawal / debit)</option>
+                                </select>
+                                <svg
+                                    className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2.5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                >
+                                    <path d="M6 9l6 6 6-6" />
+                                </svg>
+                            </div>
+                        </label>
+                    </div>
+
+                    <label className="flex flex-col gap-1.5">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Description</span>
+                        <input
+                            type="text"
+                            value={newTxnDescription}
+                            onChange={(e) => setNewTxnDescription(e.target.value)}
+                            placeholder="e.g. Vendor name or statement memo"
+                            className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900"
+                            autoFocus
+                        />
+                    </label>
+
+                    <label className="flex flex-col gap-1.5">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Amount</span>
+                        <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={newTxnAmount}
+                            onChange={(e) => setNewTxnAmount(e.target.value)}
+                            placeholder="0.00"
+                            className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900"
+                        />
+                        <span className="text-[11px] text-gray-500">
+                            Enter as a positive number — the direction above sets the sign.
+                        </span>
+                    </label>
+
+                    <div className="mt-1 flex items-center justify-end gap-2 border-t border-gray-100 pt-3">
+                        <button
+                            type="button"
+                            onClick={() => setIsAddTxnOpen(false)}
+                            disabled={isSavingNewTxn}
+                            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-60"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={isSavingNewTxn}
+                            className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            {isSavingNewTxn ? "Saving…" : "Add transaction"}
+                        </button>
+                    </div>
+                </form>
+            </PopupModal>
+
+            <Suspense fallback={null}>
+                <JournalEntryModal
+                    isOpen={isJournalEntryOpen}
+                    onClose={() => setIsJournalEntryOpen(false)}
+                    clientId={clientId}
+                    onCreated={() => {
+                        refreshLedgerAfterImport().catch(() => {})
+                    }}
+                />
+            </Suspense>
         </section>
     )
 }

@@ -6,6 +6,19 @@ import {
   buildTransactionSearchTerms,
   buildTransactionSearchText,
 } from "../utils/transactionSearch.js"
+import { validateTransactionLegs } from "../config/transactionLegs.js"
+import { getOrCreateSuspenseAccountId, entryHasClearedLegs } from "./journalEntries.repository.js"
+import { isDateClosed } from "./periodClose.repository.js"
+
+async function _assertDateNotClosed(clientId, date, action = "modify") {
+  if (await isDateClosed(clientId, date)) {
+    const err = new Error(
+      `Cannot ${action} a transaction in a closed period. Reopen the period first.`,
+    )
+    err.code = "PERIOD_CLOSED"
+    throw err
+  }
+}
 
 const BATCH_SIZE = 1000
 const ATLAS_SEARCH_INDEX_NAME = String(process.env.MONGODB_ATLAS_SEARCH_INDEX_NAME || "transactions_autocomplete").trim()
@@ -21,6 +34,231 @@ const TRANSACTIONS_QUERY_DEBUG = String(process.env.TRANSACTIONS_QUERY_DEBUG || 
 // by the Atlas Search refactor (a818bfc) while still being referenced
 // from listEligibleTransactionsFor* — restoring it.
 const ZELLE_DESCRIPTION_REGEX = /(^|[^a-z])(zel|zelle)([^a-z]|$)/i
+
+// === Double-entry adapter ===
+// Translates journal_entries (canonical storage post-migration) into the
+// legacy transaction shape that the old LedgerPage UI expects. Two-leg
+// entries become a single transaction with accountId+categoryId+amount;
+// 3+ leg entries become a split (one bank-side leg, N category splits).
+async function _loadAccountsForLegs(db, entries) {
+  const ids = new Set()
+  for (const entry of entries) {
+    for (const leg of entry.legs || []) ids.add(String(leg.accountId))
+  }
+  if (ids.size === 0) return new Map()
+  const objectIds = [...ids].filter((id) => ObjectId.isValid(id)).map((id) => new ObjectId(id))
+  const accounts = await db.collection("coa_accounts").find({ _id: { $in: objectIds } }).toArray()
+  return new Map(accounts.map((a) => [String(a._id), a]))
+}
+
+function _isBankLikeType(type) {
+  return type === "asset_current" || type === "asset_noncurrent" ||
+    type === "liability_current" || type === "liability_noncurrent"
+}
+
+function _journalEntryToTransaction(entry, accountsById) {
+  const legs = entry.legs || []
+  // Pick the leg landing on a bank/credit-card style account as the
+  // "primary" — that's what the UI shows in the Account column.
+  const bankLeg = legs.find((leg) => {
+    const acc = accountsById.get(String(leg.accountId))
+    return _isBankLikeType(acc?.accountType)
+  }) || legs[0]
+  const otherLegs = legs.filter((leg) => leg !== bankLeg)
+  const bankAccount = accountsById.get(String(bankLeg?.accountId))
+
+  const isSplit = otherLegs.length > 1
+  const contraLeg = isSplit ? null : otherLegs[0]
+  const contraAccount = contraLeg ? accountsById.get(String(contraLeg.accountId)) : null
+  const contraIsSuspense = Boolean(contraAccount?.isSuspense)
+
+  // Bank perspective: +money_in / -money_out.
+  const amount = bankLeg
+    ? Number(bankLeg.debit || 0) - Number(bankLeg.credit || 0)
+    : 0
+
+  const splits = isSplit
+    ? otherLegs.map((leg) => {
+        const acc = accountsById.get(String(leg.accountId))
+        const isSuspense = Boolean(acc?.isSuspense)
+        // Flip the sign so splits reflect bank-perspective amount.
+        const splitAmount = -(Number(leg.debit || 0) - Number(leg.credit || 0))
+        return {
+          amount: splitAmount,
+          categoryId: isSuspense ? null : String(leg.accountId),
+          category: isSuspense ? null : acc?.name || "",
+        }
+      })
+    : []
+
+  return {
+    _id: entry._id,
+    clientId: entry.clientId,
+    accountId: String(bankLeg?.accountId || ""),
+    accountName: bankAccount?.name || "",
+    date: entry.date,
+    description: entry.description || "",
+    amount,
+    categoryId: !isSplit && contraAccount && !contraIsSuspense ? String(contraLeg.accountId) : null,
+    category: !isSplit && contraAccount && !contraIsSuspense ? contraAccount.name : null,
+    isSplit,
+    hasSplit: isSplit,
+    splits,
+    llmProcessed: Boolean(entry.llmProcessed),
+    llmStatus: entry.llmStatus || "none",
+    llmProcessedAt: entry.llmProcessedAt || null,
+    llmConfidence: entry.llmConfidence ?? null,
+    llmAmbiguous: Boolean(entry.llmAmbiguous),
+    llmCategorySuggestionId: entry.llmCategorySuggestionId || null,
+    llmCategorySuggestionName: entry.llmCategorySuggestionName || null,
+    categorizedAt: entry.categorizedAt || null,
+    categorizedSource: entry.categorizedSource || entry.source || "manual",
+    searchText: `${entry.description || ""} ${bankAccount?.name || ""}`.toLowerCase(),
+    iconType: entry.iconType || "manual",
+    createdAt: entry.createdAt,
+    updatedAt: entry.updatedAt,
+  }
+}
+
+// === Inverse adapter: legacy patch → journal_entries legs ===
+// The frontend speaks the old shape (accountId+categoryId+amount+splits).
+// To persist edits we have to rebuild legs that net to zero. Convention:
+//   - Bank leg signed = patch.amount (positive=debit/money-in, negative=credit/money-out)
+//   - For a single category: contra leg gets the opposite side for the same |amount|
+//   - For splits: each split.amount uses bank-perspective sign, so the contra
+//     side flips it (split>0 → credit on category, split<0 → debit on category)
+//   - Uncategorized → contra leg points to the per-client suspense account
+function _buildLegsFromLegacyShape({ bankAccountId, amount, categoryId, splits, suspenseId, description = "" }) {
+  const bankId = String(bankAccountId || "")
+  if (!bankId) throw new TypeError("bankAccountId is required")
+
+  const safeSplits = Array.isArray(splits)
+    ? splits
+        .map((s) => ({
+          categoryId: s?.categoryId ? String(s.categoryId) : null,
+          amount: Number(s?.amount || 0),
+          description: typeof s?.description === "string" ? s.description : "",
+        }))
+        .filter((s) => Number.isFinite(s.amount) && s.amount !== 0)
+    : []
+
+  if (safeSplits.length >= 2) {
+    const total = safeSplits.reduce((acc, s) => acc + s.amount, 0)
+    const bankDebit = total > 0 ? Math.abs(total) : 0
+    const bankCredit = total < 0 ? Math.abs(total) : 0
+    const legs = [
+      { accountId: bankId, debit: bankDebit, credit: bankCredit, description },
+    ]
+    for (const split of safeSplits) {
+      const contraId = split.categoryId || suspenseId
+      if (!contraId) throw new TypeError("split categoryId or suspense fallback required")
+      // Flip the sign: bank-perspective +X → credit on contra; -X → debit on contra
+      const debit = split.amount < 0 ? Math.abs(split.amount) : 0
+      const credit = split.amount > 0 ? Math.abs(split.amount) : 0
+      legs.push({ accountId: String(contraId), debit, credit, description: split.description })
+    }
+    return legs
+  }
+
+  // Non-split: 2 legs only
+  const signed = Number(amount || 0)
+  if (!Number.isFinite(signed) || signed === 0) {
+    throw new TypeError("amount must be a non-zero number")
+  }
+  const magnitude = Math.abs(signed)
+  const contraId = categoryId ? String(categoryId) : suspenseId
+  if (!contraId) throw new TypeError("categoryId or suspense fallback required")
+  const moneyIn = signed > 0
+  return [
+    {
+      accountId: bankId,
+      debit: moneyIn ? magnitude : 0,
+      credit: moneyIn ? 0 : magnitude,
+      description,
+    },
+    {
+      accountId: String(contraId),
+      debit: moneyIn ? 0 : magnitude,
+      credit: moneyIn ? magnitude : 0,
+      description: "",
+    },
+  ]
+}
+
+// Read entry+accounts → return both the legacy view and the parsed pieces
+// needed by writers (bank leg, suspense state, etc.).
+async function _loadEntryAsLegacy(db, id) {
+  if (!ObjectId.isValid(String(id))) return null
+  const entry = await db.collection("journal_entries").findOne({ _id: new ObjectId(id) })
+  if (!entry) return null
+  const accountsById = await _loadAccountsForLegs(db, [entry])
+  return { entry, accountsById, legacy: _journalEntryToTransaction(entry, accountsById) }
+}
+
+async function _listTransactionsFromJournalEntries({ clientId, page, limit, paginationMode, cursor, search, fromDate, toDate, accountIds, categoryIds, amountSign }) {
+  const db = getDB()
+  const safePage = Math.max(1, Number(page) || 1)
+  const safeLimit = Math.min(200, Math.max(1, Number(limit) || 50))
+
+  const filter = { clientId: String(clientId) }
+  if (fromDate || toDate) {
+    filter.date = {}
+    if (fromDate) filter.date.$gte = String(fromDate)
+    if (toDate) filter.date.$lte = String(toDate)
+  }
+  const safeSearch = String(search || "").trim()
+  if (safeSearch) {
+    filter.description = { $regex: escapeRegex(safeSearch), $options: "i" }
+  }
+  const accountFilterIds = []
+  if (Array.isArray(accountIds) && accountIds.length > 0) accountFilterIds.push(...accountIds)
+  if (Array.isArray(categoryIds) && categoryIds.length > 0) accountFilterIds.push(...categoryIds)
+  if (accountFilterIds.length > 0) {
+    filter["legs.accountId"] = { $in: [...new Set(accountFilterIds.map(String))] }
+  }
+
+  const safePaginationMode = String(paginationMode || "page").trim().toLowerCase() === "cursor" ? "cursor" : "page"
+  const cursorData = safePaginationMode === "cursor" ? decodeTransactionsCursor(cursor) : null
+  if (cursorData) {
+    filter.$or = [
+      { date: { $lt: cursorData.date } },
+      { date: cursorData.date, _id: { $lt: new ObjectId(cursorData.id) } },
+    ]
+  }
+
+  const query = db.collection("journal_entries")
+    .find(filter)
+    .sort({ date: -1, _id: -1 })
+  const skip = safePaginationMode === "cursor" ? 0 : (safePage - 1) * safeLimit
+  if (skip > 0) query.skip(skip)
+  const rawEntries = await query.limit(safeLimit + 1).toArray()
+
+  const hasMore = rawEntries.length > safeLimit
+  const pageEntries = hasMore ? rawEntries.slice(0, safeLimit) : rawEntries
+  const accountsById = await _loadAccountsForLegs(db, pageEntries)
+  let items = pageEntries.map((entry) => _journalEntryToTransaction(entry, accountsById))
+
+  // Hide the suspense leg in the bank slot — sometimes happens when both
+  // legs land on non-bank accounts; the helper just picks legs[0]. The
+  // user sees that as an empty bank column, which is OK as a fallback.
+
+  // Amount sign filter applies post-translation since the sign is
+  // derived from the bank leg.
+  if (amountSign === "in") items = items.filter((t) => Number(t.amount) > 0)
+  else if (amountSign === "out") items = items.filter((t) => Number(t.amount) < 0)
+
+  const lastItem = items[items.length - 1]
+  return {
+    items,
+    page: safePage,
+    limit: safeLimit,
+    hasMore,
+    nextCursor: hasMore && lastItem ? encodeTransactionsCursor(lastItem) : null,
+    paginationMode: safePaginationMode,
+    totalCount: null,
+  }
+}
+
 const TRANSACTIONS_QUERY_SLOW_MS = Math.max(0, Number(process.env.TRANSACTIONS_QUERY_SLOW_MS || 750))
 let atlasSearchDisabledUntil = 0
 
@@ -798,43 +1036,82 @@ export async function backfillTransactionsSearchAndDerivedFields() {
 }
 
 // salva transações em lote (batch)
+// Bulk import (CSV / PDF parse / Plaid sync) — each legacy transaction
+// becomes one journal_entry with 2 legs (bank + category-or-suspense).
+// Splits aren't supported here; importers only ever produce 2-leg rows.
 export async function insertTransactionsInBatches(transactions) {
   const db = getDB()
-  const collection = db.collection("transactions")
+  const collection = db.collection("journal_entries")
+  const safeList = Array.isArray(transactions) ? transactions : []
+  if (safeList.length === 0) return { insertedCount: 0 }
+
+  // Reject the whole import if any row's date falls in a closed period.
+  for (const t of safeList) {
+    if (t?.clientId && t?.date) {
+      await _assertDateNotClosed(t.clientId, t.date, "import")
+    }
+  }
+
+  const suspenseByClient = new Map()
+  async function suspenseFor(clientId) {
+    const key = String(clientId)
+    if (!suspenseByClient.has(key)) {
+      suspenseByClient.set(key, await getOrCreateSuspenseAccountId(key))
+    }
+    return suspenseByClient.get(key)
+  }
 
   let insertedCount = 0
-
-  for (let i = 0; i < transactions.length; i += BATCH_SIZE) {
-    const chunk = transactions.slice(i, i + BATCH_SIZE)
+  for (let i = 0; i < safeList.length; i += BATCH_SIZE) {
+    const chunk = safeList.slice(i, i + BATCH_SIZE)
     if (chunk.length === 0) continue
 
-    const docs = chunk.map((t) => ({
-      clientId: t.clientId,
-      accountId: t.accountId ?? null,
-      accountName: t.accountName ?? null,
-      date: t.date, // YYYY-MM-DD
-      description: t.description,
-      amount: t.amount,
-      categoryId: t.categoryId ?? null,
-      category: t.category ?? null,
-      llmProcessed: t.llmProcessed ?? false,
-      llmStatus: t.llmStatus ?? "not_processed",
-      llmProcessedAt: t.llmProcessedAt ?? null,
-      llmConfidence: t.llmConfidence ?? null,
-      llmAmbiguous: t.llmAmbiguous ?? null,
-      llmCategorySuggestionId: t.llmCategorySuggestionId ?? null,
-      llmCategorySuggestionName: t.llmCategorySuggestionName ?? null,
-      categorizedAt: t.categorizedAt ?? null,
-      categorizedSource: t.categorizedSource ?? null,
-      searchTerms: buildTransactionSearchTerms(t),
-      searchText: buildTransactionSearchText(t),
-      ...buildTransactionDerivedFields(t),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    }))
+    const docs = []
+    for (const t of chunk) {
+      if (!t?.clientId || !t?.accountId || !t?.date) continue
+      const signed = Number(t.amount || 0)
+      if (!Number.isFinite(signed) || signed === 0) continue
+      const suspenseId = await suspenseFor(t.clientId)
+      let legs
+      try {
+        legs = _buildLegsFromLegacyShape({
+          bankAccountId: t.accountId,
+          amount: signed,
+          categoryId: t.categoryId || null,
+          splits: null,
+          suspenseId,
+          description: typeof t.description === "string" ? t.description : "",
+        })
+      } catch {
+        continue
+      }
+      const { legs: normalized, totalDebits, totalCredits } = validateTransactionLegs(legs)
+      docs.push({
+        clientId: String(t.clientId),
+        date: t.date,
+        description: typeof t.description === "string" ? t.description.trim() : "",
+        legs: normalized,
+        totalDebits,
+        totalCredits,
+        source: t.categorizedSource || "import",
+        externalId: t.externalId || null,
+        llmProcessed: Boolean(t.llmProcessed),
+        llmStatus: t.llmStatus || "not_processed",
+        llmProcessedAt: t.llmProcessedAt || null,
+        llmConfidence: t.llmConfidence ?? null,
+        llmAmbiguous: t.llmAmbiguous ?? null,
+        llmCategorySuggestionId: t.llmCategorySuggestionId || null,
+        llmCategorySuggestionName: t.llmCategorySuggestionName || null,
+        categorizedAt: t.categorizedAt || null,
+        categorizedSource: t.categorizedSource || null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+    }
 
+    if (docs.length === 0) continue
     const result = await collection.insertMany(docs, { ordered: false })
-    insertedCount += result.insertedCount
+    insertedCount += result.insertedCount || 0
   }
 
   return { insertedCount }
@@ -842,118 +1119,125 @@ export async function insertTransactionsInBatches(transactions) {
 
 // atualizar 
 
+// Post-migration adapter. Translates a legacy-shape patch into the
+// equivalent journal_entries update: legs-affecting fields rebuild the
+// legs, the rest is $set'd directly on the entry doc (metadata like
+// llmProcessed/categorizedSource lives on the journal entry itself now).
 export async function updateTransactionById(id, patch) {
-    const db = getDB()
+  const db = getDB()
+  if (!ObjectId.isValid(String(id))) return null
 
-    // atualiza somente campos enviados no patch
-    const allowed = {
-      accountId: patch.accountId,
-      accountName: patch.accountName,
-      date: patch.date,
-      description: patch.description,
-      amount: patch.amount,
-      categoryId: patch.categoryId,
-      category: patch.category,
-      splits: patch.splits,
-      isSplit: patch.isSplit,
-      llmProcessed: patch.llmProcessed,
-      llmStatus: patch.llmStatus,
-      llmProcessedAt: patch.llmProcessedAt,
-      llmConfidence: patch.llmConfidence,
-      llmAmbiguous: patch.llmAmbiguous,
-      llmCategorySuggestionId: patch.llmCategorySuggestionId,
-      llmCategorySuggestionName: patch.llmCategorySuggestionName,
-      searchTerms: patch.searchTerms,
-      searchText: patch.searchText,
-      dateValue: patch.dateValue,
-      year: patch.year,
-      month: patch.month,
-      hasSplit: patch.hasSplit,
-      allCategoryIds: patch.allCategoryIds,
-      hasUncategorizedIncome: patch.hasUncategorizedIncome,
-      hasUncategorizedExpense: patch.hasUncategorizedExpense,
-      llmProcessedState: patch.llmProcessedState,
-      iconType: patch.iconType,
-      categorizedAt: patch.categorizedAt,
-      categorizedSource: patch.categorizedSource,
-      updatedAt: new Date(),
-    }
+  const loaded = await _loadEntryAsLegacy(db, id)
+  if (!loaded) return null
+  const { entry, legacy } = loaded
 
-    const $set = Object.fromEntries(
-      Object.entries(allowed).filter(([, value]) => value !== undefined)
+  const safePatch = patch || {}
+  // Period close lock: existing date inside closed period blocks any
+  // edit; moving the date INTO a closed period also blocks.
+  await _assertDateNotClosed(entry.clientId, entry.date, "edit")
+  if (typeof safePatch.date === "string" && safePatch.date !== entry.date) {
+    await _assertDateNotClosed(entry.clientId, safePatch.date, "move into")
+  }
+
+  const touchesLegs =
+    safePatch.accountId !== undefined ||
+    safePatch.amount !== undefined ||
+    safePatch.categoryId !== undefined ||
+    safePatch.splits !== undefined ||
+    safePatch.isSplit !== undefined
+
+  const $set = { updatedAt: new Date() }
+  if (typeof safePatch.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(safePatch.date)) {
+    $set.date = safePatch.date
+  }
+  if (typeof safePatch.description === "string") {
+    $set.description = safePatch.description.trim()
+  }
+
+  // Metadata passthrough — these live on the entry doc post-migration.
+  const metadataFields = [
+    "llmProcessed",
+    "llmStatus",
+    "llmProcessedAt",
+    "llmConfidence",
+    "llmAmbiguous",
+    "llmCategorySuggestionId",
+    "llmCategorySuggestionName",
+    "llmProcessedState",
+    "iconType",
+    "categorizedAt",
+    "categorizedSource",
+  ]
+  for (const key of metadataFields) {
+    if (safePatch[key] !== undefined) $set[key] = safePatch[key]
+  }
+
+  if (touchesLegs && (await entryHasClearedLegs(id))) {
+    const err = new Error(
+      "This transaction belongs to a completed reconciliation. Reopen the reconciliation to edit.",
     )
+    err.code = "RECONCILED_TRANSACTION_LOCKED"
+    throw err
+  }
 
-    return db.collection("transactions").findOneAndUpdate(
-        { _id: new ObjectId(id) },
-        { $set },
-        { returnDocument: "after" }
-    )
+  if (touchesLegs) {
+    const suspenseId = await getOrCreateSuspenseAccountId(String(entry.clientId))
+    const nextSplits = safePatch.splits !== undefined ? safePatch.splits : (legacy.splits || [])
+    const splitsArray = Array.isArray(nextSplits) ? nextSplits.filter((s) => Number(s?.amount) !== 0) : []
+    const useSplits = splitsArray.length >= 2 && safePatch.isSplit !== false
+
+    const newAmount = safePatch.amount !== undefined ? Number(safePatch.amount) : Number(legacy.amount)
+    const newCategoryId = safePatch.categoryId !== undefined ? safePatch.categoryId : legacy.categoryId
+    const newBankAccountId = safePatch.accountId !== undefined ? safePatch.accountId : legacy.accountId
+
+    const newLegs = _buildLegsFromLegacyShape({
+      bankAccountId: newBankAccountId,
+      amount: newAmount,
+      categoryId: newCategoryId,
+      splits: useSplits ? splitsArray : null,
+      suspenseId,
+      description: typeof $set.description === "string" ? $set.description : (entry.description || ""),
+    })
+    const { legs, totalDebits, totalCredits } = validateTransactionLegs(newLegs)
+    $set.legs = legs
+    $set.totalDebits = totalDebits
+    $set.totalCredits = totalCredits
+  }
+
+  const result = await db.collection("journal_entries").findOneAndUpdate(
+    { _id: new ObjectId(id) },
+    { $set },
+    { returnDocument: "after" },
+  )
+  const updatedEntry = result?.value ?? result
+  if (!updatedEntry || !updatedEntry._id) return null
+  const accountsById = await _loadAccountsForLegs(db, [updatedEntry])
+  return _journalEntryToTransaction(updatedEntry, accountsById)
 }
 
+// Bulk version: same legs-rebuild logic per entry. No bulkWrite because
+// each entry needs to load+rebuild legs, but we keep the contract.
 export async function updateTransactionsByIds(updates = []) {
-  const db = getDB()
-  const collection = db.collection("transactions")
-
   if (!Array.isArray(updates) || updates.length === 0) {
     return { matchedCount: 0, modifiedCount: 0 }
   }
-
-  const operations = updates
-    .map((item) => {
-      const patch = item?.patch || {}
-      const allowed = {
-        accountId: patch.accountId,
-        accountName: patch.accountName,
-        date: patch.date,
-        description: patch.description,
-        amount: patch.amount,
-        categoryId: patch.categoryId,
-        category: patch.category,
-        searchTerms: patch.searchTerms,
-        searchText: patch.searchText,
-        dateValue: patch.dateValue,
-        year: patch.year,
-        month: patch.month,
-        hasSplit: patch.hasSplit,
-        allCategoryIds: patch.allCategoryIds,
-        hasUncategorizedIncome: patch.hasUncategorizedIncome,
-        hasUncategorizedExpense: patch.hasUncategorizedExpense,
-        llmProcessedState: patch.llmProcessedState,
-        iconType: patch.iconType,
-        categorizedAt: patch.categorizedAt,
-        categorizedSource: patch.categorizedSource,
-        updatedAt: new Date(),
-      }
-
-      const $set = Object.fromEntries(
-        Object.entries(allowed).filter(([, value]) => value !== undefined)
-      )
-
-      if (Object.keys($set).length <= 1) return null
-
-      return {
-        updateOne: {
-          filter: { _id: new ObjectId(item.id) },
-          update: { $set },
-        },
-      }
-    })
-    .filter(Boolean)
-
-  if (operations.length === 0) {
-    return { matchedCount: 0, modifiedCount: 0 }
+  let matchedCount = 0
+  let modifiedCount = 0
+  for (const item of updates) {
+    if (!item?.id) continue
+    const updated = await updateTransactionById(item.id, item.patch || {})
+    if (updated) {
+      matchedCount += 1
+      modifiedCount += 1
+    }
   }
-
-  const result = await collection.bulkWrite(operations, { ordered: false })
-  return {
-    matchedCount: Number(result?.matchedCount || 0),
-    modifiedCount: Number(result?.modifiedCount || 0),
-  }
+  return { matchedCount, modifiedCount }
 }
 
 export async function getTransactionById(id) {
   const db = getDB()
-  return db.collection("transactions").findOne({ _id: new ObjectId(id) })
+  const loaded = await _loadEntryAsLegacy(db, id)
+  return loaded?.legacy || null
 }
 
 export async function listTransactionsByIds(ids = []) {
@@ -964,31 +1248,69 @@ export async function listTransactionsByIds(ids = []) {
         .filter((id) => id && ObjectId.isValid(id))
         .map((id) => new ObjectId(id))
     : []
-
   if (objectIds.length === 0) return []
-
-  return db.collection("transactions").find({ _id: { $in: objectIds } }).toArray()
+  const entries = await db.collection("journal_entries").find({ _id: { $in: objectIds } }).toArray()
+  const accountsById = await _loadAccountsForLegs(db, entries)
+  return entries.map((e) => _journalEntryToTransaction(e, accountsById))
 }
 
 export async function deleteTransactionById(id) {
   const db = getDB()
-  return db.collection("transactions").deleteOne({ _id: new ObjectId(id) })
+  if (!ObjectId.isValid(String(id))) return { deletedCount: 0 }
+  const existing = await db
+    .collection("journal_entries")
+    .findOne({ _id: new ObjectId(id) }, { projection: { clientId: 1, date: 1 } })
+  if (existing) {
+    await _assertDateNotClosed(existing.clientId, existing.date, "delete")
+  }
+  if (await entryHasClearedLegs(id)) {
+    const err = new Error(
+      "This transaction belongs to a completed reconciliation. Reopen the reconciliation first.",
+    )
+    err.code = "RECONCILED_TRANSACTION_LOCKED"
+    throw err
+  }
+  return db.collection("journal_entries").deleteOne({ _id: new ObjectId(id) })
 }
 
 export async function deleteTransactionsByIds(ids = []) {
   const db = getDB()
-  const objectIds = ids.map((id) => new ObjectId(id))
-  return db.collection("transactions").deleteMany({ _id: { $in: objectIds } })
+  const objectIds = (ids || [])
+    .map((id) => String(id || "").trim())
+    .filter((id) => id && ObjectId.isValid(id))
+    .map((id) => new ObjectId(id))
+  if (objectIds.length === 0) return { deletedCount: 0 }
+
+  const existing = await db
+    .collection("journal_entries")
+    .find({ _id: { $in: objectIds } }, { projection: { clientId: 1, date: 1 } })
+    .toArray()
+  for (const entry of existing) {
+    await _assertDateNotClosed(entry.clientId, entry.date, "delete")
+  }
+  for (const oid of objectIds) {
+    if (await entryHasClearedLegs(String(oid))) {
+      const err = new Error(
+        "One or more transactions belong to a completed reconciliation. Reopen first.",
+      )
+      err.code = "RECONCILED_TRANSACTION_LOCKED"
+      throw err
+    }
+  }
+  return db.collection("journal_entries").deleteMany({ _id: { $in: objectIds } })
 }
 
 export async function deleteTransactionsByClientId(clientId) {
   const db = getDB()
-  return db.collection("transactions").deleteMany({ clientId })
+  return db.collection("journal_entries").deleteMany({ clientId: String(clientId) })
 }
 
+// "Account in use" = the account appears on a leg of any journal entry.
 export async function countTransactionsByAccountId(accountId) {
   const db = getDB()
-  return db.collection("transactions").countDocuments({ accountId })
+  const safeId = String(accountId || "").trim()
+  if (!safeId) return 0
+  return db.collection("journal_entries").countDocuments({ "legs.accountId": safeId })
 }
 
 export async function listLinkedAccountIds(accountIds = []) {
@@ -996,287 +1318,208 @@ export async function listLinkedAccountIds(accountIds = []) {
   const safeAccountIds = Array.isArray(accountIds)
     ? [...new Set(accountIds.map((id) => String(id || "").trim()).filter(Boolean))]
     : []
-
   if (safeAccountIds.length === 0) return []
-
-  return db.collection("transactions").distinct("accountId", {
-    accountId: { $in: safeAccountIds },
-  })
+  const docs = await db
+    .collection("journal_entries")
+    .find(
+      { "legs.accountId": { $in: safeAccountIds } },
+      { projection: { _id: 0, "legs.accountId": 1 } },
+    )
+    .toArray()
+  const set = new Set()
+  for (const doc of docs) {
+    for (const leg of doc.legs || []) {
+      const id = String(leg.accountId || "")
+      if (id && safeAccountIds.includes(id)) set.add(id)
+    }
+  }
+  return [...set]
 }
 
+// Categories are accounts in the new schema, so "category in use" is the
+// same query as "account in use".
 export async function countTransactionsByCategoryId(categoryId) {
-  const db = getDB()
-  const categoryFilterValues = buildCategoryFilterValues([categoryId])
-  const directConditions = []
-  const splitConditions = []
-
-  if (categoryFilterValues.stringValues.length > 0) {
-    directConditions.push({ categoryId: { $in: categoryFilterValues.stringValues } })
-    splitConditions.push({ "splits.categoryId": { $in: categoryFilterValues.stringValues } })
-  }
-
-  if (categoryFilterValues.objectIdValues.length > 0) {
-    directConditions.push({ categoryId: { $in: categoryFilterValues.objectIdValues } })
-    splitConditions.push({ "splits.categoryId": { $in: categoryFilterValues.objectIdValues } })
-  }
-
-  if (directConditions.length === 0 && splitConditions.length === 0) {
-    return 0
-  }
-
-  return db.collection("transactions").countDocuments({
-    $or: [...directConditions, ...splitConditions],
-  })
+  return countTransactionsByAccountId(categoryId)
 }
 
 export async function listLinkedCategoryIds(categoryIds = []) {
-  const db = getDB()
-  const collection = db.collection("transactions")
-  const categoryFilterValues = buildCategoryFilterValues(categoryIds)
-  const safeCategoryIds = categoryFilterValues.stringValues
-
-  if (safeCategoryIds.length === 0) return []
-
-  const [directCategoryIds, splitCategoryIds] = await Promise.all([
-    collection.distinct("categoryId", {
-      $or: [
-        { categoryId: { $in: categoryFilterValues.stringValues } },
-        ...(categoryFilterValues.objectIdValues.length > 0
-          ? [{ categoryId: { $in: categoryFilterValues.objectIdValues } }]
-          : []),
-      ],
-    }),
-    collection.distinct("splits.categoryId", {
-      $or: [
-        { "splits.categoryId": { $in: categoryFilterValues.stringValues } },
-        ...(categoryFilterValues.objectIdValues.length > 0
-          ? [{ "splits.categoryId": { $in: categoryFilterValues.objectIdValues } }]
-          : []),
-      ],
-    }),
-  ])
-
-  return [
-    ...new Set(
-      [...directCategoryIds, ...splitCategoryIds]
-        .map((id) => String(id || "").trim())
-        .filter(Boolean)
-    ),
-  ]
+  return listLinkedAccountIds(categoryIds)
 }
 
+// Categories actually used by a client = the set of non-bank-side
+// account ids referenced from any of their journal entries' legs.
 export async function listUsedCategoryIdsByClientId(clientId) {
   const db = getDB()
-  const collection = db.collection("transactions")
+  const safeClientId = String(clientId || "").trim()
+  if (!safeClientId) return []
+  const ids = await db
+    .collection("journal_entries")
+    .distinct("legs.accountId", { clientId: safeClientId })
+  return ids.map((id) => String(id || "").trim()).filter(Boolean)
+}
 
-  const [directCategoryIds, splitCategoryIds] = await Promise.all([
-    collection.distinct("categoryId", {
-      clientId,
-      categoryId: {
-        $nin: ["", null],
-      },
-    }),
-    collection.distinct("splits.categoryId", {
-      clientId,
-      "splits.categoryId": {
-        $nin: ["", null],
-      },
-    }),
-  ])
-
-  return Array.from(
-    new Set(
-      [...directCategoryIds, ...splitCategoryIds]
-        .map((id) => String(id || "").trim())
-        .filter(Boolean)
-    )
-  )
+// Eligibility for the LLM = uncategorized (has a suspense leg) AND
+// 2-leg (not already split) AND description !~ Zelle.
+async function _listLlmEligibleEntries(db, clientId, { transactionIds, zelle } = {}) {
+  const safeClientId = String(clientId || "").trim()
+  if (!safeClientId) return []
+  const suspenseId = await getOrCreateSuspenseAccountId(safeClientId)
+  const filter = {
+    clientId: safeClientId,
+    "legs.accountId": suspenseId,
+    "legs.2": { $exists: false }, // exactly 2 legs = not a split
+  }
+  if (zelle === true) filter.description = ZELLE_DESCRIPTION_REGEX
+  else if (zelle === false) filter.description = { $not: ZELLE_DESCRIPTION_REGEX }
+  if (Array.isArray(transactionIds) && transactionIds.length > 0) {
+    const objectIds = transactionIds
+      .map((id) => String(id || "").trim())
+      .filter((id) => id && ObjectId.isValid(id))
+      .map((id) => new ObjectId(id))
+    if (objectIds.length === 0) return []
+    filter._id = { $in: objectIds }
+  }
+  const entries = await db
+    .collection("journal_entries")
+    .find(filter)
+    .sort({ date: -1, _id: -1 })
+    .toArray()
+  const accountsById = await _loadAccountsForLegs(db, entries)
+  return entries.map((e) => _journalEntryToTransaction(e, accountsById))
 }
 
 export async function listEligibleTransactionsForLlmByIds(clientId, transactionIds = []) {
   const db = getDB()
-  const collection = db.collection("transactions")
-  const objectIds = transactionIds.map((id) => new ObjectId(id))
-
-  return collection
-    .find({
-      clientId,
-      _id: { $in: objectIds },
-      description: { $not: ZELLE_DESCRIPTION_REGEX },
-      $nor: [
-        { isSplit: true },
-        { "splits.1": { $exists: true } },
-      ],
-      $or: [
-        { categoryId: null },
-        { categoryId: "" },
-        { category: null },
-        { category: "" },
-      ],
-    })
-    .toArray()
+  return _listLlmEligibleEntries(db, clientId, { transactionIds, zelle: false })
 }
 
 export async function listEligibleTransactionsForLlmByClientId(clientId) {
   const db = getDB()
-  const collection = db.collection("transactions")
-
-  return collection
-    .find({
-      clientId,
-      description: { $not: ZELLE_DESCRIPTION_REGEX },
-      $nor: [
-        { isSplit: true },
-        { "splits.1": { $exists: true } },
-      ],
-      $or: [
-        { categoryId: null },
-        { categoryId: "" },
-        { category: null },
-        { category: "" },
-      ],
-    })
-    .sort({ date: -1, _id: -1 })
-    .toArray()
-}
-
-export async function applyLlmCategorizationUpdates(updates = []) {
-  const db = getDB()
-  const collection = db.collection("transactions")
-
-  if (!Array.isArray(updates) || updates.length === 0) {
-    return { modifiedCount: 0 }
-  }
-
-  const operations = updates.map((item) => ({
-    updateOne: {
-      filter: { _id: new ObjectId(item.id) },
-      update: {
-        $set: {
-          categoryId: item.categoryId ?? null,
-          category: item.category ?? null,
-          llmProcessed: true,
-          llmStatus: item.llmStatus,
-          llmProcessedAt: item.llmProcessedAt,
-          llmConfidence: item.llmConfidence ?? null,
-          llmAmbiguous: item.llmAmbiguous ?? null,
-          llmCategorySuggestionId: item.llmCategorySuggestionId ?? null,
-          llmCategorySuggestionName: item.llmCategorySuggestionName ?? null,
-          searchTerms: item.searchTerms,
-          searchText: item.searchText,
-          dateValue: item.dateValue,
-          year: item.year,
-          month: item.month,
-          hasSplit: item.hasSplit,
-          allCategoryIds: item.allCategoryIds,
-          hasUncategorizedIncome: item.hasUncategorizedIncome,
-          hasUncategorizedExpense: item.hasUncategorizedExpense,
-          llmProcessedState: item.llmProcessedState,
-          iconType: item.iconType,
-          categorizedAt: item.categorizedAt ?? null,
-          categorizedSource: item.categorizedSource ?? null,
-          updatedAt: new Date(),
-        },
-      },
-    },
-  }))
-
-  const result = await collection.bulkWrite(operations, { ordered: false })
-  return { modifiedCount: result.modifiedCount || 0 }
+  return _listLlmEligibleEntries(db, clientId, { zelle: false })
 }
 
 export async function listEligibleTransactionsForZelleByIds(clientId, transactionIds = []) {
   const db = getDB()
-  const collection = db.collection("transactions")
-  const objectIds = transactionIds.map((id) => new ObjectId(id))
-
-  return collection
-    .find({
-      clientId,
-      _id: { $in: objectIds },
-      description: ZELLE_DESCRIPTION_REGEX,
-      $nor: [
-        { isSplit: true },
-        { "splits.1": { $exists: true } },
-      ],
-      $or: [
-        { categoryId: null },
-        { categoryId: "" },
-        { category: null },
-        { category: "" },
-        { category: "Uncategorized income" },
-        { category: "Uncategorized expenses" },
-      ],
-    })
-    .toArray()
+  return _listLlmEligibleEntries(db, clientId, { transactionIds, zelle: true })
 }
 
 export async function listEligibleTransactionsForZelleByClientId(clientId) {
   const db = getDB()
-  const collection = db.collection("transactions")
-
-  return collection
-    .find({
-      clientId,
-      description: ZELLE_DESCRIPTION_REGEX,
-      $nor: [
-        { isSplit: true },
-        { "splits.1": { $exists: true } },
-      ],
-      $or: [
-        { categoryId: null },
-        { categoryId: "" },
-        { category: null },
-        { category: "" },
-        { category: "Uncategorized income" },
-        { category: "Uncategorized expenses" },
-      ],
-    })
-    .sort({ date: -1, _id: -1 })
-    .toArray()
+  return _listLlmEligibleEntries(db, clientId, { zelle: true })
 }
 
-export async function applyCategoryUpdates(updates = []) {
-  const db = getDB()
-  const collection = db.collection("transactions")
-
+// Applies LLM-derived categorization to journal_entries: replaces the
+// suspense leg with the picked contra account and stamps metadata.
+// Each update item has shape { id, categoryId, llmStatus, ... }.
+export async function applyLlmCategorizationUpdates(updates = []) {
   if (!Array.isArray(updates) || updates.length === 0) {
     return { modifiedCount: 0 }
   }
+  let modifiedCount = 0
+  for (const item of updates) {
+    if (!item?.id) continue
+    const patch = {
+      categoryId: item.categoryId ?? null,
+      llmProcessed: true,
+      llmStatus: item.llmStatus,
+      llmProcessedAt: item.llmProcessedAt,
+      llmConfidence: item.llmConfidence ?? null,
+      llmAmbiguous: item.llmAmbiguous ?? null,
+      llmCategorySuggestionId: item.llmCategorySuggestionId ?? null,
+      llmCategorySuggestionName: item.llmCategorySuggestionName ?? null,
+      llmProcessedState: item.llmProcessedState,
+      iconType: item.iconType,
+      categorizedAt: item.categorizedAt ?? null,
+      categorizedSource: item.categorizedSource ?? null,
+    }
+    const updated = await updateTransactionById(item.id, patch)
+    if (updated) modifiedCount += 1
+  }
+  return { modifiedCount }
+}
 
-  const operations = updates.map((item) => ({
-    updateOne: {
-      filter: { _id: new ObjectId(item.id) },
-      update: {
-        $set: {
-          categoryId: item.categoryId ?? null,
-          category: item.category ?? null,
-          searchTerms: item.searchTerms,
-          searchText: item.searchText,
-          dateValue: item.dateValue,
-          year: item.year,
-          month: item.month,
-          hasSplit: item.hasSplit,
-          allCategoryIds: item.allCategoryIds,
-          hasUncategorizedIncome: item.hasUncategorizedIncome,
-          hasUncategorizedExpense: item.hasUncategorizedExpense,
-          llmProcessedState: item.llmProcessedState,
-          iconType: item.iconType,
-          categorizedAt: item.categorizedAt ?? null,
-          categorizedSource: item.categorizedSource ?? null,
-          updatedAt: new Date(),
+// Same shape as applyLlmCategorizationUpdates but without LLM metadata
+// (manual or Zelle-rule-driven categorization).
+export async function applyCategoryUpdates(updates = []) {
+  if (!Array.isArray(updates) || updates.length === 0) {
+    return { modifiedCount: 0 }
+  }
+  let modifiedCount = 0
+  for (const item of updates) {
+    if (!item?.id) continue
+    const patch = {
+      categoryId: item.categoryId ?? null,
+      llmProcessedState: item.llmProcessedState,
+      iconType: item.iconType,
+      categorizedAt: item.categorizedAt ?? null,
+      categorizedSource: item.categorizedSource ?? null,
+    }
+    const updated = await updateTransactionById(item.id, patch)
+    if (updated) modifiedCount += 1
+  }
+  return { modifiedCount }
+}
+
+// Operational signals for a (client, year) pair, post-migration adapter.
+// Reads journal_entries; "uncategorized" means at least one leg still
+// points to the client's suspense account (coa_accounts.isSuspense=true).
+export async function getClientYearOperationalSignals(clientId, year) {
+  const db = getDB()
+
+  const safeClientId = String(clientId || "").trim()
+  const safeYear = String(year || "").trim()
+  if (!safeClientId || !/^\d{4}$/.test(safeYear)) {
+    return { totalCount: 0, monthsInYear: [], uncategorizedInYear: 0 }
+  }
+
+  const suspense = await db
+    .collection("coa_accounts")
+    .findOne(
+      { clientId: safeClientId, isSuspense: true },
+      { projection: { _id: 1 } },
+    )
+  const suspenseId = suspense ? String(suspense._id) : null
+
+  const [result] = await db
+    .collection("journal_entries")
+    .aggregate([
+      { $match: { clientId: safeClientId, date: { $regex: /^\d{4}-\d{2}-\d{2}$/ } } },
+      {
+        $project: {
+          year: { $substrBytes: ["$date", 0, 4] },
+          month: { $substrBytes: ["$date", 5, 2] },
+          legs: 1,
         },
       },
-    },
-  }))
+      {
+        $facet: {
+          total: [{ $count: "n" }],
+          months: [
+            { $match: { year: safeYear } },
+            { $group: { _id: "$month" } },
+          ],
+          uncategorized: suspenseId
+            ? [
+                { $match: { year: safeYear, "legs.accountId": suspenseId } },
+                { $count: "n" },
+              ]
+            : [{ $match: { _id: null } }, { $count: "n" }],
+        },
+      },
+    ])
+    .toArray()
 
-  const result = await collection.bulkWrite(operations, { ordered: false })
-  return { modifiedCount: result.modifiedCount || 0 }
+  const totalCount = Number(result?.total?.[0]?.n || 0)
+  const monthsInYear = Array.isArray(result?.months)
+    ? result.months.map((item) => String(item?._id || "")).filter(Boolean).sort()
+    : []
+  const uncategorizedInYear = Number(result?.uncategorized?.[0]?.n || 0)
+  return { totalCount, monthsInYear, uncategorizedInYear }
 }
 
 export async function listTransactionPeriodOptions(clientId) {
   const db = getDB()
-  const collection = db.collection("transactions")
+  const collection = db.collection("journal_entries")
 
   const [result] = await collection
     .aggregate([
@@ -1721,7 +1964,17 @@ async function findTransactionsPage(collection, filter, safePage, safeLimit, opt
 }
 
 // busca paginada
-export async function listTransactionsPaginated({
+export async function listTransactionsPaginated(params) {
+  // Post-migration adapter: reads from journal_entries and translates
+  // each entry into the legacy transaction shape so the existing UI
+  // (LedgerPage) works unchanged. Advanced filters (Atlas Search,
+  // years/months, amount range, llmProcessed, iconType, split mode,
+  // uncategorized flags) are no-ops for now — they'll be re-added
+  // once the basic listing is verified end-to-end.
+  return _listTransactionsFromJournalEntries(params || {})
+}
+
+async function _legacyUnusedListTransactionsPaginated({
   clientId,
   page = 1,
   limit = 50,
@@ -1919,7 +2172,55 @@ export async function listTransactionsPaginated({
   return fastResult
 }
 
-export async function summarizeTransactions({
+export async function summarizeTransactions(params = {}) {
+  // Post-migration adapter: aggregates journal_entries instead of the
+  // legacy transactions collection. Sums money_in / money_out / net
+  // from the bank-side leg of each entry.
+  return _summarizeFromJournalEntries(params)
+}
+
+async function _summarizeFromJournalEntries({ clientId, fromDate, toDate, accountIds, categoryIds, search }) {
+  const db = getDB()
+  const filter = { clientId: String(clientId) }
+  if (fromDate || toDate) {
+    filter.date = {}
+    if (fromDate) filter.date.$gte = String(fromDate)
+    if (toDate) filter.date.$lte = String(toDate)
+  }
+  if (String(search || "").trim()) {
+    filter.description = { $regex: escapeRegex(String(search).trim()), $options: "i" }
+  }
+  const accountFilter = []
+  if (Array.isArray(accountIds) && accountIds.length > 0) accountFilter.push(...accountIds)
+  if (Array.isArray(categoryIds) && categoryIds.length > 0) accountFilter.push(...categoryIds)
+  if (accountFilter.length > 0) {
+    filter["legs.accountId"] = { $in: [...new Set(accountFilter.map(String))] }
+  }
+
+  const entries = await db.collection("journal_entries").find(filter).toArray()
+  const accountsById = await _loadAccountsForLegs(db, entries)
+
+  let income = 0
+  let expense = 0
+  let count = 0
+  for (const entry of entries) {
+    const tx = _journalEntryToTransaction(entry, accountsById)
+    const amount = Number(tx.amount || 0)
+    if (amount > 0) income += amount
+    else expense += -amount
+    count += 1
+  }
+  const net = income - expense
+
+  return {
+    totalCount: count,
+    totalAmount: net,
+    incomeAmount: income,
+    expenseAmount: expense,
+  }
+}
+
+async function _unusedLegacySummarize({
   clientId,
   search = "",
   accountIds = [],

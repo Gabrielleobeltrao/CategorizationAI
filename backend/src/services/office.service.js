@@ -6,7 +6,11 @@ import {
   setOfficeFeatures,
   normalizeOfficeFeatures,
 } from "../repositories/office.repository.js"
-import { getOfficeDashboardSnapshot } from "../repositories/dashboard.repository.js"
+import {
+  getOfficeDashboardSnapshot,
+  getOfficeDashboardCustomRange,
+  getOfficeDashboardFeed,
+} from "../repositories/dashboard.repository.js"
 import { OPEN_TEST_ENABLED } from "../config/openTest.js"
 import { resolveOpenTestMarkerService } from "./openTest.service.js"
 
@@ -104,8 +108,13 @@ export async function getOfficeByIdService(id, options = {}) {
   return getOfficeById(id)
 }
 
-export async function setOfficeFeaturesService(officeId, featuresPatch) {
+export async function setOfficeFeaturesService(officeId, featuresPatch, options = {}) {
   if (!officeId) throw new Error("officeId is required")
+
+  const actorOfficeId = String(options?.actorOfficeId || "").trim()
+  if (actorOfficeId && actorOfficeId !== String(officeId).trim()) {
+    throw new Error("Forbidden for this office")
+  }
 
   const existing = await getOfficeById(officeId)
   if (!existing) throw new Error("Office not found")
@@ -128,5 +137,37 @@ export async function getOfficeDashboardByIdService(officeId, options = {}) {
 
   return getOfficeDashboardSnapshot(officeId, {
     month: options?.month,
+    actorId: options?.actorId,
+    clientId: options?.clientId,
+  })
+}
+
+export async function getOfficeDashboardFeedByIdService(officeId, options = {}) {
+  if (!officeId) throw new Error("officeId is required")
+
+  const actorOfficeId = String(options?.actorOfficeId || "").trim()
+  if (actorOfficeId && actorOfficeId !== officeId) {
+    throw new Error("Forbidden for this office")
+  }
+
+  return getOfficeDashboardFeed(officeId, {
+    actorId: options?.actorId,
+    clientId: options?.clientId,
+  })
+}
+
+export async function getOfficeDashboardCustomRangeByIdService(officeId, options = {}) {
+  if (!officeId) throw new Error("officeId is required")
+
+  const actorOfficeId = String(options?.actorOfficeId || "").trim()
+  if (actorOfficeId && actorOfficeId !== officeId) {
+    throw new Error("Forbidden for this office")
+  }
+
+  return getOfficeDashboardCustomRange(officeId, {
+    from: options?.from,
+    to: options?.to,
+    actorId: options?.actorId,
+    clientId: options?.clientId,
   })
 }

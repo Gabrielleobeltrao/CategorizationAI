@@ -5,9 +5,11 @@ import {
     getClientByIdService,
     getClientLedgerBootstrapService,
     deleteClientByIdService,
+    addClientNoteService,
+    updateClientNoteService,
+    deleteClientNoteService,
 } from "../services/clients.service.js"
 import { userHasPermissionService } from "../services/roles.service.js"
-import { hydrateOfficeTagsForDocumentService } from "../services/tagCatalog.service.js"
 import { sendErrorResponse } from "../utils/httpError.js"
 
 function sanitizeClientOwnerInfo(client, canReadOwnerInfo) {
@@ -64,6 +66,9 @@ export async function createClientController(req, res) {
 
         const client = await createClientService(req.body, {
             actorProfileId: req.userProfile?._id,
+            actorName:
+                String(req.userProfile?.name || "").trim() ||
+                String(req.userProfile?.email || "").trim(),
         })
         const canReadOwnerInfo = await userHasPermissionService(req.userProfile, "clientsOwnerInfo:read")
         return res.status(201).json(sanitizeClientOwnerInfo(client, canReadOwnerInfo))
@@ -115,7 +120,7 @@ export async function updateClientByIdController(req, res) {
 export async function listClientsByOfficeIdController(req, res) {
     try {
         const { officeId } = req.params
-        const clients = await listClientsByOfficeIdService(officeId, req.query)
+        const clients = await listClientsByOfficeIdService(officeId, req.query, { actorProfile: req.userProfile })
         const canReadOwnerInfo = await userHasPermissionService(req.userProfile, "clientsOwnerInfo:read")
 
         const items = Array.isArray(clients?.items)
@@ -133,10 +138,7 @@ export async function listClientsByOfficeIdController(req, res) {
 
 export async function getClientByIdController(req, res) {
     try {
-        const scopedClient = req.scope?.client
-        const client = scopedClient
-            ? await hydrateOfficeTagsForDocumentService(scopedClient.officeId, scopedClient)
-            : await getClientByIdService(req.params.id)
+        const client = req.scope?.client || await getClientByIdService(req.params.id)
 
         if (!client) {
             return res.status(404).json({
@@ -169,8 +171,63 @@ export async function getClientLedgerBootstrapController(req, res) {
 export async function deleteClientByIdController(req, res) {
     try {
         const { id } = req.params
-        await deleteClientByIdService(id)
+        await deleteClientByIdService(id, noteActionContext(req))
         return res.status(204).send()
+    } catch (error) {
+        return sendErrorResponse(res, error)
+    }
+}
+
+function noteActionContext(req) {
+    const profile = req.userProfile || {}
+    return {
+        actorProfileId: profile?._id,
+        actorPermissions: profile?.permissions || [],
+        actorName:
+            String(profile?.fullName || "").trim() ||
+            String(profile?.name || "").trim() ||
+            String(profile?.email || "").trim(),
+    }
+}
+
+export async function addClientNoteController(req, res) {
+    try {
+        const client = await addClientNoteService(
+            req.params.id,
+            { body: req.body?.body },
+            noteActionContext(req)
+        )
+        const canReadOwnerInfo = await userHasPermissionService(req.userProfile, "clientsOwnerInfo:read")
+        return res.status(201).json(sanitizeClientOwnerInfo(client, canReadOwnerInfo))
+    } catch (error) {
+        return sendErrorResponse(res, error)
+    }
+}
+
+export async function updateClientNoteController(req, res) {
+    try {
+        const client = await updateClientNoteService(
+            req.params.id,
+            req.params.noteId,
+            { body: req.body?.body },
+            noteActionContext(req)
+        )
+        const canReadOwnerInfo = await userHasPermissionService(req.userProfile, "clientsOwnerInfo:read")
+        return res.status(200).json(sanitizeClientOwnerInfo(client, canReadOwnerInfo))
+    } catch (error) {
+        return sendErrorResponse(res, error)
+    }
+}
+
+export async function deleteClientNoteController(req, res) {
+    try {
+        const client = await deleteClientNoteService(
+            req.params.id,
+            req.params.noteId,
+            noteActionContext(req)
+        )
+        const canReadOwnerInfo = await userHasPermissionService(req.userProfile, "clientsOwnerInfo:read")
+        return res.status(200).json(sanitizeClientOwnerInfo(client, canReadOwnerInfo))
     } catch (error) {
         return sendErrorResponse(res, error)
     }

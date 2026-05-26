@@ -1,37 +1,33 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Legend,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts"
 import { useAuth } from "../contexts/auth.context"
 import { useNotification } from "../contexts/notification.context"
 import {
   getCachedOfficeHomeDashboard,
   getOfficeHomeDashboard,
+  getOfficeOverview,
+  getOfficeMyActivity,
 } from "../services/home.service"
 import {
   getRecentOpenedClients,
   subscribeRecentOpenedClients,
 } from "../utils/recentClients"
 import { subscribeDashboardRefresh } from "../utils/dashboardRefresh"
-
-function getQueueStatusClass(status) {
-  const safe = String(status || "").toLowerCase()
-  if (safe === "running") return "bg-sky-100 text-sky-700"
-  if (safe === "queued") return "bg-amber-100 text-amber-700"
-  if (safe === "failed") return "bg-rose-100 text-rose-700"
-  if (safe === "done") return "bg-emerald-100 text-emerald-700"
-  return "bg-gray-100 text-gray-700"
-}
+import { useFeature } from "../hooks/useFeature"
+import FeatureGate from "../components/auth/FeatureGate"
+import {
+  listTasks,
+  updateTaskById as updateTask,
+  addTaskComment,
+  updateTaskComment,
+  deleteTaskComment,
+} from "../services/tasks.service"
+import { listClientsByOfficeId } from "../services/clients.service"
+import { listEmployeesByOfficeId } from "../services/employees.service"
+import TaskDetailsModal from "../components/tasks/TaskDetailsModal"
+import TaskEditModal from "../components/tasks/TaskEditModal"
+import TasksTimeline from "../components/tasks/TasksTimeline"
+import { hasPermission } from "../utils/permissions"
 
 function formatOpenedAt(value) {
   const date = new Date(value)
@@ -47,15 +43,6 @@ function formatOpenedAt(value) {
 
   const diffDays = Math.floor(diffHours / 24)
   return `${diffDays}d ago`
-}
-
-function parseMetricValue(value) {
-  const normalized = String(value || "")
-    .replace(/,/g, "")
-    .trim()
-
-  const parsed = Number(normalized)
-  return Number.isFinite(parsed) ? parsed : 0
 }
 
 const EMPTY_DASHBOARD = {
@@ -74,19 +61,6 @@ const EMPTY_DASHBOARD = {
   meta: {},
 }
 
-const CHART_SERIES = [
-  { key: "imported", label: "Imported", color: "#111827" },
-  { key: "categorized", label: "Categorized", color: "#2563eb" },
-  { key: "aiProcessed", label: "AI Processed", color: "#0f766e" },
-  { key: "aiCategorized", label: "AI Categorized", color: "#16a34a" },
-  { key: "pending", label: "Pending", color: "#d97706" },
-]
-
-const OVERVIEW_VIEW_STORAGE_KEY = "home.performanceOverview.view"
-const OVERVIEW_PERIOD_STORAGE_KEY = "home.performanceOverview.period"
-const ALLOWED_OVERVIEW_VIEWS = new Set(["blocks", "line", "columns"])
-const ALLOWED_OVERVIEW_PERIODS = new Set(["month", "week"])
-
 function normalizeDashboardPayload(payload = {}) {
   return {
     header: {
@@ -103,109 +77,19 @@ function normalizeDashboardPayload(payload = {}) {
   }
 }
 
-function readStoredOverviewOption(storageKey, allowedValues, fallbackValue) {
-  if (typeof window === "undefined") return fallbackValue
-
-  const storedValue = window.localStorage.getItem(storageKey)
-  return allowedValues.has(storedValue) ? storedValue : fallbackValue
-}
-
-function OverviewTooltip({ active, payload, label }) {
-  if (!active || !Array.isArray(payload) || payload.length === 0) return null
-
-  return (
-    <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 shadow-lg">
-      <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">{label}</p>
-      <div className="mt-2 flex flex-col gap-1.5">
-        {payload.map((item) => (
-          <div key={item.dataKey} className="flex items-center justify-between gap-4 text-sm">
-            <div className="flex items-center gap-2">
-              <span
-                className="h-2.5 w-2.5 rounded-full"
-                style={{ backgroundColor: item.color }}
-              />
-              <span className="text-gray-600">{item.name}</span>
-            </div>
-            <span className="font-semibold text-gray-900">
-              {Number(item.value || 0).toLocaleString("en-US")}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function OverviewChart({ data = [], chartType = "line", isWeek = false }) {
-  return (
-    <div className="mt-4 h-[22rem] rounded-xl border border-gray-200 bg-gray-50 p-4">
-      <div className="h-full w-full">
-        <ResponsiveContainer width="100%" height="100%">
-          {chartType === "columns" ? (
-            <BarChart
-              data={data}
-              margin={{ top: 16, right: 20, left: 0, bottom: 8 }}
-              barCategoryGap={isWeek ? 18 : 28}
-            >
-              <CartesianGrid stroke="#e5e7eb" vertical={false} />
-              <XAxis dataKey={isWeek ? "day" : "week"} tick={{ fill: "#6b7280", fontSize: 12 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: "#6b7280", fontSize: 12 }} axisLine={false} tickLine={false} />
-              <Tooltip content={<OverviewTooltip />} cursor={{ fill: "rgba(229, 231, 235, 0.22)" }} />
-              <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ paddingBottom: 18, fontSize: "12px" }} />
-              {CHART_SERIES.map((serie) => (
-                <Bar
-                  key={serie.key}
-                  dataKey={serie.key}
-                  name={serie.label}
-                  fill={serie.color}
-                  radius={[8, 8, 0, 0]}
-                  maxBarSize={isWeek ? 32 : 28}
-                />
-              ))}
-            </BarChart>
-          ) : (
-            <LineChart data={data} margin={{ top: 16, right: 20, left: 0, bottom: 8 }}>
-              <CartesianGrid stroke="#e5e7eb" vertical={false} />
-              <XAxis dataKey={isWeek ? "day" : "week"} tick={{ fill: "#6b7280", fontSize: 12 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: "#6b7280", fontSize: 12 }} axisLine={false} tickLine={false} />
-              <Tooltip content={<OverviewTooltip />} cursor={{ stroke: "#d1d5db", strokeWidth: 1 }} />
-              <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ paddingBottom: 18, fontSize: "12px" }} />
-              {CHART_SERIES.map((serie) => (
-                <Line
-                  key={serie.key}
-                  type="monotone"
-                  dataKey={serie.key}
-                  name={serie.label}
-                  stroke={serie.color}
-                  strokeWidth={isWeek ? 4 : 3}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  dot={{
-                    r: isWeek ? 5 : 4,
-                    stroke: "#ffffff",
-                    strokeWidth: 2,
-                    fill: serie.color,
-                  }}
-                  activeDot={{
-                    r: isWeek ? 7 : 6,
-                    stroke: "#ffffff",
-                    strokeWidth: 2,
-                    fill: serie.color,
-                  }}
-                />
-              ))}
-            </LineChart>
-          )}
-        </ResponsiveContainer>
-      </div>
-    </div>
-  )
-}
-
 function Home() {
   const navigate = useNavigate()
   const { error } = useNotification()
   const { profile } = useAuth()
+  const isCrmEnabled = useFeature("crm")
+  const [openTasks, setOpenTasks] = useState([])
+  const [taskClientsById, setTaskClientsById] = useState(() => new Map())
+  const [taskEmployeesById, setTaskEmployeesById] = useState(() => new Map())
+  const [isLoadingTasks, setIsLoadingTasks] = useState(false)
+  const [viewingTask, setViewingTask] = useState(null)
+  const [editingTask, setEditingTask] = useState(null)
+  const [isEditOpen, setIsEditOpen] = useState(false)
+  const [isSavingTask, setIsSavingTask] = useState(false)
   const [recentClients, setRecentClients] = useState(() => getRecentOpenedClients())
   const [employee, setEmployee] = useState({
     id: "",
@@ -214,43 +98,32 @@ function Home() {
     role: "",
   })
   const [dashboard, setDashboard] = useState(EMPTY_DASHBOARD)
-  const [isLoadingDashboard, setIsLoadingDashboard] = useState(true)
-  const [overviewView, setOverviewView] = useState(() =>
-    readStoredOverviewOption(
-      OVERVIEW_VIEW_STORAGE_KEY,
-      ALLOWED_OVERVIEW_VIEWS,
-      "blocks"
-    )
-  )
-  const [overviewPeriod, setOverviewPeriod] = useState(() =>
-    readStoredOverviewOption(
-      OVERVIEW_PERIOD_STORAGE_KEY,
-      ALLOWED_OVERVIEW_PERIODS,
-      "month"
-    )
-  )
+  const [overview, setOverview] = useState(null)
+  const [myActivity, setMyActivity] = useState([])
+  // Scope toggle for the Pending / Reconciliation cards. We default to
+  // "mine" but auto-fall back to "all" until the user has any recent
+  // activity, otherwise the cards would always look empty for new users.
+  const [overviewScope, setOverviewScope] = useState("mine")
 
   const loadDashboard = useCallback(async (officeId, options = {}) => {
     const safeOfficeId = String(officeId || "").trim()
-    const showLoading = Boolean(options?.showLoading)
     const notifyError = options?.notifyError !== false
-    const cachedDashboard = getCachedOfficeHomeDashboard(safeOfficeId)
+    const actorId = String(profile?._id || profile?.id || "").trim()
+    const cacheOptions = { actorId }
+    const cachedDashboard = getCachedOfficeHomeDashboard(safeOfficeId, cacheOptions)
 
     if (!safeOfficeId) {
       setDashboard(EMPTY_DASHBOARD)
-      if (showLoading) setIsLoadingDashboard(false)
       return
     }
 
     if (cachedDashboard) {
       setDashboard(normalizeDashboardPayload(cachedDashboard))
-      if (showLoading) setIsLoadingDashboard(false)
-    } else if (showLoading) {
-      setIsLoadingDashboard(true)
     }
 
     try {
       const payload = await getOfficeHomeDashboard(safeOfficeId, {
+        ...cacheOptions,
         noCache: true,
         backgroundLoadingMessage: cachedDashboard ? "Updating cached dashboard data..." : "",
       })
@@ -262,27 +135,133 @@ function Home() {
       if (notifyError) {
         error(err.message || "Failed to load home dashboard")
       }
-    } finally {
-      if (showLoading) setIsLoadingDashboard(false)
     }
-  }, [error])
+  }, [error, profile?._id, profile?.id])
 
-  const monthMetricItems = useMemo(() => {
-    return dashboard.kpis.map((item) => ({
-      ...item,
-      numericValue: parseMetricValue(item.value),
-    }))
-  }, [dashboard.kpis])
+  const currentProfileId = String(profile?._id || profile?.id || "").trim()
 
-  const weekMetricItems = useMemo(() => {
-    return dashboard.weekKpis.map((item) => ({
-      ...item,
-      numericValue: parseMetricValue(item.value),
-    }))
-  }, [dashboard.weekKpis])
+  const handleHomeTaskEdit = (task) => {
+    setEditingTask(task)
+    setIsEditOpen(true)
+  }
 
-  const activeMetricItems = overviewPeriod === "month" ? monthMetricItems : weekMetricItems
-  const activeTrendData = overviewPeriod === "month" ? dashboard.weeklyTrend : dashboard.dailyTrend
+  const handleHomeTaskEditSave = async (draft) => {
+    if (!editingTask?._id && !editingTask?.id) return
+    const id = String(editingTask._id || editingTask.id)
+    try {
+      setIsSavingTask(true)
+      const updated = await updateTask(id, draft)
+      setOpenTasks((current) =>
+        current.map((t) => (String(t._id || t.id) === id ? updated : t))
+      )
+      setViewingTask((current) =>
+        current && String(current._id || current.id) === id ? updated : current
+      )
+      setIsEditOpen(false)
+      setEditingTask(null)
+    } catch (err) {
+      error(err.message || "Failed to update task")
+    } finally {
+      setIsSavingTask(false)
+    }
+  }
+
+  const handleHomeTaskChangeStatus = async (task, nextStatus) => {
+    if (!task?._id && !task?.id) return
+    const id = String(task._id || task.id)
+    try {
+      const updated = await updateTask(id, { status: nextStatus })
+      setOpenTasks((current) =>
+        current.map((t) => (String(t._id || t.id) === id ? updated : t))
+      )
+      setViewingTask((current) =>
+        current && String(current._id || current.id) === id ? updated : current
+      )
+    } catch (err) {
+      error(err.message || "Failed to update task")
+    }
+  }
+
+  const applyHomeTaskUpdate = (updated) => {
+    if (!updated) return
+    setOpenTasks((current) =>
+      current.map((t) => (String(t._id || t.id) === String(updated._id || updated.id) ? updated : t))
+    )
+    setViewingTask((current) =>
+      current && String(current._id || current.id) === String(updated._id || updated.id) ? updated : current
+    )
+  }
+
+  const handleHomeCreateComment = async (task, body) => {
+    try {
+      const updated = await addTaskComment(task._id || task.id, body)
+      applyHomeTaskUpdate(updated)
+    } catch (err) {
+      error(err.message || "Failed to add comment")
+      throw err
+    }
+  }
+
+  const handleHomeUpdateComment = async (task, commentId, body) => {
+    try {
+      const updated = await updateTaskComment(task._id || task.id, commentId, body)
+      applyHomeTaskUpdate(updated)
+    } catch (err) {
+      error(err.message || "Failed to update comment")
+      throw err
+    }
+  }
+
+  const handleHomeDeleteComment = async (task, commentId) => {
+    try {
+      const updated = await deleteTaskComment(task._id || task.id, commentId)
+      applyHomeTaskUpdate(updated)
+    } catch (err) {
+      error(err.message || "Failed to delete comment")
+      throw err
+    }
+  }
+
+  useEffect(() => {
+    const officeId = String(profile?.officeId || "").trim()
+    if (!isCrmEnabled || !officeId) {
+      setOpenTasks([])
+      setTaskClientsById(new Map())
+      setTaskEmployeesById(new Map())
+      return undefined
+    }
+    let active = true
+    setIsLoadingTasks(true)
+    Promise.all([
+      // Fetch every status so done tasks still appear in the timeline,
+      // sorted at the bottom of their day by TasksTimeline.
+      listTasks().catch(() => []),
+      listClientsByOfficeId(officeId, { limit: 500 }).catch(() => null),
+      listEmployeesByOfficeId(officeId).catch(() => null),
+    ])
+      .then(([list, clientList, employeeList]) => {
+        if (!active) return
+        setOpenTasks(Array.isArray(list) ? list : [])
+        const clientItems = Array.isArray(clientList?.items)
+          ? clientList.items
+          : Array.isArray(clientList)
+            ? clientList
+            : []
+        const employeeItems = Array.isArray(employeeList?.items)
+          ? employeeList.items
+          : Array.isArray(employeeList)
+            ? employeeList
+            : []
+        setTaskClientsById(new Map(clientItems.map((c) => [String(c._id || c.id), c])))
+        setTaskEmployeesById(new Map(employeeItems.map((e) => [String(e._id || e.id), e])))
+      })
+      .finally(() => {
+        if (active) setIsLoadingTasks(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [isCrmEnabled, profile?.officeId])
 
   useEffect(() => {
     setRecentClients(getRecentOpenedClients())
@@ -291,14 +270,6 @@ function Home() {
     })
     return unsubscribe
   }, [])
-
-  useEffect(() => {
-    window.localStorage.setItem(OVERVIEW_VIEW_STORAGE_KEY, overviewView)
-  }, [overviewView])
-
-  useEffect(() => {
-    window.localStorage.setItem(OVERVIEW_PERIOD_STORAGE_KEY, overviewPeriod)
-  }, [overviewPeriod])
 
   useEffect(() => {
     const safeOfficeId = String(profile?.officeId || "").trim()
@@ -311,7 +282,6 @@ function Home() {
 
     if (!profile) {
       setDashboard(EMPTY_DASHBOARD)
-      setIsLoadingDashboard(false)
     }
   }, [profile])
 
@@ -319,16 +289,27 @@ function Home() {
     const safeOfficeId = String(employee.officeId || "").trim()
     if (!safeOfficeId) return undefined
 
-    loadDashboard(safeOfficeId, {
-      showLoading: true,
-      notifyError: true,
-    })
+    loadDashboard(safeOfficeId, { notifyError: true })
+
+    let overviewActive = true
+    const loadOverviewBundle = () => {
+      getOfficeOverview(safeOfficeId)
+        .then((data) => {
+          if (overviewActive) setOverview(data || null)
+        })
+        .catch(() => {})
+      getOfficeMyActivity(safeOfficeId)
+        .then((payload) => {
+          if (!overviewActive) return
+          setMyActivity(Array.isArray(payload?.items) ? payload.items : [])
+        })
+        .catch(() => {})
+    }
+    loadOverviewBundle()
 
     const refreshSilently = () => {
-      loadDashboard(safeOfficeId, {
-        showLoading: false,
-        notifyError: false,
-      })
+      loadDashboard(safeOfficeId, { notifyError: false })
+      loadOverviewBundle()
     }
 
     const refreshTimer = setInterval(refreshSilently, 15000)
@@ -342,6 +323,7 @@ function Home() {
     document.addEventListener("visibilitychange", onVisibilityChange)
 
     return () => {
+      overviewActive = false
       clearInterval(refreshTimer)
       unsubscribeDashboardRefresh()
       window.removeEventListener("focus", onWindowFocus)
@@ -350,136 +332,79 @@ function Home() {
   }, [employee.officeId, loadDashboard])
 
   return (
-    <section className="w-full p-8">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-5">
-        <header className="rounded-xl border border-gray-200 bg-white p-4">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <h1 className="text-3xl font-bold">
-                {dashboard.header.officeName || "Office"}
-              </h1>
-              <p className="text-sm text-gray-500">
-                {employee.name} ({employee.role})
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">
-                Last sync: {dashboard.header.lastSyncAt}
-              </span>
-              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getQueueStatusClass(dashboard.header.queueStatus)}`}>
-                Queue: {dashboard.header.queueStatus}
-              </span>
-            </div>
-          </div>
+    <section className="w-full px-12 py-8">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 sm:gap-5">
+        <header>
+          <h1 className="text-2xl font-bold sm:text-3xl">
+            {dashboard.header.officeName || "Office"}
+          </h1>
+          <p className="text-sm text-gray-500">
+            {employee.name} ({employee.role})
+          </p>
         </header>
 
-        <section className="rounded-xl border border-gray-200 bg-white p-4">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <h2 className="text-lg font-semibold">Performance Overview</h2>
-              <p className="text-sm text-gray-500">
-                {overviewPeriod === "month"
-                  ? "Office performance for the current month"
-                  : "Office performance for the current week"}
-              </p>
-            </div>
+        <FeatureGate flag="crmTasks">
+          <TasksTimeline
+            tasks={openTasks}
+            clientsById={taskClientsById}
+            employeesById={taskEmployeesById}
+            onSelect={setViewingTask}
+            headerAction={(
+              <button
+                type="button"
+                onClick={() => navigate("/board")}
+                className="group inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-sm font-medium text-gray-600 transition hover:text-gray-900"
+              >
+                Open Board
+                <svg viewBox="0 0 24 24" className="h-4 w-4 transition-transform group-hover:translate-x-0.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M5 12h14" />
+                  <path d="m13 6 6 6-6 6" />
+                </svg>
+              </button>
+            )}
+          />
+        </FeatureGate>
 
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <div className="inline-flex rounded-full border border-gray-200 bg-gray-50 p-1">
-                <button
-                  type="button"
-                  className={`rounded-full px-3 py-1.5 text-sm font-medium ${
-                    overviewView === "blocks"
-                      ? "bg-gray-900 text-white"
-                      : "text-gray-600"
-                  }`}
-                  onClick={() => setOverviewView("blocks")}
-                >
-                  Blocks
-                </button>
-                <button
-                  type="button"
-                  className={`rounded-full px-3 py-1.5 text-sm font-medium ${
-                    overviewView === "line"
-                      ? "bg-gray-900 text-white"
-                      : "text-gray-600"
-                  }`}
-                  onClick={() => setOverviewView("line")}
-                >
-                  Lines
-                </button>
-                <button
-                  type="button"
-                  className={`rounded-full px-3 py-1.5 text-sm font-medium ${
-                    overviewView === "columns"
-                      ? "bg-gray-900 text-white"
-                      : "text-gray-600"
-                  }`}
-                  onClick={() => setOverviewView("columns")}
-                >
-                  Columns
-                </button>
-              </div>
+        {String(profile?.clientScope || "all") !== "assigned" && (
+          <OfficeKpiRow kpis={overview?.kpis} />
+        )}
 
-              <div className="inline-flex rounded-full border border-gray-200 bg-gray-50 p-1">
-                <button
-                  type="button"
-                  className={`rounded-full px-3 py-1.5 text-sm font-medium ${
-                    overviewPeriod === "month"
-                      ? "bg-gray-900 text-white"
-                      : "text-gray-600"
-                  }`}
-                  onClick={() => setOverviewPeriod("month")}
-                >
-                  Month
-                </button>
-                <button
-                  type="button"
-                  className={`rounded-full px-3 py-1.5 text-sm font-medium ${
-                    overviewPeriod === "week"
-                      ? "bg-gray-900 text-white"
-                      : "text-gray-600"
-                  }`}
-                  onClick={() => setOverviewPeriod("week")}
-                >
-                  Week
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {isLoadingDashboard && dashboard.kpis.length === 0 && (
-            <div className="mt-4 h-[22rem] rounded-xl border border-gray-200 bg-gray-50 p-4">
-              <p className="text-sm text-gray-500">Loading dashboard...</p>
-            </div>
-          )}
-
-          {!isLoadingDashboard && overviewView === "blocks" && (
-            <div className="mt-4 h-[22rem]">
-              <div className="grid h-full grid-cols-1 gap-4 md:grid-cols-2 md:auto-rows-fr xl:grid-cols-5 xl:auto-rows-auto">
-                {activeMetricItems.map((kpi) => (
-                <article
-                  key={kpi.id}
-                  className="flex min-h-0 flex-col rounded-xl border border-gray-200 bg-gray-50 p-4"
-                >
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">{kpi.label}</p>
-                  <h2 className="mt-1 text-2xl font-bold text-gray-900">{kpi.value}</h2>
-                  <p className="mt-auto pt-3 text-sm text-gray-600">{kpi.trend}</p>
-                </article>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {!isLoadingDashboard && overviewView !== "blocks" && (
-            <OverviewChart
-              data={activeTrendData}
-              chartType={overviewView}
-              isWeek={overviewPeriod === "week"}
-            />
-          )}
-        </section>
+        {(() => {
+          const isRestricted = String(profile?.clientScope || "all") === "assigned"
+          const hasRecent = (overview?.myRecentClientCount || 0) > 0
+          // Restricted users always run in "mine" scope — they shouldn't see
+          // office-wide totals, and the backend already filters per-client.
+          const effectiveScope = isRestricted ? "mine" : (!hasRecent ? "all" : overviewScope)
+          const pending = effectiveScope === "mine"
+            ? (overview?.pendingCategorizationMine || [])
+            : (overview?.pendingCategorization || [])
+          const reconc = effectiveScope === "mine"
+            ? (overview?.reconciliationHealthMine || [])
+            : (overview?.reconciliationHealth || [])
+          return (
+            <>
+              {!isRestricted && (
+                <OverviewScopeToggle
+                  scope={effectiveScope}
+                  onChange={setOverviewScope}
+                  hasRecent={hasRecent}
+                />
+              )}
+              <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                <PendingCategorizationCard
+                  items={pending}
+                  scope={effectiveScope}
+                  onOpenClient={(id) => navigate(`/clients/${id}/transactions`)}
+                />
+                <ReconciliationHealthCard
+                  items={reconc}
+                  scope={effectiveScope}
+                  onOpenClient={(id) => navigate(`/clients/${id}/reconciliation`)}
+                />
+              </section>
+            </>
+          )
+        })()}
 
         <section className="rounded-xl border border-gray-200 bg-white p-4">
           <h2 className="text-lg font-semibold">Recently Opened Clients</h2>
@@ -496,7 +421,7 @@ function Home() {
                   <button
                     type="button"
                     className="flex w-full items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-left hover:bg-gray-100"
-                    onClick={() => navigate(client.to || `/clients/${client.id}/ledger`)}
+                    onClick={() => navigate(client.to || `/clients/${client.id}/home`)}
                   >
                     <span className="truncate text-sm font-medium text-gray-900">{client.name}</span>
                     <span className="ml-3 shrink-0 text-xs text-gray-500">{formatOpenedAt(client.openedAt)}</span>
@@ -507,60 +432,10 @@ function Home() {
           )}
         </section>
 
-        <section className="grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1.45fr)_minmax(360px,1fr)]">
-          <article className="rounded-xl border border-gray-200 bg-white p-4">
-            <h2 className="text-lg font-semibold">Live Jobs Queue</h2>
-            <p className="text-sm text-gray-500">LLM and categorization pipeline status</p>
 
-            <div className="mt-4 flex max-h-[34rem] flex-col gap-2 overflow-y-auto pr-1">
-              {dashboard.jobsQueue.length === 0 && (
-                <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
-                  No active jobs right now
-                </p>
-              )}
-              {dashboard.jobsQueue.map((job) => (
-                <div key={job.id} className="rounded-lg border border-gray-100 bg-gray-50 p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium text-gray-900">{job.client}</p>
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${getQueueStatusClass(job.status)}`}>
-                      {job.status}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs text-gray-500">
-                    {job.label || "Job"} • {job.processed}/{job.total} • {job.updatedAt}
-                  </p>
-                  <div className="mt-2 h-2 w-full rounded-full bg-gray-100">
-                    <div className="h-2 rounded-full bg-gray-700" style={{ width: `${Math.max(2, job.progress)}%` }} />
-                  </div>
-                  {job.error && <p className="mt-2 text-xs text-rose-600">{job.error}</p>}
-                </div>
-              ))}
-            </div>
-          </article>
-        </section>
+        <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+          <MyActivityCard items={myActivity} />
 
-        <section className="grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
-          <article className="rounded-xl border border-gray-200 bg-white p-4">
-            <h2 className="text-lg font-semibold">Recent Activity</h2>
-            <p className="text-sm text-gray-500">Latest office operations</p>
-
-            <ul className="mt-4 flex flex-col gap-2">
-              {dashboard.recentActivities.length === 0 && (
-                <li className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
-                  No recent activities in the last 3 days
-                </li>
-              )}
-              {dashboard.recentActivities.map((activity) => (
-                <li key={activity.id} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium text-gray-900">{activity.title}</p>
-                    <span className="text-xs text-gray-500">{activity.time}</span>
-                  </div>
-                  <p className="mt-1 text-sm text-gray-600">{activity.detail}</p>
-                </li>
-              ))}
-            </ul>
-          </article>
 
           <aside className="flex flex-col gap-4">
             {/*
@@ -580,7 +455,270 @@ function Home() {
           </aside>
         </section>
       </div>
+
+      <TaskDetailsModal
+        task={isEditOpen ? null : viewingTask}
+        clientList={
+          viewingTask
+            ? (Array.isArray(viewingTask.clientIds) && viewingTask.clientIds.length > 0
+                ? viewingTask.clientIds
+                : (viewingTask.clientId ? [viewingTask.clientId] : []))
+                .map((id) => taskClientsById.get(String(id)))
+                .filter(Boolean)
+            : []
+        }
+        assigneeList={
+          viewingTask
+            ? (Array.isArray(viewingTask.assigneeIds) && viewingTask.assigneeIds.length > 0
+                ? viewingTask.assigneeIds
+                : (viewingTask.assigneeId ? [viewingTask.assigneeId] : []))
+                .map((id) => taskEmployeesById.get(String(id)))
+                .filter(Boolean)
+            : []
+        }
+        onClose={() => setViewingTask(null)}
+        onEdit={(task) => handleHomeTaskEdit(task)}
+        onChangeStatus={handleHomeTaskChangeStatus}
+        canViewStatusHistory={hasPermission(profile?.permissions, "tasks:readStatusHistory")}
+        currentProfileId={currentProfileId}
+        canCreateComment={hasPermission(profile?.permissions, "tasks:commentCreate")}
+        canUpdateComment={hasPermission(profile?.permissions, "tasks:commentUpdate")}
+        canDeleteComment={hasPermission(profile?.permissions, "tasks:commentDelete")}
+        onCreateComment={handleHomeCreateComment}
+        onUpdateComment={handleHomeUpdateComment}
+        onDeleteComment={handleHomeDeleteComment}
+      />
+
+      <TaskEditModal
+        isOpen={isEditOpen}
+        task={editingTask}
+        clients={Array.from(taskClientsById.values())}
+        employees={Array.from(taskEmployeesById.values())}
+        isSaving={isSavingTask}
+        onCancel={() => {
+          setIsEditOpen(false)
+          setEditingTask(null)
+        }}
+        onSubmit={handleHomeTaskEditSave}
+      />
     </section>
+  )
+}
+
+const ACTIVITY_LABELS = {
+  "task.created": "Created task",
+  "task.deleted": "Deleted task",
+  "task.status.open": "Reopened task",
+  "task.status.in_progress": "Started task",
+  "task.status.done": "Completed task",
+  "task.comment.added": "Commented on task",
+  "client.created": "Created client",
+  "client.deleted": "Deleted client",
+  "client.note.added": "Added note on client",
+  "client.note.updated": "Edited note on client",
+  "client.note.deleted": "Deleted note on client",
+  "period.closed": "Closed period",
+  "period.reopened": "Reopened period",
+  "reconciliation.completed": "Completed reconciliation",
+  "reconciliation.reopened": "Reopened reconciliation",
+  "recurring.created": "Created recurring rule",
+  "recurring.runOnce": "Ran recurring rule once",
+}
+
+function formatActivityRelativeTime(value) {
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return ""
+  const diffMs = Date.now() - d.getTime()
+  const minutes = Math.floor(diffMs / 60000)
+  if (minutes < 1) return "just now"
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  return `${days}d ago`
+}
+
+function MyActivityCard({ items }) {
+  const list = Array.isArray(items) ? items : []
+  return (
+    <article className="rounded-xl border border-gray-200 bg-white p-4">
+      <h2 className="text-lg font-semibold">Your activity</h2>
+      <p className="text-sm text-gray-500">Recent actions you took in this office</p>
+
+      <ul className="mt-4 flex flex-col gap-2">
+        {list.length === 0 && (
+          <li className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
+            Nothing to show yet — actions you take will appear here.
+          </li>
+        )}
+        {list.map((entry) => {
+          const title = ACTIVITY_LABELS[entry.action] || entry.action
+          return (
+            <li key={entry.id} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-medium text-gray-900">{title}</p>
+                <span className="text-xs text-gray-500">{formatActivityRelativeTime(entry.at)}</span>
+              </div>
+              {entry.label && (
+                <p className="mt-1 text-sm text-gray-600">{entry.label}</p>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+    </article>
+  )
+}
+
+function formatNumber(value) {
+  return new Intl.NumberFormat("en-US").format(Number(value || 0))
+}
+
+function OfficeKpiRow({ kpis }) {
+  const items = [
+    { label: "Active clients", value: kpis?.activeClients ?? 0 },
+    { label: "Uncategorized", value: kpis?.uncategorizedTotal ?? 0, accent: kpis?.uncategorizedTotal > 0 ? "warn" : null },
+    { label: "Open tasks", value: kpis?.openTasks ?? 0 },
+    { label: "Unreconciled bank legs", value: kpis?.unreconciledLegs ?? 0, accent: kpis?.unreconciledLegs > 0 ? "warn" : null },
+  ]
+  return (
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      {items.map((item) => (
+        <div key={item.label} className="rounded-xl border border-gray-200 bg-white px-4 py-3">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">{item.label}</p>
+          <p
+            className={`mt-1 text-2xl font-semibold tabular-nums ${
+              item.accent === "warn" ? "text-amber-600" : "text-gray-900"
+            }`}
+          >
+            {formatNumber(item.value)}
+          </p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function OverviewScopeToggle({ scope, onChange, hasRecent }) {
+  const baseClass = "rounded-md px-3 py-1.5 text-sm font-medium transition"
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <p className="text-[11px] uppercase tracking-wide text-gray-500">
+        {scope === "mine" ? "Showing clients you worked on recently" : "Showing the whole office"}
+      </p>
+      <div className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5">
+        <button
+          type="button"
+          onClick={() => onChange("mine")}
+          disabled={!hasRecent}
+          className={`${baseClass} ${
+            scope === "mine" ? "bg-gray-900 text-white shadow-sm" : "text-gray-600 hover:text-gray-900"
+          } disabled:cursor-not-allowed disabled:opacity-50`}
+          title={hasRecent ? "Only clients you touched in the last 30 days" : "No recent activity yet — start working on clients to populate this view"}
+        >
+          Mine
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange("all")}
+          className={`${baseClass} ${
+            scope === "all" ? "bg-gray-900 text-white shadow-sm" : "text-gray-600 hover:text-gray-900"
+          }`}
+        >
+          Office
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function PendingCategorizationCard({ items, scope, onOpenClient }) {
+  return (
+    <article className="rounded-xl border border-gray-200 bg-white p-4">
+      <header className="flex items-baseline justify-between gap-2">
+        <h2 className="text-lg font-semibold">Pending Categorization</h2>
+        <span className="text-xs text-gray-500">{scope === "mine" ? "Mine" : "Top across office"}</span>
+      </header>
+      <p className="text-sm text-gray-500">Clients with transactions still in suspense</p>
+
+      {items.length === 0 ? (
+        <p className="mt-3 rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-6 text-center text-sm text-gray-500">
+          {scope === "mine"
+            ? "None of the clients you worked on recently have uncategorized transactions."
+            : "All clear — no uncategorized transactions."}
+        </p>
+      ) : (
+        <ul className="mt-3 divide-y divide-gray-100">
+          {items.map((item) => (
+            <li key={item.clientId}>
+              <button
+                type="button"
+                onClick={() => onOpenClient?.(item.clientId)}
+                className="flex w-full items-center justify-between gap-3 px-1 py-2 text-left hover:bg-gray-50"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-gray-900">
+                    {item.clientName || "Client"}
+                  </span>
+                  {item.oldestDate && (
+                    <span className="block text-[11px] text-gray-500">
+                      Oldest: {item.oldestDate}
+                    </span>
+                  )}
+                </span>
+                <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[12px] font-semibold text-amber-700 tabular-nums">
+                  {formatNumber(item.count)}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </article>
+  )
+}
+
+function ReconciliationHealthCard({ items, scope, onOpenClient }) {
+  return (
+    <article className="rounded-xl border border-gray-200 bg-white p-4">
+      <header className="flex items-baseline justify-between gap-2">
+        <h2 className="text-lg font-semibold">Reconciliation Health</h2>
+        <span className="text-xs text-gray-500">{scope === "mine" ? "Mine" : "Top across office"}</span>
+      </header>
+      <p className="text-sm text-gray-500">Bank legs not yet cleared</p>
+
+      {items.length === 0 ? (
+        <p className="mt-3 rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-6 text-center text-sm text-gray-500">
+          {scope === "mine"
+            ? "Clients you worked on recently are all clear."
+            : "Everything cleared."}
+        </p>
+      ) : (
+        <ul className="mt-3 divide-y divide-gray-100">
+          {items.map((item) => (
+            <li key={item.clientId}>
+              <button
+                type="button"
+                onClick={() => onOpenClient?.(item.clientId)}
+                className="flex w-full items-center justify-between gap-3 px-1 py-2 text-left hover:bg-gray-50"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-gray-900">
+                    {item.clientName || "Client"}
+                  </span>
+                  <span className="block text-[11px] text-gray-500">
+                    {formatNumber(item.accountsWithUncleared)} account{item.accountsWithUncleared === 1 ? "" : "s"}
+                  </span>
+                </span>
+                <span className="shrink-0 rounded-full bg-rose-100 px-2 py-0.5 text-[12px] font-semibold text-rose-700 tabular-nums">
+                  {formatNumber(item.unclearedLegs)}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </article>
   )
 }
 

@@ -12,6 +12,7 @@ SaaS de contabilidade para escritórios contábeis com:
 - Profit & Loss por client e período
 - cache/bootstrap para reduzir carregamentos de páginas
 - dashboard operacional do office
+- UI responsiva: sidebar vira drawer no mobile, tabelas viram cards onde faz sentido (transactions, employees, etc) e filtros usam date-picker compartilhado
 
 ## Stack
 
@@ -270,6 +271,7 @@ Permissões são aplicadas por:
 - `requirePermission`
 - `authorizeScope`
 - `validateObjectId`
+- `requireFeature` (add-ons como CRM; retorna 402 quando o office não tem o flag)
 
 Existem roles base e roles customizadas por office.
 
@@ -282,6 +284,7 @@ Principais áreas protegidas:
 - categories
 - transactions
 - profit loss
+- tasks (`tasks:read/create/update/delete`, sempre gated por `requireFeature("crm")`)
 
 ## Módulos do produto
 
@@ -292,7 +295,9 @@ O sistema é dividido em dois módulos conceituais:
 
 ### Feature flags
 
-O documento `offices` carrega `features: { crm: boolean }`. Default é `{ crm: false }`. A intenção é que o Stripe sincronize isso por webhook quando entrar em produção; hoje a ativação é manual.
+O documento `offices` carrega `features: { crm: boolean, crmOperationalStatus: boolean }`. Default é tudo `false`. A intenção é que o Stripe sincronize isso por webhook quando entrar em produção; hoje a ativação é manual.
+
+Sub-flags como `crmOperationalStatus` dependem da parent `crm` — quando `crm` está `false`, o normalizador força a sub-flag pra `false` também (ver `normalizeOfficeFeatures` em `backend/src/repositories/office.repository.js`).
 
 Ativar CRM num office específico (dev/staging):
 
@@ -317,6 +322,77 @@ npm run features:set -- --officeId=<officeId> --crm=false
 
 - **Frontend**: hook `useFeature("crm")` retorna booleano. Componente `<FeatureGate flag="crm" fallback={null}>...</FeatureGate>` esconde children. Both leem de `office.features` carregado no bootstrap.
 
+### Operational Status (sub-feature do Operations CRM)
+
+Cada cliente do office carrega um **Operational Status** que indica o estágio atual do trabalho operacional. O status é derivado automaticamente dos dados de bookkeeping (transações, categorização), com a possibilidade de override manual por dois status específicos.
+
+- Feature flag: `crmOperationalStatus` (depende de `crm` estar ativo)
+- Coleção: `client_operational_status` (1 doc por cliente, índice único em `clientId`)
+- Registry compartilhado: `backend/src/lib/operationalStatuses.js` + mirror em `frontend/src/constants/operationalStatuses.js`
+- Compute: `computeOperationalStatusForClient` em `backend/src/services/operationalStatus.service.js`
+
+#### Status disponíveis
+
+| id                 | tipo      | quando aparece                                                              |
+| ------------------ | --------- | --------------------------------------------------------------------------- |
+| `onboarding`       | auto      | Cliente sem nenhuma transação importada.                                    |
+| `waiting_documents`| auto      | Tem transações, mas o ano corrente ainda não tem transação em todos os meses. |
+| `categorizing`     | auto      | Ano corrente coberto nos 12 meses, mas existem transações sem categoria.    |
+| `ready_to_review`  | auto      | Ano corrente coberto nos 12 meses e todas as transações categorizadas.      |
+| `completed`        | **manual**| Usuário marca quando finaliza a revisão/processo.                           |
+| `paused`           | **manual**| Trabalho pausado intencionalmente — sobrescreve o status automático.        |
+
+#### Regras de cálculo (current-year scope)
+
+A regra inicial usa o **ano corrente (UTC)** como janela de avaliação. Ordem de avaliação dos status automáticos (primeiro match vence):
+
+1. `onboarding` — `totalCount === 0` (nenhuma transação importada)
+2. `waiting_documents` — `monthsInYear.length < 12` (faltam meses no ano corrente)
+3. `categorizing` — `monthsInYear.length === 12 && uncategorizedInYear > 0`
+4. `ready_to_review` — `monthsInYear.length === 12 && uncategorizedInYear === 0`
+
+Os sinais (`totalCount`, `monthsInYear`, `uncategorizedInYear`) vêm de `getClientYearOperationalSignals` em `backend/src/repositories/transactions.repository.js` — uma única aggregation por cliente.
+
+A janela do ano corrente é definida em `getCurrentYearForRules()` no service. Quando evoluirmos pra ano fiscal configurável ou rolling-12-months, é só trocar essa função (manter as regras intactas).
+
+#### Prioridade efetiva (manual vs computado)
+
+O `effectiveStatus` retornado em `normalizeRecord` (repository) é decidido na ordem:
+
+```
+manualStatus (paused, completed)  ▸  computedStatus  ▸  DEFAULT_OPERATIONAL_STATUS (onboarding)
+```
+
+Validações:
+- Apenas `paused` e `completed` podem ser definidos via PATCH manual (`setManualOperationalStatusService` rejeita os demais).
+- Limpar o manual (passar `status: null`) faz o `effectiveStatus` voltar a usar o `computedStatus`.
+
+#### Quando o compute roda
+
+- **Endpoint single** `GET /api/clients/:id/operational-status` — recomputa antes de responder.
+- **Endpoint list** `GET /api/offices/:id/operational-status` — recomputa todos os clientes do office.
+- **Mutações de transações** — disparam recompute fire-and-forget (`scheduleOperationalStatusRecompute`) sem bloquear a resposta. Hooks atuais em [transactions.service.js](backend/src/services/transactions.service.js):
+  - `createTransactionsBatchService` (CSV import / criação em lote)
+  - `updateTransactionByIdService` (edição individual, inclui categorização manual e splits)
+  - `updateTransactionsByIdsService` (edição em lote)
+  - `deleteTransactionByIdService` / `deleteTransactionsByIdsService`
+  - `categorizeTransactionsWithLlmService` / `categorizeZelleTransactionsService` (categorização automática)
+- **Deleção de cliente** — `deleteClientByIdService` remove o registro de operational status junto com as outras coleções cascateadas.
+- Falhas no recompute são logadas (`console.error`) mas nunca propagam pra mutação original. Em último caso a próxima leitura (single/list) recalcula.
+
+#### Onde os status aparecem na UI
+
+- **Lista de clientes** (`ClientsPage`) — badge ao lado do nome, gated por `useFeature("crmOperationalStatus")`.
+- Próximos passos planejados: widget na página do cliente, card no CRM Dashboard, ícone de info explicando as regras no tooltip.
+
+### Recent Activity per usuário
+
+A seção "Recent Activity" do Home filtra atividades pelo usuário logado, enquanto o `/bookkeeping` mantém a visão do office inteiro. Cada documento que vira card de atividade (clients, transactions de import CSV, categorization_jobs, user_profiles) guarda `createdBy` = `userProfile._id` do criador.
+
+- `getOfficeDashboardSnapshot(officeId, { actorId })` aceita um filtro opcional que se aplica às 4 fontes do feed
+- Home passa `actorId = profile._id`; demais consumers (Bookkeeping Dashboard) deixam ausente para ver tudo do office
+- Documentos pré-existentes sem `createdBy` não aparecem na visão filtrada (intencional; novos eventos passam a aparecer)
+
 ## Principais coleções MongoDB
 
 - `offices`
@@ -329,6 +405,7 @@ npm run features:set -- --officeId=<officeId> --crm=false
 - `transaction_memory`
 - `open_test_access_codes`
 - `office_tags`
+- `tasks`
 
 ## API
 
@@ -344,7 +421,8 @@ Base: `/api`
 - `POST /offices`
 - `GET /offices/:id`
 - `PATCH /offices/:id`
-- `GET /offices/:id/dashboard`
+- `PATCH /offices/:id/features` — toggle de add-ons (ex: CRM), gated por `offices:update`
+- `GET /offices/:id/dashboard?actorId=<userProfileId>` — quando `actorId` é informado, o feed de atividade filtra pelo criador
 
 ### Private Beta
 - `GET /open-test/config`
@@ -408,6 +486,14 @@ Base: `/api`
 - `GET /transactions/categorize-all-llm/jobs`
 - `GET /transactions/categorize-all-llm/jobs/:jobId`
 
+### Tasks (CRM add-on)
+Todas as rotas exigem `requireAuth + requirePermission("tasks:*") + requireFeature("crm")`. Quando o office não tem CRM ativo a resposta é **402 Payment Required**.
+- `GET /tasks?clientId=&assigneeId=&status=`
+- `POST /tasks` — todos os campos opcionais (title, description, clientId, assigneeId, dueDate)
+- `GET /tasks/:id`
+- `PATCH /tasks/:id` — alternar status entre `open` e `done` carimba/limpa `doneAt` automaticamente
+- `DELETE /tasks/:id`
+
 ### Profit & Loss
 - `GET /clients/:clientId/profit-loss/period-options`
 - `GET /clients/:clientId/profit-loss`
@@ -416,10 +502,14 @@ Base: `/api`
 
 ### Páginas principais
 
-- `Home`
+- `Home` — boas-vindas com calendário de tasks (semana por default), cards "Assigned to you" e "Open for the team", Recent Activity filtrado pelo usuário logado
+- `Bookkeeping Dashboard` (`/bookkeeping`) — Performance Overview (KPIs + chart com toggle Month/Week e Blocks/Line/Columns) e Live Jobs Queue do office
+- `CRM Dashboard` (`/crm`) — Performance Overview com KPIs derivados de tasks (open, due this week, overdue, done this week, etc.)
+- `Tasks` (`/crm/tasks`) — listagem em 2 colunas (você / time) com filtro por client/status/assignee, modal de detalhes que mostra dados do client e do assignee, botão "Mark done" e timestamp `doneAt`
 - `Ledger`
 - `Profit & Loss`
-- `Clients`
+- `Clients` — listagem sem ícones de edit/delete (a edição vive em Settings do client)
+- `Client Settings` (`/clients/:id/settings`) — form completo + danger zone com delete
 - `Employees`
 - `Settings`
 - `Register`

@@ -1,24 +1,25 @@
 import { api } from "../lib/api"
 
-export async function listAccountsByClientId(clientId) {
+export async function listAccountsByClientId(clientId, { includeAllTypes = false } = {}) {
   const cleanClientId = String(clientId || "").trim()
   if (!cleanClientId) throw new Error("clientId is required")
-
-  return api(`/api/clients/${cleanClientId}/accounts`)
+  const qs = includeAllTypes ? "?includeAllTypes=true" : ""
+  return api(`/api/clients/${cleanClientId}/accounts${qs}`)
 }
 
 export async function createAccount(input) {
   const clientId = String(input?.clientId || "").trim()
   const name = String(input?.name || "").trim()
-  const type = String(input?.type || "").trim()
+  const accountType = String(input?.accountType || "").trim()
+  const description = String(input?.description || "").trim()
 
   if (!clientId) throw new Error("clientId is required")
   if (!name) throw new Error("name is required")
-  if (!type) throw new Error("type is required")
+  if (!accountType) throw new Error("accountType is required")
 
   return api("/api/accounts", {
     method: "POST",
-    body: JSON.stringify({ clientId, name, type }),
+    body: JSON.stringify({ clientId, name, accountType, description }),
   })
 }
 

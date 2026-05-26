@@ -30,7 +30,8 @@ export async function updateAccountByIdController(req, res) {
 export async function listAccountsByClientIdController(req, res) {
   try {
     const { clientId } = req.params
-    const accounts = await listAccountsByClientIdService(clientId)
+    const includeAllTypes = String(req.query?.includeAllTypes || "").toLowerCase() === "true"
+    const accounts = await listAccountsByClientIdService(clientId, { includeAllTypes })
     return res.status(200).json(accounts)
   } catch (error) {
     return sendErrorResponse(res, error)

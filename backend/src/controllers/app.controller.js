@@ -2,7 +2,6 @@ import { getCurrentUserProfileService } from "../services/userProfile.service.js
 import { getOfficeByIdService } from "../services/office.service.js"
 import { normalizeOfficeFeatures } from "../repositories/office.repository.js"
 import { listPermissionsCatalogService, listRolesForOfficeService } from "../services/roles.service.js"
-import { listOfficeTagsService } from "../services/tag.service.js"
 import { sendErrorResponse } from "../utils/httpError.js"
 
 export async function getAppBootstrapController(req, res) {
@@ -24,16 +23,12 @@ export async function getAppBootstrapController(req, res) {
     }
 
     const officeId = String(profile?.officeId || "").trim()
-    const [officeResult, rolesResult, officeTagsResult] = await Promise.allSettled([
+    const [officeResult, rolesResult] = await Promise.allSettled([
       officeId ? getOfficeByIdService(officeId, { currentProfile: profile }) : Promise.resolve(null),
       officeId ? listRolesForOfficeService(officeId) : Promise.resolve([]),
-      officeId ? listOfficeTagsService(officeId, { actorOfficeId: officeId }) : Promise.resolve([]),
     ])
     const office = officeResult.status === "fulfilled" ? officeResult.value : null
     const roles = rolesResult.status === "fulfilled" && Array.isArray(rolesResult.value) ? rolesResult.value : []
-    const officeTags = officeTagsResult.status === "fulfilled" && Array.isArray(officeTagsResult.value)
-      ? officeTagsResult.value
-      : []
 
     const officeWithFeatures = office
       ? { ...office, features: normalizeOfficeFeatures(office.features) }
@@ -43,7 +38,6 @@ export async function getAppBootstrapController(req, res) {
       isAuthenticated: true,
       profile: profile || null,
       office: officeWithFeatures,
-      officeTags,
       roles,
       permissionCatalog: listPermissionsCatalogService(),
     })
