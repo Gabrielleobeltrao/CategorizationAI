@@ -1,8 +1,13 @@
+// Tailwind 4's `border` resets all four sides to currentColor and the
+// shorthand `border-gray-100` overrides longhand colors regardless of
+// source order in the className. To make the priority strip reliable we
+// drive the left-border color from inline style, which trumps the
+// utility cascade.
 const PRIORITY_META = {
-    low: { label: "Low", textClass: "text-slate-500", borderClass: "border-l-slate-400" },
-    medium: { label: "Medium", textClass: "text-yellow-700", borderClass: "border-l-yellow-400" },
-    high: { label: "High", textClass: "text-orange-700", borderClass: "border-l-orange-500" },
-    urgent: { label: "Urgent", textClass: "text-red-700", borderClass: "border-l-red-600" },
+    low: { label: "Low", textClass: "text-slate-500", color: "#94a3b8" },
+    medium: { label: "Medium", textClass: "text-yellow-700", color: "#facc15" },
+    high: { label: "High", textClass: "text-orange-700", color: "#f97316" },
+    urgent: { label: "Urgent", textClass: "text-red-700", color: "#dc2626" },
 }
 
 function getPriorityMeta(priority) {
@@ -46,7 +51,10 @@ function TaskCard({ task, clientById, employeeById, onSelect }) {
     const hasMeta = Boolean(metaDate) || assigneeChips.length > 0 || commentsCount > 0
 
     return (
-        <li className={`rounded-xl border border-gray-100 border-l-4 ${priorityMeta.borderClass} bg-gray-50/50 ${isDone ? "opacity-70" : ""}`}>
+        <li
+            className={`rounded-xl border border-gray-100 bg-gray-50/50 ${isDone ? "opacity-70" : ""}`}
+            style={{ borderLeft: `4px solid ${priorityMeta.color}` }}
+        >
             <button
                 type="button"
                 onClick={() => onSelect?.(task)}
