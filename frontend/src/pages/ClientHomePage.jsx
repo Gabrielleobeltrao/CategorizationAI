@@ -21,6 +21,7 @@ import { ACCOUNT_TYPE_LABELS } from "../constants/accountTypes"
 import TaskCard from "../components/tasks/TaskCard"
 import TaskDetailsModal from "../components/tasks/TaskDetailsModal"
 import TaskEditModal from "../components/tasks/TaskEditModal"
+import { sortTasksDoneLast } from "../utils/tasks"
 
 const GetStartedPanel = lazy(() => import("../components/ledger/GetStartedPanel"))
 
@@ -528,7 +529,7 @@ function TasksSection({ tasks, totalCount, client, employees, officeClients, onS
                 </Link>
             </header>
             <ul className="grid grid-cols-1 gap-2 p-3 sm:grid-cols-2 lg:grid-cols-3">
-                {tasks.map((task) => (
+                {sortTasksDoneLast(tasks).map((task) => (
                     <TaskCard
                         key={task.id}
                         task={task}

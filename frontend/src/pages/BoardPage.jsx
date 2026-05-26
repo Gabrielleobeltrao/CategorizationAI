@@ -35,6 +35,7 @@ import BoardFiltersModal, {
     EMPTY_BOARD_FILTERS,
     countActiveBoardFilters,
 } from "../components/tasks/BoardFiltersModal"
+import { sortTasksDoneLast } from "../utils/tasks"
 
 const INBOX_COLUMN_ID = "__inbox__"
 
@@ -265,12 +266,16 @@ function BoardPage() {
             const list = map.get(columnId) || map.get(INBOX_COLUMN_ID)
             list.push(task)
         }
+        // Done tasks sink to the bottom of every column.
+        for (const [columnId, list] of map.entries()) {
+            map.set(columnId, sortTasksDoneLast(list))
+        }
         return map
     }, [tasks, collections])
 
     const filteredTasks = useMemo(() => {
         const needle = searchTerm.trim().toLowerCase()
-        return tasks.filter((task) => {
+        const matched = tasks.filter((task) => {
             if (filters.clientId) {
                 const ids = Array.isArray(task.clientIds) && task.clientIds.length > 0
                     ? task.clientIds.map(String)
@@ -295,6 +300,7 @@ function BoardPage() {
             }
             return true
         })
+        return sortTasksDoneLast(matched)
     }, [tasks, filters, searchTerm])
 
     const activeTask = useMemo(() => {

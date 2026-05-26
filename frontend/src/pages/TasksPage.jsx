@@ -7,6 +7,7 @@ import TaskCard from "../components/tasks/TaskCard"
 import TaskDetailsModal from "../components/tasks/TaskDetailsModal"
 import TaskEditModal from "../components/tasks/TaskEditModal"
 import TaskFiltersModal, { EMPTY_TASK_FILTERS, countActiveFilters } from "../components/tasks/TaskFiltersModal"
+import { sortTasksDoneLast } from "../utils/tasks"
 import {
     listTasks,
     createTask,
@@ -47,11 +48,13 @@ function TasksPage() {
 
     const displayedTasks = useMemo(() => {
         const needle = searchTerm.trim().toLowerCase()
-        if (!needle) return tasks
-        return tasks.filter((task) => {
-            const haystack = [task.title || "", task.description || ""].join(" ").toLowerCase()
-            return haystack.includes(needle)
-        })
+        const filtered = !needle
+            ? tasks
+            : tasks.filter((task) => {
+                  const haystack = [task.title || "", task.description || ""].join(" ").toLowerCase()
+                  return haystack.includes(needle)
+              })
+        return sortTasksDoneLast(filtered)
     }, [tasks, searchTerm])
 
     const [isFormOpen, setIsFormOpen] = useState(false)

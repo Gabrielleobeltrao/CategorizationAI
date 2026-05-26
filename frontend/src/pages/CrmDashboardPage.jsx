@@ -10,6 +10,7 @@ import OverviewScopeFilter from "../components/dashboard/OverviewScopeFilter"
 import TaskCard from "../components/tasks/TaskCard"
 import TaskDetailsModal from "../components/tasks/TaskDetailsModal"
 import TaskEditModal from "../components/tasks/TaskEditModal"
+import { sortTasksDoneLast } from "../utils/tasks"
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24
 
@@ -215,17 +216,18 @@ function CrmDashboardPage({
   )
 
   const tasksInRange = useMemo(() => {
-    if (!customRange?.from || !customRange?.to) return tasks
+    if (!customRange?.from || !customRange?.to) return sortTasksDoneLast(tasks)
     const start = new Date(`${customRange.from}T00:00:00`)
     const end = new Date(`${customRange.to}T23:59:59.999`)
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return tasks
-    return tasks.filter((task) => {
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return sortTasksDoneLast(tasks)
+    const matched = tasks.filter((task) => {
       const createdAt = task?.createdAt ? new Date(task.createdAt) : null
       const doneAt = task?.doneAt ? new Date(task.doneAt) : null
       const createdInRange = createdAt && !Number.isNaN(createdAt.getTime()) && createdAt >= start && createdAt <= end
       const doneInRange = doneAt && !Number.isNaN(doneAt.getTime()) && doneAt >= start && doneAt <= end
       return createdInRange || doneInRange
     })
+    return sortTasksDoneLast(matched)
   }, [tasks, customRange])
 
   const handleChangeStatus = async (task, nextStatus) => {
