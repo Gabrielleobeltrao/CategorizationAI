@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
+import { sortTasksDoneLast } from "../../utils/tasks"
 
 const WEEKDAY_LABELS_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 
@@ -100,6 +101,10 @@ function TasksCalendar({ tasks = [], onSelectTask, defaultMode = "day" }) {
       list.push(task)
       map.set(task.dueDate, list)
     })
+    // Within each day, done tasks sink to the bottom.
+    for (const [date, list] of map.entries()) {
+      map.set(date, sortTasksDoneLast(list))
+    }
     return map
   }, [tasks])
 
