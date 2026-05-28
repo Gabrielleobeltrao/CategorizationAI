@@ -92,7 +92,6 @@ function Register() {
                 error("Please fill office name")
                 return
             }
-
             setStep(2)
             return
         }
@@ -130,230 +129,188 @@ function Register() {
     }
 
     return (
-        <section className="flex min-h-dvh w-full items-start justify-center overflow-y-auto bg-white px-4 py-6 md:items-center md:py-10">
-            <div className="w-full max-w-3xl">
-                <div className="mb-6 flex flex-col items-center gap-1 text-center">
-                    <h1 className="text-lg font-bold text-gray-900">
-                        CategorizationAI
-                    </h1>
-                    <p className="text-sm text-gray-500">
-                        Two quick steps to create your workspace
-                    </p>
-                </div>
+        <div className="relative flex min-h-dvh w-full flex-col bg-gray-50">
+            <DecorBackground />
 
-                <form
-                    className="flex flex-col gap-5 rounded-3xl border border-gray-200 bg-white p-6 shadow-sm md:p-7"
-                    onSubmit={handleSubmit}
+            <TopBar>
+                <Link
+                    to="/login"
+                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-semibold text-gray-800 hover:bg-gray-100"
                 >
-                    <div className="flex flex-col gap-5">
-                        <div className="grid grid-cols-2 gap-2 rounded-2xl border border-gray-200 bg-gray-50 p-1">
-                            <div className={`rounded-xl px-3 py-2 text-center text-xs font-semibold uppercase tracking-wide transition ${
-                                step === 1 ? "bg-white text-gray-900 shadow-sm" : "text-gray-400"
-                            }`}>
-                                1. Office
-                            </div>
-                            <div className={`rounded-xl px-3 py-2 text-center text-xs font-semibold uppercase tracking-wide transition ${
-                                step === 2 ? "bg-white text-gray-900 shadow-sm" : "text-gray-400"
-                            }`}>
-                                2. User
-                            </div>
-                        </div>
+                    Sign in
+                </Link>
+            </TopBar>
 
-                        {step === 1 && (
-                            <>
-                                <div className="flex flex-col gap-1">
-                                    <h2 className="text-2xl font-bold text-gray-900">
-                                        Create your office
-                                    </h2>
-                                    <p className="text-sm text-gray-500">
-                                        Start with the business details. Only the office name is required.
-                                    </p>
-                                </div>
+            <main className="relative z-10 flex flex-1 items-center justify-center px-4 py-10">
+                <div className="w-full max-w-xl">
+                    <div className="text-center">
+                        <h1 className="text-3xl font-bold text-gray-900 sm:text-4xl">
+                            {step === 1 ? "Create your office" : "Create your owner account"}
+                        </h1>
+                        <p className="mt-2 text-sm text-gray-600">
+                            {step === 1
+                                ? "Start with the business details. Only the office name is required."
+                                : "This account will be created as the owner of the office."}
+                        </p>
+
+                        <ol className="mt-6 flex items-center justify-center gap-3">
+                            <StepBadge index={1} active={step === 1} done={step > 1}>Office</StepBadge>
+                            <span className="h-px w-8 bg-gray-200" />
+                            <StepBadge index={2} active={step === 2} done={false}>Owner</StepBadge>
+                        </ol>
+                    </div>
+
+                    <form
+                        onSubmit={handleSubmit}
+                        className="mt-8 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8"
+                    >
+                        <div className="flex flex-col gap-4">
+                            {step === 1 && (
                                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                    <label className="flex flex-col gap-1.5 md:col-span-2">
-                                        <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                            Office name
-                                        </span>
+                                    <Field label="Office name" colSpan="md:col-span-2">
                                         <input
-                                            className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-gray-400 focus:bg-white"
                                             type="text"
-                                            placeholder="Office name"
+                                            placeholder="e.g. Hill & Co. Bookkeeping"
                                             value={officeName}
                                             onChange={(e) => setOfficeName(e.target.value)}
+                                            className={inputClass}
                                         />
-                                    </label>
-                                    <label className="flex flex-col gap-1.5 md:col-span-2">
-                                        <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                            Address
-                                        </span>
+                                    </Field>
+                                    <Field label="Address" colSpan="md:col-span-2" optional>
                                         <input
-                                            className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-gray-400 focus:bg-white"
                                             type="text"
                                             placeholder="Optional address"
                                             value={officeAddress}
                                             onChange={(e) => setOfficeAddress(e.target.value)}
+                                            className={inputClass}
                                         />
-                                    </label>
-                                    <label className="flex flex-col gap-1.5">
-                                        <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                            Business phone
-                                        </span>
+                                    </Field>
+                                    <Field label="Business phone" optional>
                                         <input
-                                            className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-gray-400 focus:bg-white"
                                             type="text"
-                                            placeholder="Optional business phone"
+                                            placeholder="Optional phone"
                                             value={officePhone}
                                             onChange={(e) => setOfficePhone(e.target.value)}
+                                            className={inputClass}
                                         />
-                                    </label>
-                                    <label className="flex flex-col gap-1.5">
-                                        <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                            Business email
-                                        </span>
+                                    </Field>
+                                    <Field label="Business email" optional>
                                         <input
-                                            className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-gray-400 focus:bg-white"
                                             type="email"
-                                            placeholder="Optional business email"
+                                            placeholder="Optional email"
                                             value={officeEmail}
                                             onChange={(e) => setOfficeEmail(e.target.value)}
+                                            className={inputClass}
                                         />
-                                    </label>
+                                    </Field>
                                 </div>
-                                <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
-                                    <p className="text-xs uppercase tracking-wide text-gray-500">
-                                        {isOpenTestEnabled ? "Private beta note" : "Optional details"}
-                                    </p>
-                                    <p className="mt-1 text-sm text-gray-700">
-                                        {isOpenTestEnabled
-                                            ? "If your office is in private beta, you will be asked for the access code at the final step. AI-generated results are still under validation and should always be reviewed. Some loads may be slower while the final infrastructure is not in place."
-                                            : "You can keep only the office name now and complete the rest later."}
-                                    </p>
-                                </div>
-                            </>
-                        )}
+                            )}
 
-                        {step === 2 && (
-                            <>
-                                <div className="flex flex-col gap-1">
-                                    <h2 className="text-2xl font-bold text-gray-900">
-                                        Create your user
-                                    </h2>
-                                    <p className="text-sm text-gray-500">
-                                        This account will be created as the owner of the office.
-                                    </p>
-                                </div>
-                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                    <label className="flex flex-col gap-1.5 md:col-span-2">
-                                        <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                            Name
-                                        </span>
-                                        <input
-                                            className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-gray-400 focus:bg-white"
-                                            type="text"
-                                            placeholder="Your name"
-                                            value={name}
-                                            onChange={(e) => setName(e.target.value)}
-                                        />
-                                    </label>
-                                    <label className="flex flex-col gap-1.5 md:col-span-2">
-                                        <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                            Email
-                                        </span>
-                                        <input
-                                            className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-gray-400 focus:bg-white"
-                                            type="email"
-                                            placeholder="you@office.com"
-                                            value={email}
-                                            onChange={(e) => setEmail(e.target.value)}
-                                        />
-                                    </label>
-                                    <label className="flex flex-col gap-1.5">
-                                        <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                            Password
-                                        </span>
-                                        <input
-                                            className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-gray-400 focus:bg-white"
-                                            type="password"
-                                            placeholder="Create a password"
-                                            value={password}
-                                            onChange={(e) => setPassword(e.target.value)}
-                                        />
-                                    </label>
-                                    <label className="flex flex-col gap-1.5">
-                                        <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                            Confirm password
-                                        </span>
-                                        <input
-                                            className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-gray-400 focus:bg-white"
-                                            type="password"
-                                            placeholder="Repeat your password"
-                                            value={confirmPassword}
-                                            onChange={(e) => setConfirmPassword(e.target.value)}
-                                        />
-                                    </label>
-                                </div>
-                                <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
-                                    <p className="text-xs uppercase tracking-wide text-gray-500">
-                                        Ownership
-                                    </p>
-                                    <p className="mt-1 text-sm text-gray-700">
-                                        Your account will be created as <span className="font-semibold">owner</span> of this office
-                                    </p>
-                                </div>
-                                <label className="flex items-start gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3">
-                                    <input
-                                        className="mt-1 h-4 w-4 rounded border-gray-300"
-                                        type="checkbox"
-                                        checked={hasAcceptedTerms}
-                                        onChange={(e) => setHasAcceptedTerms(e.target.checked)}
-                                    />
-                                    <span className="text-sm text-gray-600">
-                                        I agree to the{" "}
-                                        <button
-                                            type="button"
-                                            className="font-semibold text-gray-900 underline underline-offset-2"
-                                            onClick={() => setIsTermsModalOpen(true)}
-                                        >
-                                            terms and review responsibilities
-                                        </button>
-                                        . I understand that all AI and automated actions must be reviewed by a qualified professional, and the responsibility for the information remains with the user.
-                                    </span>
-                                </label>
-                            </>
-                        )}
-                    </div>
+                            {step === 2 && (
+                                <>
+                                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                        <Field label="Your name" colSpan="md:col-span-2">
+                                            <input
+                                                type="text"
+                                                placeholder="Your name"
+                                                value={name}
+                                                onChange={(e) => setName(e.target.value)}
+                                                className={inputClass}
+                                            />
+                                        </Field>
+                                        <Field label="Email" colSpan="md:col-span-2">
+                                            <input
+                                                type="email"
+                                                placeholder="you@office.com"
+                                                value={email}
+                                                onChange={(e) => setEmail(e.target.value)}
+                                                className={inputClass}
+                                            />
+                                        </Field>
+                                        <Field label="Password">
+                                            <input
+                                                type="password"
+                                                placeholder="Create a password"
+                                                value={password}
+                                                onChange={(e) => setPassword(e.target.value)}
+                                                className={inputClass}
+                                            />
+                                        </Field>
+                                        <Field label="Confirm password">
+                                            <input
+                                                type="password"
+                                                placeholder="Repeat password"
+                                                value={confirmPassword}
+                                                onChange={(e) => setConfirmPassword(e.target.value)}
+                                                className={inputClass}
+                                            />
+                                        </Field>
+                                    </div>
 
-                    <div className="mt-5 flex items-center gap-2">
-                        {step === 2 && (
-                            <button
-                                type="button"
-                                className="rounded-2xl border border-gray-200 px-4 py-3 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
-                                onClick={() => setStep(1)}
-                                disabled={isSubmitting}
-                            >
-                                Back
-                            </button>
-                        )}
-                        <button
-                            className="flex-1 rounded-2xl bg-gray-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-black disabled:opacity-60"
-                            type="submit"
-                            disabled={isSubmitting || (step === 2 && !hasAcceptedTerms)}
+                                    <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
+                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Ownership</p>
+                                        <p className="mt-0.5 text-sm text-gray-700">
+                                            Your account will be created as <span className="font-semibold">owner</span> of this office.
+                                        </p>
+                                    </div>
+
+                                    <label className="flex items-start gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2.5">
+                                        <input
+                                            type="checkbox"
+                                            className="mt-0.5 h-4 w-4 rounded border-gray-300"
+                                            checked={hasAcceptedTerms}
+                                            onChange={(e) => setHasAcceptedTerms(e.target.checked)}
+                                        />
+                                        <span className="text-sm text-gray-600">
+                                            I agree to the{" "}
+                                            <button
+                                                type="button"
+                                                className="font-semibold text-gray-900 underline underline-offset-2"
+                                                onClick={() => setIsTermsModalOpen(true)}
+                                            >
+                                                terms and review responsibilities
+                                            </button>
+                                            . I understand that all AI and automated actions must be reviewed by a qualified professional.
+                                        </span>
+                                    </label>
+                                </>
+                            )}
+
+                            <div className="mt-2 flex items-center gap-2">
+                                {step === 2 && (
+                                    <button
+                                        type="button"
+                                        className="rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-60"
+                                        onClick={() => setStep(1)}
+                                        disabled={isSubmitting}
+                                    >
+                                        Back
+                                    </button>
+                                )}
+                                <button
+                                    type="submit"
+                                    disabled={isSubmitting || (step === 2 && !hasAcceptedTerms)}
+                                    className="flex-1 rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:bg-gray-400"
+                                >
+                                    {step === 1 ? "Continue" : isSubmitting ? "Creating…" : "Create account"}
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+
+                    <p className="mt-6 text-center text-sm text-gray-600">
+                        Already have an account?{" "}
+                        <Link
+                            to="/login"
+                            className="font-semibold text-gray-900 hover:underline"
                         >
-                            {step === 1 ? "Continue to user" : isSubmitting ? "Creating..." : "Create Account"}
-                        </button>
-                    </div>
-                </form>
+                            Sign in
+                        </Link>
+                    </p>
+                </div>
+            </main>
 
-                <p className="mt-4 text-center text-sm text-gray-500">
-                    Already have an account?{" "}
-                    <Link
-                        to="/login"
-                        className="font-semibold text-gray-900 transition hover:text-gray-600"
-                    >
-                        Login
-                    </Link>
-                </p>
-            </div>
+            <PageFooter />
 
             <PopupModal
                 isOpen={isOpenTestModalOpen}
@@ -365,7 +322,7 @@ function Register() {
                 maxWidthClass="max-w-lg"
             >
                 <div className="space-y-4">
-                    <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                         <p className="font-semibold">Private beta</p>
                         <p className="mt-1">
                             {openTestConfig?.notices?.auth || "This workspace is currently in private beta and access is limited to invited offices. Some screens may load more slowly while the final infrastructure is not in place."}
@@ -377,28 +334,25 @@ function Register() {
                             Enter your private beta access code to finish creating the account.
                         </p>
                         <p className="text-sm text-gray-500">
-                            This is the final validation step for invited offices. After the account is created, review AI-generated categories and financial outputs carefully before using them in real work. Some loading delays can happen during private beta because the infrastructure is still temporary.
+                            This is the final validation step for invited offices.
                         </p>
                     </div>
 
-                    <label className="flex flex-col gap-1.5">
-                        <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                            Access code
-                        </span>
+                    <Field label="Access code">
                         <input
-                            className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-amber-400 focus:bg-white"
                             type="text"
                             placeholder="Private beta access code"
                             value={openTestAccessCode}
                             onChange={(e) => setOpenTestAccessCode(e.target.value)}
                             autoFocus
+                            className={inputClass}
                         />
-                    </label>
+                    </Field>
 
                     <div className="flex items-center justify-end gap-2 pt-2">
                         <button
                             type="button"
-                            className="rounded-2xl border border-gray-200 px-4 py-3 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-60"
+                            className="rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-60"
                             onClick={() => setIsOpenTestModalOpen(false)}
                             disabled={isSubmitting}
                         >
@@ -406,11 +360,11 @@ function Register() {
                         </button>
                         <button
                             type="button"
-                            className="rounded-2xl bg-gray-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-black disabled:opacity-60"
+                            className="rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-black disabled:opacity-60"
                             onClick={handleConfirmOpenTestAccess}
                             disabled={isSubmitting}
                         >
-                            {isSubmitting ? "Creating..." : "Create Account"}
+                            {isSubmitting ? "Creating…" : "Create account"}
                         </button>
                     </div>
                 </div>
@@ -423,7 +377,7 @@ function Register() {
                 maxWidthClass="max-w-2xl"
             >
                 <div className="space-y-5">
-                    <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
                         <p className="text-sm font-semibold text-gray-900">
                             CategorizationAI provides automated support tools, not final professional judgment.
                         </p>
@@ -448,7 +402,7 @@ function Register() {
                     <div className="flex justify-end pt-2">
                         <button
                             type="button"
-                            className="rounded-2xl bg-gray-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-black"
+                            className="rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-black"
                             onClick={() => setIsTermsModalOpen(false)}
                         >
                             Close
@@ -456,8 +410,112 @@ function Register() {
                     </div>
                 </div>
             </PopupModal>
-        </section>
+        </div>
     )
 }
 
 export default Register
+
+// --------------------------------------------------------------------
+// Shared bits
+// --------------------------------------------------------------------
+
+const inputClass =
+    "rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-gray-900 focus:ring-1 focus:ring-gray-900"
+
+function Field({ label, optional = false, colSpan = "", children }) {
+    return (
+        <label className={`flex flex-col gap-1.5 text-left ${colSpan}`}>
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                {label}
+                {optional && <span className="ml-1 normal-case text-gray-400">(optional)</span>}
+            </span>
+            {children}
+        </label>
+    )
+}
+
+function StepBadge({ index, active, done, children }) {
+    return (
+        <li className="flex items-center gap-2">
+            <span
+                className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold ${
+                    done
+                        ? "bg-emerald-500 text-white"
+                        : active
+                            ? "bg-gray-900 text-white"
+                            : "border border-gray-200 bg-white text-gray-400"
+                }`}
+            >
+                {done ? (
+                    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M20 6 9 17l-5-5" />
+                    </svg>
+                ) : (
+                    index
+                )}
+            </span>
+            <span className={`text-xs font-semibold uppercase tracking-wide ${active ? "text-gray-900" : "text-gray-500"}`}>
+                {children}
+            </span>
+        </li>
+    )
+}
+
+function TopBar({ children }) {
+    return (
+        <header className="relative z-10 border-b border-gray-200 bg-white/80 backdrop-blur">
+            <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
+                <Link to="/" className="inline-flex items-center gap-2 text-sm font-semibold text-gray-900">
+                    <LogoMark />
+                    CategorizationAI
+                </Link>
+                {children}
+            </div>
+        </header>
+    )
+}
+
+function PageFooter() {
+    return (
+        <footer className="relative z-10 border-t border-gray-200 bg-white/60 backdrop-blur">
+            <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 text-xs text-gray-500 sm:px-6">
+                <span>© {new Date().getFullYear()} CategorizationAI</span>
+                <Link to="/" className="hover:text-gray-700">Back to home</Link>
+            </div>
+        </footer>
+    )
+}
+
+function DecorBackground() {
+    return (
+        <>
+            <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 z-0 opacity-60"
+                style={{
+                    backgroundImage:
+                        "radial-gradient(circle, rgba(0,0,0,0.06) 1px, transparent 1px)",
+                    backgroundSize: "22px 22px",
+                }}
+            />
+            <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-0 top-0 z-0 h-72 bg-gradient-to-b from-white via-white/70 to-transparent"
+            />
+        </>
+    )
+}
+
+function LogoMark() {
+    return (
+        <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-gray-900 text-white">
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 19h16" />
+                <path d="M6 16V9" />
+                <path d="M12 16V6" />
+                <path d="M18 16v-4" />
+            </svg>
+        </span>
+    )
+}
