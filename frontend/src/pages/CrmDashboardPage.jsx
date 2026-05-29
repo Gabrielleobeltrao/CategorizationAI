@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { useAuth } from "../contexts/auth.context"
+import { hasPermission } from "../utils/permissions"
 import { useNotification } from "../contexts/notification.context"
 import { useFeature } from "../hooks/useFeature"
 import { listTasks, updateTaskById, deleteTaskById } from "../services/tasks.service"
@@ -112,6 +113,7 @@ function CrmDashboardPage({
   onScopeChange,
 } = {}) {
   const { profile, office } = useAuth()
+  const canDeleteTasks = hasPermission(profile?.permissions, "tasks:delete")
   const { error, success } = useNotification()
   const isCrmTasksEnabled = useFeature("crmTasks")
   const officeId = String(profile?.officeId || "").trim()
@@ -373,7 +375,7 @@ function CrmDashboardPage({
         onClose={() => setViewingTask(null)}
         onEdit={handleEditOpen}
         onChangeStatus={handleChangeStatus}
-        onDelete={handleDelete}
+        onDelete={canDeleteTasks ? handleDelete : undefined}
       />
 
       <TaskEditModal
