@@ -10,6 +10,7 @@ import {
 } from "../services/clients.service"
 import {
     updateTaskById as updateTask,
+    deleteTaskById,
     addTaskComment,
     updateTaskComment,
     deleteTaskComment,
@@ -191,6 +192,20 @@ function ClientHomePage() {
         } catch (err) {
             error(err.message || "Failed to delete comment")
             throw err
+        }
+    }
+
+    const handleDeleteTask = async (task) => {
+        if (!window.confirm("Delete this task?")) return
+        const id = String(task?._id || task?.id || "")
+        if (!id) return
+        try {
+            await deleteTaskById(id)
+            setTasks((current) => current.filter((t) => String(t._id || t.id) !== id))
+            setViewingTask((current) => (current && String(current._id || current.id) === id ? null : current))
+            success("Task deleted")
+        } catch (err) {
+            error(err.message || "Failed to delete task")
         }
     }
 
@@ -464,6 +479,7 @@ function ClientHomePage() {
                 canCreateComment={hasPermission(profile?.permissions, "tasks:commentCreate")}
                 canUpdateComment={hasPermission(profile?.permissions, "tasks:commentUpdate")}
                 canDeleteComment={hasPermission(profile?.permissions, "tasks:commentDelete")}
+                onDelete={hasPermission(profile?.permissions, "tasks:delete") ? handleDeleteTask : undefined}
                 onCreateComment={handleCreateComment}
                 onUpdateComment={handleUpdateComment}
                 onDeleteComment={handleDeleteComment}

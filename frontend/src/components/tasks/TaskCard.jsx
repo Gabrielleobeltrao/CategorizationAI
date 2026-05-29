@@ -68,9 +68,24 @@ function TaskCard({ task, clientById, employeeById, onSelect }) {
                         </span>
                     )}
                     <div className="min-w-0 flex-1">
-                        <p className={`truncate text-sm font-medium ${isDone ? "text-gray-500 line-through" : "text-gray-900"}`}>
-                            {task.title || "(Untitled)"}
-                        </p>
+                        <div className="flex min-w-0 items-center gap-1.5">
+                            <p className={`min-w-0 truncate text-sm font-medium ${isDone ? "text-gray-500 line-through" : "text-gray-900"}`}>
+                                {task.title || "(Untitled)"}
+                            </p>
+                            {task.source === "operational-signal" && (
+                                // Auto-generated from operational signals
+                                // (uncategorized count, missing months, etc).
+                                // Tiny indigo chip so the user knows the
+                                // task will close itself when the underlying
+                                // issue is resolved.
+                                <span
+                                    className="shrink-0 rounded-sm bg-indigo-100 px-1 py-0.5 text-[9px] font-semibold uppercase leading-none tracking-wide text-indigo-700"
+                                    title="Auto-generated from operational signals · resolves itself when fixed"
+                                >
+                                    Auto
+                                </span>
+                            )}
+                        </div>
                         {firstClient && (
                             <p className="truncate text-[11px] text-gray-500">
                                 {firstClient.name || "Unnamed"}

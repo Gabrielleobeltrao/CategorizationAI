@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import PopupModal from "../components/ui/PopupModal"
 import ConfirmModal from "../components/ui/ConfirmModal"
-import OperationalStatusBadge from "../components/crm/OperationalStatusBadge"
+import OperationalStatusPopover from "../components/crm/OperationalStatusPopover"
 import OperationalStatusHelp from "../components/crm/OperationalStatusHelp"
-import OperationalStatusFilter from "../components/crm/OperationalStatusFilter"
 import { useNotification } from "../contexts/notification.context"
 import { useResolvedOfficeContext } from "../hooks/useResolvedOfficeContext"
 import { useFeature } from "../hooks/useFeature"
 import { trackClientOpened } from "../utils/recentClients"
-import { DEFAULT_OPERATIONAL_STATUS } from "../constants/operationalStatuses"
+import {
+    DEFAULT_OPERATIONAL_STATUS,
+    OPERATIONAL_STATUS_LIST,
+    getOperationalStatusBadgeClass,
+} from "../constants/operationalStatuses"
 import BusinessTypeSelect from "../components/ui/BusinessTypeSelect"
 import { listOperationalStatusesByOfficeId } from "../services/operationalStatus.service"
 import {
@@ -182,7 +185,20 @@ function ClientsPage() {
     const { officeId, isResolvingOfficeContext } = useResolvedOfficeContext()
     const isOperationalStatusEnabled = useFeature("crmOperationalStatus")
     const [operationalStatusMap, setOperationalStatusMap] = useState({})
-    const [statusFilter, setStatusFilter] = useState("")
+    // statusFilter is mirrored to the URL `?status=` so external pages
+    // (e.g. the Bookkeeping Overview pipeline card) can deep-link into
+    // a pre-filtered Clients list.
+    const [searchParams, setSearchParams] = useSearchParams()
+    const statusFilter = searchParams.get("status") || ""
+    const setStatusFilter = (next) => {
+        const safe = String(next || "")
+        setSearchParams((current) => {
+            const updated = new URLSearchParams(current)
+            if (safe) updated.set("status", safe)
+            else updated.delete("status")
+            return updated
+        }, { replace: true })
+    }
     const canSubmitNewClient = Boolean(
         !isSubmitting &&
         !isResolvingOfficeContext &&
@@ -290,6 +306,17 @@ function ClientsPage() {
         if (!isOperationalStatusEnabled || !statusFilter) return clients
         return clients.filter((client) => getEffectiveStatus(client.id) === statusFilter)
     }, [clients, statusFilter, isOperationalStatusEnabled, getEffectiveStatus])
+
+    // Status counts across the office (not the current page) — drives the
+    // pipeline pills row above the list.
+    const statusCounts = useMemo(() => {
+        const map = {}
+        for (const entry of Object.values(operationalStatusMap)) {
+            const id = entry?.effectiveStatus || DEFAULT_OPERATIONAL_STATUS
+            map[id] = (map[id] || 0) + 1
+        }
+        return map
+    }, [operationalStatusMap])
 
     const handleCreateClient = async (e) => {
         e.preventDefault()
@@ -534,13 +561,51 @@ function ClientsPage() {
                             <path d="m20 20-3.5-3.5" />
                         </svg>
                     </div>
-                    {isOperationalStatusEnabled && (
-                        <OperationalStatusFilter
-                            value={statusFilter}
-                            onChange={setStatusFilter}
-                        />
-                    )}
                 </div>
+
+                {/* Pipeline pills — quick filter row scoped by status. Counts
+                    are office-wide (not paginated), so the user can see at a
+                    glance how many clients sit in each stage and click to
+                    drill in. */}
+                {isOperationalStatusEnabled && Object.keys(operationalStatusMap).length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                        <button
+                            type="button"
+                            onClick={() => setStatusFilter("")}
+                            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
+                                !statusFilter
+                                    ? "border-gray-900 bg-gray-900 text-white"
+                                    : "border-gray-200 bg-white text-gray-700 hover:bg-gray-100"
+                            }`}
+                        >
+                            <span>All</span>
+                            <span className={`rounded-full px-1.5 py-0 text-[10px] font-bold tabular-nums ${
+                                !statusFilter ? "bg-white/20 text-white" : "bg-gray-100 text-gray-700"
+                            }`}>
+                                {Object.values(statusCounts).reduce((s, n) => s + n, 0)}
+                            </span>
+                        </button>
+                        {OPERATIONAL_STATUS_LIST.map((status) => {
+                            const count = statusCounts[status.id] || 0
+                            if (count === 0 && statusFilter !== status.id) return null
+                            const isActive = statusFilter === status.id
+                            return (
+                                <button
+                                    key={status.id}
+                                    type="button"
+                                    onClick={() => setStatusFilter(isActive ? "" : status.id)}
+                                    title={status.description}
+                                    className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ring-1 ring-inset transition ${
+                                        getOperationalStatusBadgeClass(status.id)
+                                    } ${isActive ? "shadow-[0_0_0_2px_rgba(15,23,42,0.85)]" : "opacity-80 hover:opacity-100"}`}
+                                >
+                                    <span>{status.label}</span>
+                                    <span className="tabular-nums">{count}</span>
+                                </button>
+                            )
+                        })}
+                    </div>
+                )}
 
                 <section>
                     <div
@@ -575,14 +640,32 @@ function ClientsPage() {
                                     >
                                         <button
                                             type="button"
-                                            className="min-w-0 max-w-full truncate text-left font-medium text-gray-900"
+                                            className="flex min-w-0 max-w-full flex-col items-start text-left"
                                             onClick={(e) => {
                                                 e.stopPropagation()
                                                 openClientLedger(client)
                                             }}
                                             title={client.name}
                                         >
-                                            {client.name}
+                                            <span className="block w-full truncate font-medium text-gray-900">
+                                                {client.name}
+                                            </span>
+                                            {(() => {
+                                                // Subtítulo: "main activity · state". Mostra só o
+                                                // que existe — se ambos faltam, omite o subtítulo
+                                                // pra não deixar uma linha vazia / "—".
+                                                const parts = [
+                                                    String(client.mainActivity || "").trim(),
+                                                    String(client.state || "").trim(),
+                                                ].filter(Boolean)
+                                                if (parts.length === 0) return null
+                                                const subtitle = parts.join(" · ")
+                                                return (
+                                                    <span className="block w-full truncate text-[11px] text-gray-500">
+                                                        {subtitle}
+                                                    </span>
+                                                )
+                                            })()}
                                         </button>
 
                                         {/*
@@ -593,7 +676,10 @@ function ClientsPage() {
                                         <div className="flex items-center justify-between gap-2 sm:contents">
                                             {isOperationalStatusEnabled && (
                                                 <div className="flex min-w-0 justify-start">
-                                                    <OperationalStatusBadge status={getEffectiveStatus(client.id)} />
+                                                    <OperationalStatusPopover
+                                                        entry={operationalStatusMap[String(client.id)] || null}
+                                                        clientId={client.id}
+                                                    />
                                                 </div>
                                             )}
 

@@ -4,14 +4,17 @@
 
 SaaS de contabilidade para escritórios contábeis com:
 - autenticação e sessão com Better Auth
-- multi-office com funcionários, roles e permissões
-- gestão de clients, accounts, categories e transactions
+- multi-office com funcionários, roles, permissões e escopo opcional por cliente
+- gestão de clients, chart of accounts, categories e transactions (modelo double-entry com `journal_entries`)
 - upload de CSV com preview e mapeamento de colunas
 - importação de transactions e categorização por IA em background
 - tratamento específico para transações Zelle
-- Profit & Loss por client e período
+- relatórios completos: P&L, Balance Sheet, Trial Balance, General Ledger, Account Balances
+- reconciliation, period close e recurring transactions
+- **Operations CRM add-on** (gated): Board kanban, Tasks, Operational Status por cliente
+- **Team Chat** built-in (DMs, grupos, voice notes, arquivos)
+- per-client Dashboard, Unified Overview (Bookkeeping ↔ CRM), Activity Log
 - cache/bootstrap para reduzir carregamentos de páginas
-- dashboard operacional do office
 - UI responsiva: sidebar vira drawer no mobile, tabelas viram cards onde faz sentido (transactions, employees, etc) e filtros usam date-picker compartilhado
 
 ## Stack
@@ -123,24 +126,6 @@ npm run dev
 ```
 
 API em `http://localhost:3001`
-
-### Backfill do catálogo de tags
-
-Depois da migração para `office_tags`, o catálogo não é mais reconstruído automaticamente durante `GET /offices/:id/tags`.
-
-Se existir dado legado salvo só em `clients.tags`, `categories.tags` ou `category_templates.tags`, rode:
-
-```bash
-cd backend
-npm run backfill:office-tags
-```
-
-Para um único office:
-
-```bash
-cd backend
-node scripts/backfillOfficeTags.js --officeId=<office_id>
-```
 
 ### Frontend
 
@@ -295,9 +280,21 @@ O sistema é dividido em dois módulos conceituais:
 
 ### Feature flags
 
-O documento `offices` carrega `features: { crm: boolean, crmOperationalStatus: boolean }`. Default é tudo `false`. A intenção é que o Stripe sincronize isso por webhook quando entrar em produção; hoje a ativação é manual.
+O documento `offices` carrega:
 
-Sub-flags como `crmOperationalStatus` dependem da parent `crm` — quando `crm` está `false`, o normalizador força a sub-flag pra `false` também (ver `normalizeOfficeFeatures` em `backend/src/repositories/office.repository.js`).
+```js
+features: {
+  crm: false,                  // parent — Operations CRM add-on
+  crmTasks: true,              // Tasks Manager + Board (default ON quando CRM ativa)
+  crmChat: false,              // Team Chat (DMs, grupos, voice notes, arquivos)
+  crmOperationalStatus: false, // badge de status por cliente
+  bookkeepingLlm: true,        // categorização por IA (default ON)
+}
+```
+
+A intenção é que o Stripe sincronize isso por webhook quando entrar em produção; hoje a ativação é manual.
+
+Sub-flags `crmTasks`, `crmChat` e `crmOperationalStatus` dependem da parent `crm` — quando `crm` está `false`, o normalizador força as sub-flags pra `false` também (ver `normalizeOfficeFeatures` em `backend/src/repositories/office.repository.js`). `bookkeepingLlm` é independente e default ON.
 
 Ativar CRM num office específico (dev/staging):
 
@@ -385,6 +382,26 @@ Validações:
 - **Lista de clientes** (`ClientsPage`) — badge ao lado do nome, gated por `useFeature("crmOperationalStatus")`.
 - Próximos passos planejados: widget na página do cliente, card no CRM Dashboard, ícone de info explicando as regras no tooltip.
 
+### Team Chat (sub-feature do Operations CRM)
+
+Chat interno entre funcionários do office, com floating widget e página dedicada (`TeamChatManagerPage`).
+
+- Feature flag: `crmChat` (depende de `crm` estar ativo)
+- Coleções:
+  - `chat_conversations` — `type: "dm" | "group"`, `memberIds`, `lastMessageAt`
+  - `chat_messages` — body, opcional `attachment: { type: "audio" | "file", ... }`
+- Arquivos de chat ficam no GridFS, expostos via `/api/offices/:id/chat-files/:fileId`. TTL configurável e prune periódico (`chatFiles.repository.js`).
+- Voice notes gravados no browser viram blob webm/ogg embarcado como `dataUrl` no `attachment`.
+
+### Per-employee client scope
+
+Cada `user_profile` carrega:
+
+- `clientScope: "all" | "assigned"` — `all` (default) vê todos os clients do office; `assigned` só vê os listados em `assignedClientIds`.
+- `assignedClientIds: string[]` — whitelist de `ObjectId`s.
+
+Aplicado em `listClientsByOfficeIdService` (filtro in-memory pós-pagination) e nas rotas dependentes (operational status, dashboard feed, etc).
+
 ### Recent Activity per usuário
 
 A seção "Recent Activity" do Home filtra atividades pelo usuário logado, enquanto o `/bookkeeping` mantém a visão do office inteiro. Cada documento que vira card de atividade (clients, transactions de import CSV, categorization_jobs, user_profiles) guarda `createdBy` = `userProfile._id` do criador.
@@ -395,17 +412,36 @@ A seção "Recent Activity" do Home filtra atividades pelo usuário logado, enqu
 
 ## Principais coleções MongoDB
 
+### Auth / org
+- `user` — better-auth user identity
+- `session` — better-auth sessions
+- `account` — better-auth credential providers (NOT the bookkeeping account)
+- `user_profile` — user dentro do office (role, status, `clientScope`, `assignedClientIds`)
 - `offices`
-- `user_profile`
+- `custom_roles`
+
+### Bookkeeping core
 - `clients`
-- `account`
+- `coa_accounts` — Chart of Accounts por client (renomeado de `accounts` na migração double-entry)
+- `journal_entries` — entradas double-entry com `legs`, fonte canônica do ledger
+- `transactions` — view legacy single-entry (mantida pra UI antiga e queries de dashboard)
 - `categories`
-- `transactions`
-- `categorization_jobs`
-- `transaction_memory`
-- `open_test_access_codes`
-- `office_tags`
+- `category_templates` / `coa_preset_templates` — presets compartilhados de CoA
+- `categorization_jobs` — jobs assíncronos de categorização por IA
+- `transaction_memory` — memória viva (`exact` / `semantic`)
+- `period_closes` — fechamento mensal por client
+- `reconciliations` — reconciliações por account
+- `recurring_journal_entries` — templates de recorrência
+
+### Operations CRM add-on
 - `tasks`
+- `board_collections` — colunas customizadas do Board
+- `client_operational_status` — 1 doc por client
+- `chat_conversations` / `chat_messages`
+- `activity_logs` — feed de auditoria
+
+### Outros
+- `open_test_access_codes` — private beta access codes
 
 ## API
 
@@ -487,33 +523,94 @@ Base: `/api`
 - `GET /transactions/categorize-all-llm/jobs/:jobId`
 
 ### Tasks (CRM add-on)
-Todas as rotas exigem `requireAuth + requirePermission("tasks:*") + requireFeature("crm")`. Quando o office não tem CRM ativo a resposta é **402 Payment Required**.
+Todas as rotas exigem `requireAuth + requirePermission("tasks:*") + requireFeature("crmTasks")`. Quando o office não tem CRM ativo a resposta é **402 Payment Required**.
 - `GET /tasks?clientId=&assigneeId=&status=`
-- `POST /tasks` — todos os campos opcionais (title, description, clientId, assigneeId, dueDate)
+- `POST /tasks` — todos os campos opcionais (title, description, clientId, assigneeId, dueDate, priority, collectionId)
 - `GET /tasks/:id`
-- `PATCH /tasks/:id` — alternar status entre `open` e `done` carimba/limpa `doneAt` automaticamente
+- `PATCH /tasks/:id` — alternar status entre `open` / `in_progress` / `done` carimba/limpa `doneAt` automaticamente
 - `DELETE /tasks/:id`
+- `POST /tasks/:id/comments` / `PATCH /tasks/:id/comments/:commentId` / `DELETE /tasks/:id/comments/:commentId`
 
-### Profit & Loss
+### Board Collections (CRM add-on)
+- `GET /offices/:officeId/board-collections`
+- `POST /offices/:officeId/board-collections` (gated por `board:manageColumns`)
+- `PATCH /board-collections/:id` (rename, reorder)
+- `DELETE /board-collections/:id` (tasks da coluna voltam pro inbox implícito)
+
+### Team Chat (CRM add-on)
+Gated por `requireFeature("crmChat")`.
+- `GET /offices/:officeId/chat/conversations`
+- `POST /offices/:officeId/chat/conversations` — cria DM ou group
+- `PATCH /chat/conversations/:id/members`
+- `DELETE /chat/conversations/:id`
+- `GET /chat/conversations/:id/messages`
+- `POST /chat/conversations/:id/messages` — body + opcional `attachment`
+- `PATCH /chat/messages/:id` / `DELETE /chat/messages/:id`
+- `POST /offices/:officeId/chat-files` — upload (GridFS)
+- `GET /offices/:officeId/chat-files/:fileId` — download
+
+### Reports
 - `GET /clients/:clientId/profit-loss/period-options`
 - `GET /clients/:clientId/profit-loss`
+- `GET /clients/:clientId/balance-sheet`
+- `GET /clients/:clientId/trial-balance`
+- `GET /clients/:clientId/general-ledger`
+- `GET /clients/:clientId/account-balances`
+
+### Reconciliation
+- `GET /clients/:clientId/reconciliation`
+- `POST /clients/:clientId/reconciliation/:accountId/sessions`
+- `PATCH /reconciliation/sessions/:sessionId`
+
+### Period Close
+- `GET /clients/:clientId/period-closes`
+- `POST /clients/:clientId/period-closes` — fecha um mês (impede edição posterior nas transações até `unfreeze`)
+- `DELETE /period-closes/:id` — reabre o período
+
+### Recurring Transactions
+- `GET /clients/:clientId/recurring`
+- `POST /clients/:clientId/recurring`
+- `PATCH /recurring/:id`
+- `DELETE /recurring/:id`
+- `POST /recurring/:id/run-now` — gera entry imediato fora do schedule
+
+### Operational Status (CRM add-on)
+- `GET /clients/:id/operational-status`
+- `PATCH /clients/:id/operational-status` — somente `paused`/`completed` ou null pra limpar override
+- `GET /offices/:id/operational-status`
+
+### Activity Log
+- `GET /offices/:officeId/activity` — paginated, com filtros opcionais por `actorId`, `action`, `targetType`, `from`, `to`
 
 ## Frontend
 
 ### Páginas principais
 
+#### Públicas
+- `Landing` (`/`) — marketing surface com mock-ups JSX das páginas reais (hero com Performance Overview, Board, Chat, Clients, etc)
+- `Login` / `Register` — split-screen redesenhada, alinhada à landing
+
+#### Office-wide (top-level)
 - `Home` — boas-vindas com calendário de tasks (semana por default), cards "Assigned to you" e "Open for the team", Recent Activity filtrado pelo usuário logado
-- `Bookkeeping Dashboard` (`/bookkeeping`) — Performance Overview (KPIs + chart com toggle Month/Week e Blocks/Line/Columns) e Live Jobs Queue do office
-- `CRM Dashboard` (`/crm`) — Performance Overview com KPIs derivados de tasks (open, due this week, overdue, done this week, etc.)
-- `Tasks` (`/crm/tasks`) — listagem em 2 colunas (você / time) com filtro por client/status/assignee, modal de detalhes que mostra dados do client e do assignee, botão "Mark done" e timestamp `doneAt`
-- `Ledger`
-- `Profit & Loss`
-- `Clients` — listagem sem ícones de edit/delete (a edição vive em Settings do client)
-- `Client Settings` (`/clients/:id/settings`) — form completo + danger zone com delete
-- `Employees`
+- `Overview` (`/overview`) — wrapper unificado com tabs **Bookkeeping ↔ CRM** que compartilham scope filter (team / user / client)
+  - aba Bookkeeping → Performance Overview com KPIs (Imported, Categorized, AI Processed, Auto-Categorized) + chart multi-linha + Live Jobs Queue + Recent activity
+  - aba CRM → Performance Overview com KPIs derivados de tasks (open, in progress, done, created) + lista de tasks no range
+- `Board` (`/board`) — kanban com colunas customizáveis (`board_collections`), drag-and-drop, filtros, busca; tasks done sink ao fim de cada coluna
+- `Tasks Manager` (`/crm/tasks`) — listagem com busca + filtros (status, prioridade, client, assignee, range), modal de detalhes com comments, sort done-last
+- `Team Chat Manager` (`/crm/chat`) — versão full-page do widget de chat (gerenciar DMs / grupos)
+- `Clients` — listagem sem ícones de edit/delete (a edição vive em Settings do client); status badge gated por `crmOperationalStatus`
+- `Employees` — listagem com toggle iOS-style pra Active/Inactive, gerenciamento de client scope, reset de senha temporária
 - `Settings`
-- `Register`
-- `Login`
+
+#### Per-client (sob `/clients/:clientId/*`)
+- `Dashboard` (`/clients/:id/home`) — KPIs do client, tasks recentes, atividade
+- `Transactions` (alias de `Ledger`) — tabela double-entry com edição inline, splits, categorização IA
+- `Chart of Accounts` — accounts agrupados por tipo, com presets compartilhados
+- `Recurring` — templates de recorrência
+- `Reconciliation` — reconciliação de account por período
+- `Period Close` — fechar mês após reconciliar (impede edição posterior)
+- `Reports` — `Profit & Loss`, `Balance Sheet`, `Trial Balance`, `General Ledger`, `Account Balances`
+- `Client Settings` (`/clients/:id/settings`) — Info do cliente (address, business type, owners) + visibility por página + danger zone com delete
 
 ### Settings
 
@@ -793,6 +890,36 @@ npm run seed:client-ledger -- --clientId <clientId>
 CLIENT_ID=<clientId> LIMIT=6 npm run seed:llm-processed
 ```
 
+### Demo account (apresentação / sandbox)
+
+Sequência completa pra criar uma conta de demonstração com dados ricos em qualquer banco — útil pra reset de ambiente de apresentação.
+
+```bash
+# 1. cria office "Demo Account" + owner (demo@categorizationai.com / demo12345)
+MONGODB_DB_NAME=<db> node scripts/createDemoAccount.js
+
+# 2. se signUpEmail deixar a credencial vazia (sem contexto HTTP), backfilla
+MONGODB_DB_NAME=<db> node scripts/fixDemoCredential.js
+
+# 3. popula 3 clients (Construction, Digital Studio, Cafe) com CoA, journal
+#    entries, board columns e tasks; liga todas as features CRM
+MONGODB_DB_NAME=<db> node scripts/seedDemoAccountData.js
+
+# 4. inflate task data — ~50 tasks com createdAt/doneAt espalhados pra
+#    popular o CRM dashboard (gráficos por dia/semana)
+MONGODB_DB_NAME=<db> node scripts/seedDemoBoardAndTasks.js
+
+# 5. legacy transactions (necessário pro Bookkeeping Overview, que lê de
+#    `transactions` e não de `journal_entries`); cria 120 rows por client +
+#    6 categorization_jobs com mix de status
+MONGODB_DB_NAME=<db> node scripts/seedDemoBookkeepingData.js
+
+# 6. anexa mensagens longas + áudios + arquivos fake aos chats demo
+MONGODB_DB_NAME=<db> node scripts/seedDemoChatExtras.js
+```
+
+Todos os scripts são idempotentes (skipam se o office/client/conversa já tem dados seed).
+
 ## Índices criados no startup
 
 - `transactions`
@@ -867,19 +994,29 @@ Verifique:
 ## EN
 
 Accounting SaaS for bookkeeping offices with:
-- Better Auth authentication
-- office, employee, role and permission management
-- clients, accounts, categories and transaction management
+- Better Auth authentication and session
+- multi-office with employees, roles, permissions and optional per-client scope
+- clients, chart of accounts, categories and transactions (double-entry `journal_entries` under the hood)
 - CSV import with preview and column mapping
-- background AI categorization
+- background AI categorization with persistent jobs
 - Zelle-specific categorization flow
-- Profit & Loss per client and period
-- office dashboard
+- full reports: P&L, Balance Sheet, Trial Balance, General Ledger, Account Balances
+- reconciliation, period close and recurring transactions
+- Operations CRM add-on (gated): Board kanban, Tasks, Operational Status per client
+- built-in Team Chat (DMs, groups, voice notes, file attachments via GridFS)
+- per-client Dashboard, Unified Overview (Bookkeeping ↔ CRM), Activity Log
 
 ### Key modules
-- `frontend/src/pages/LedgerPage.jsx`
+- `frontend/src/pages/LedgerPage.jsx` (Transactions)
+- `frontend/src/pages/ChartOfAccountsPage.jsx`
 - `frontend/src/pages/ProfitLossPage.jsx`
+- `frontend/src/pages/BoardPage.jsx`
+- `frontend/src/pages/TasksPage.jsx`
+- `frontend/src/pages/OverviewPage.jsx`
+- `frontend/src/pages/LandingPage.jsx`
+- `frontend/src/components/chat/ChatWidget.jsx`
 - `backend/src/services/transactions.service.js`
+- `backend/src/services/operationalStatus.service.js`
 - `backend/src/lib/ai/categorizeTransaction.js`
 - `backend/src/lib/ai/categorizeZelle.js`
 - `backend/src/workers/categorization.worker.js`

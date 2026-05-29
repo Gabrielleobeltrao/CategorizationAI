@@ -11,19 +11,25 @@ const STORAGE_PREFIX = "client-menu-visibility:"
 export const VISIBILITY_CHANGED_EVENT = "client-menu-visibility-changed"
 
 // IDs of items that can be hidden. Order is also the order shown on
-// the visibility settings card, mirroring the sidebar order.
+// the visibility settings card, mirroring the sidebar order. The
+// `section` field groups the items the same way the sidebar groups
+// them (Bookkeeping / Closing / Reports).
 export const TOGGLEABLE_MENU_ITEMS = [
-    { id: "transactions", label: "Transactions" },
-    { id: "recurring", label: "Recurring" },
-    { id: "chart-of-accounts", label: "Chart of Accounts" },
-    { id: "reconciliation", label: "Reconciliation" },
-    { id: "period-close", label: "Period Close" },
-    { id: "profit-loss", label: "Profit & Loss" },
-    { id: "account-balances", label: "Account Balances" },
-    { id: "balance-sheet", label: "Balance Sheet" },
-    { id: "trial-balance", label: "Trial Balance" },
-    { id: "general-ledger", label: "General Ledger" },
+    { id: "transactions", label: "Transactions", section: "Bookkeeping" },
+    { id: "recurring", label: "Recurring", section: "Bookkeeping" },
+    { id: "chart-of-accounts", label: "Chart of Accounts", section: "Bookkeeping" },
+    { id: "reconciliation", label: "Reconciliation", section: "Closing" },
+    { id: "period-close", label: "Period Close", section: "Closing" },
+    { id: "profit-loss", label: "Profit & Loss", section: "Reports" },
+    { id: "account-balances", label: "Account Balances", section: "Reports" },
+    { id: "balance-sheet", label: "Balance Sheet", section: "Reports" },
+    { id: "trial-balance", label: "Trial Balance", section: "Reports" },
+    { id: "general-ledger", label: "General Ledger", section: "Reports" },
 ]
+
+// Sections in display order, used by UIs that want to render the
+// toggleable items grouped.
+export const TOGGLEABLE_MENU_SECTIONS = ["Bookkeeping", "Closing", "Reports"]
 
 function storageKey(clientId) {
     return `${STORAGE_PREFIX}${String(clientId || "global")}`

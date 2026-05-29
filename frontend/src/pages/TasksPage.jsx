@@ -35,6 +35,7 @@ function TasksPage() {
     const canCreateComment = hasPermission(profile?.permissions, "tasks:commentCreate")
     const canUpdateComment = hasPermission(profile?.permissions, "tasks:commentUpdate")
     const canDeleteComment = hasPermission(profile?.permissions, "tasks:commentDelete")
+    const canDeleteTasks = hasPermission(profile?.permissions, "tasks:delete")
 
     const [tasks, setTasks] = useState([])
     const [clients, setClients] = useState([])
@@ -436,7 +437,7 @@ function TasksPage() {
                 onClose={closeView}
                 onEdit={(task) => openEdit(task)}
                 onChangeStatus={handleChangeStatus}
-                onDelete={handleDelete}
+                onDelete={canDeleteTasks ? handleDelete : undefined}
                 canViewStatusHistory={canViewStatusHistory}
                 currentProfileId={currentProfileId}
                 canCreateComment={canCreateComment}

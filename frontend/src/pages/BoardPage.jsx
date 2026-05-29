@@ -16,6 +16,7 @@ import {
     listTasks,
     createTask,
     updateTaskById,
+    deleteTaskById,
     addTaskComment,
     updateTaskComment,
     deleteTaskComment,
@@ -150,6 +151,7 @@ function BoardPage() {
     const canCreateComment = hasPermission(profile?.permissions, "tasks:commentCreate")
     const canUpdateComment = hasPermission(profile?.permissions, "tasks:commentUpdate")
     const canDeleteComment = hasPermission(profile?.permissions, "tasks:commentDelete")
+    const canDeleteTasks = hasPermission(profile?.permissions, "tasks:delete")
     const activeFiltersCount = countActiveBoardFilters(filters)
     const hasSearch = searchTerm.trim().length > 0
     const isFilteredMode = activeFiltersCount > 0 || hasSearch
@@ -423,6 +425,20 @@ function BoardPage() {
         } catch (err) {
             error(err.message || "Failed to delete comment")
             throw err
+        }
+    }
+
+    const handleDeleteTask = async (task) => {
+        if (!window.confirm("Delete this task?")) return
+        const id = String(task?._id || task?.id || "")
+        if (!id) return
+        try {
+            await deleteTaskById(id)
+            setTasks((current) => current.filter((t) => String(t._id || t.id) !== id))
+            setViewingTask((current) => (current && String(current._id || current.id) === id ? null : current))
+            success("Task deleted")
+        } catch (err) {
+            error(err.message || "Failed to delete task")
         }
     }
 
@@ -763,6 +779,7 @@ function BoardPage() {
                 canCreateComment={canCreateComment}
                 canUpdateComment={canUpdateComment}
                 canDeleteComment={canDeleteComment}
+                onDelete={canDeleteTasks ? handleDeleteTask : undefined}
                 onCreateComment={handleCreateComment}
                 onUpdateComment={handleUpdateComment}
                 onDeleteComment={handleDeleteComment}
