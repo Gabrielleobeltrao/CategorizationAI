@@ -12,6 +12,7 @@ import {
 } from "../services/clients.service"
 import {
     TOGGLEABLE_MENU_ITEMS,
+    TOGGLEABLE_MENU_SECTIONS,
     readMenuVisibility,
     setMenuItemVisible,
     setAllMenuItemsVisible,
@@ -478,24 +479,51 @@ function PageVisibilitySection({ clientId }) {
                 />
             </div>
 
-            <ul className="mt-2 divide-y divide-gray-100">
-                {TOGGLEABLE_MENU_ITEMS.map((item) => {
-                    const isVisible = visibility?.[item.id] !== false
+            {/* Group toggles by sidebar section so the layout mirrors the
+                left nav. On md+ the sections sit side-by-side in a 3-column
+                grid; on mobile they stack. Inside each section, items go in
+                a responsive grid (1 → 2 cols) so long item names stay
+                readable. */}
+            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+                {TOGGLEABLE_MENU_SECTIONS.map((sectionName) => {
+                    const sectionItems = TOGGLEABLE_MENU_ITEMS.filter((m) => m.section === sectionName)
+                    if (sectionItems.length === 0) return null
+                    const visibleCount = sectionItems.filter((m) => visibility?.[m.id] !== false).length
                     return (
-                        <li
-                            key={item.id}
-                            className="flex items-center justify-between gap-3 py-2.5"
+                        <article
+                            key={sectionName}
+                            className="rounded-xl border border-gray-200 bg-gray-50/50 p-3"
                         >
-                            <span className="text-sm text-gray-900">{item.label}</span>
-                            <VisibilitySwitch
-                                checked={isVisible}
-                                onClick={() => toggle(item.id)}
-                                label={`Toggle ${item.label}`}
-                            />
-                        </li>
+                            <header className="mb-2 flex items-baseline justify-between gap-2">
+                                <h3 className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                                    {sectionName}
+                                </h3>
+                                <span className="text-[10px] tabular-nums text-gray-400">
+                                    {visibleCount}/{sectionItems.length}
+                                </span>
+                            </header>
+                            <ul className="flex flex-col gap-1.5">
+                                {sectionItems.map((item) => {
+                                    const isVisible = visibility?.[item.id] !== false
+                                    return (
+                                        <li
+                                            key={item.id}
+                                            className="flex items-center justify-between gap-3 rounded-md bg-white px-2.5 py-1.5"
+                                        >
+                                            <span className="truncate text-sm text-gray-900">{item.label}</span>
+                                            <VisibilitySwitch
+                                                checked={isVisible}
+                                                onClick={() => toggle(item.id)}
+                                                label={`Toggle ${item.label}`}
+                                            />
+                                        </li>
+                                    )
+                                })}
+                            </ul>
+                        </article>
                     )
                 })}
-            </ul>
+            </div>
         </section>
     )
 }

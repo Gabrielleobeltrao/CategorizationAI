@@ -180,8 +180,16 @@ function Sidebar({ isCollapsed: rawCollapsed, isMobileOpen = false, onCloseMobil
       return next
     })
   }
-  const isSectionCollapsed = (label) =>
-    Boolean(collapsedSections?.[String(label || "").toLowerCase()])
+  const isSectionCollapsed = (label) => {
+    const key = String(label || "").toLowerCase()
+    if (collapsedSections && key in collapsedSections) {
+      return Boolean(collapsedSections[key])
+    }
+    // Default for client-area groups (Bookkeeping / Closing / Reports):
+    // start collapsed so the sidebar isn't a wall of links when the user
+    // opens a client. Once they expand a group, the choice is persisted.
+    return true
+  }
 
   // Subscribe to the client-menu-visibility changes dispatched by the
   // Info page so toggling a switch immediately updates the sidebar.
@@ -209,6 +217,16 @@ function Sidebar({ isCollapsed: rawCollapsed, isMobileOpen = false, onCloseMobil
               <path d="M6 16V9" />
               <path d="M12 16V6" />
               <path d="M18 16v-4" />
+            </svg>
+          ),
+        },
+        {
+          kind: "section",
+          label: "Bookkeeping",
+          icon: (
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
             </svg>
           ),
         },
@@ -250,6 +268,16 @@ function Sidebar({ isCollapsed: rawCollapsed, isMobileOpen = false, onCloseMobil
           ),
         },
         {
+          kind: "section",
+          label: "Closing",
+          icon: (
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="11" width="18" height="10" rx="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+          ),
+        },
+        {
           to: `/clients/${clientId}/reconciliation`,
           label: "Reconciliation",
           icon: (
@@ -274,7 +302,18 @@ function Sidebar({ isCollapsed: rawCollapsed, isMobileOpen = false, onCloseMobil
             </svg>
           ),
         },
-        { kind: "section", label: "Reports" },
+        {
+          kind: "section",
+          label: "Reports",
+          icon: (
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <path d="M14 2v6h6" />
+              <path d="M8 13h6" />
+              <path d="M8 17h8" />
+            </svg>
+          ),
+        },
         {
           to: `/clients/${clientId}/reports/profit-loss`,
           label: "Profit & Loss",
@@ -348,15 +387,25 @@ function Sidebar({ isCollapsed: rawCollapsed, isMobileOpen = false, onCloseMobil
           ),
         },
       ].filter((item) => {
-        // Section headers, dividers, Overview and Info are always shown.
-        // The rest are derived to an id from the URL and gated on the
-        // per-client visibility map.
+        // First pass: hide nav items whose per-client visibility is off.
+        // Section headers, dividers, Dashboard and Info are always kept.
         if (item.kind === "section" || item.kind === "divider") return true
         if (!item.to) return true
         if (item.to.endsWith("/settings")) return true
         if (item.to.endsWith("/home")) return true
         const id = item.to.split("/").pop()
         return isItemVisible(id)
+      }).filter((item, idx, arr) => {
+        // Second pass: drop a section header if every item below it was
+        // hidden by the first pass. We peek at the next item — if it's
+        // another section, a divider, or the end of the list, this
+        // section has no children left and the header would just be
+        // dangling, so we hide it.
+        if (item.kind !== "section") return true
+        const next = arr[idx + 1]
+        if (!next) return false
+        if (next.kind === "section" || next.kind === "divider") return false
+        return true
       })
     : []
 
@@ -490,37 +539,10 @@ function Sidebar({ isCollapsed: rawCollapsed, isMobileOpen = false, onCloseMobil
         </nav>
 
         {clientId ? (() => {
-          // Split the client menu into three independent groups so the
-          // user can collapse the client name (operational items) and the
-          // Reports section separately.
-          const sectionIdx = clientMenuItems.findIndex((it) => it.kind === "section")
-          const dividerAfterSectionIdx =
-            sectionIdx >= 0
-              ? clientMenuItems.findIndex(
-                  (it, i) => i > sectionIdx && it.kind === "divider",
-                )
-              : -1
-
-          const operationalBefore =
-            sectionIdx >= 0 ? clientMenuItems.slice(0, sectionIdx) : clientMenuItems
-          const reportsGroup =
-            sectionIdx >= 0
-              ? clientMenuItems.slice(
-                  sectionIdx,
-                  dividerAfterSectionIdx > sectionIdx ? dividerAfterSectionIdx : undefined,
-                )
-              : []
-          // Items after the divider that follows Reports (typically just
-          // Info) live in their own standalone block at the bottom, so
-          // they aren't hidden when the client name section collapses.
-          const infoGroup =
-            dividerAfterSectionIdx > sectionIdx
-              ? clientMenuItems.slice(dividerAfterSectionIdx + 1) // skip the divider
-              : []
-
-          // Render a flat list of menu items honoring the activeSection
-          // folding rules. Used for the operational group AND the reports
-          // group (which has its own section header inside it).
+          // The client menu is a single flat array driven by section/divider
+          // markers. `renderItems` walks the array, opens collapsible group
+          // headers when it hits `kind: "section"`, and hides items below a
+          // collapsed header until the next section/divider.
           const renderItems = (items) => {
             let activeSection = null
             return items.map((clientItem, idx) => {
@@ -531,31 +553,41 @@ function Sidebar({ isCollapsed: rawCollapsed, isMobileOpen = false, onCloseMobil
               if (clientItem.kind === "section") {
                 const sectionLabel = clientItem.label
                 activeSection = sectionLabel
+                const folded = isSectionCollapsed(sectionLabel)
+                // Rail mode: just the section icon (centered, light gray),
+                // clickable so the user can fold/unfold without hovering.
+                // Match the NavLink rail layout exactly (`text-sm
+                // font-medium py-2 px-2`) so the row height — and the
+                // vertical spacing between icons — stays uniform.
                 if (isCollapsed) {
-                  // Invisible placeholder matching the expanded header
-                  // height so the nav icons stay anchored when the
-                  // sidebar grows on hover.
                   return (
-                    <div
+                    <button
                       key={`section-${idx}`}
-                      className="h-6"
-                      aria-hidden="true"
-                    />
+                      type="button"
+                      onClick={() => toggleSection(sectionLabel)}
+                      title={sectionLabel}
+                      aria-label={`${sectionLabel} — ${folded ? "expand" : "collapse"}`}
+                      aria-expanded={!folded}
+                      className="flex items-center justify-center rounded-lg px-2 py-2 text-sm font-medium text-gray-400 transition-colors hover:text-gray-700"
+                    >
+                      {clientItem.icon}
+                    </button>
                   )
                 }
-                const folded = isSectionCollapsed(sectionLabel)
+                // Hover/expanded mode: icon + label + chevron.
                 return (
                   <button
                     key={`section-${idx}`}
                     type="button"
                     onClick={() => toggleSection(sectionLabel)}
-                    className="flex h-6 w-full items-center justify-between rounded-md px-3 text-left text-[10px] font-semibold uppercase tracking-wide text-gray-400 transition hover:text-gray-700"
+                    className="flex h-6 w-full items-center gap-2 rounded-md px-3 text-left text-[10px] font-semibold uppercase tracking-wide text-gray-400 transition hover:text-gray-700"
                     aria-expanded={!folded}
                   >
-                    <span>{sectionLabel}</span>
+                    <span className="shrink-0 text-gray-400">{clientItem.icon}</span>
+                    <span className="flex-1 truncate">{sectionLabel}</span>
                     <svg
                       viewBox="0 0 24 24"
-                      className={`h-3 w-3 transition-transform ${folded ? "-rotate-90" : ""}`}
+                      className={`h-3 w-3 shrink-0 transition-transform ${folded ? "-rotate-90" : ""}`}
                       fill="none"
                       stroke="currentColor"
                       strokeWidth="2.5"
@@ -567,7 +599,10 @@ function Sidebar({ isCollapsed: rawCollapsed, isMobileOpen = false, onCloseMobil
                   </button>
                 )
               }
-              if (!isCollapsed && activeSection && isSectionCollapsed(activeSection)) {
+              // A section's fold state applies to both the expanded
+              // (hover) view AND the rail (icon-only) view — fold a
+              // group and its icons disappear from the rail strip too.
+              if (activeSection && isSectionCollapsed(activeSection)) {
                 return null
               }
               return (
@@ -591,56 +626,21 @@ function Sidebar({ isCollapsed: rawCollapsed, isMobileOpen = false, onCloseMobil
             })
           }
 
-          const clientHeaderKey = "__client__"
-          const clientFolded = isSectionCollapsed(clientHeaderKey)
-
           return (
-            <>
-              <div className="mt-4 border-t border-gray-100 pt-4">
-                {isCollapsed ? (
-                  // Invisible placeholder so the icons sit at the same Y
-                  // position whether the sidebar is hovered or not.
-                  <div className="h-6" aria-hidden="true" />
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => toggleSection(clientHeaderKey)}
-                    className="flex h-6 w-full items-center justify-between rounded-md px-3 text-left text-[10px] font-semibold uppercase tracking-wide text-gray-400 transition hover:text-gray-700"
-                    aria-expanded={!clientFolded}
-                  >
-                    <span className="truncate">
-                      {selectedClient ? selectedClient.name : "Client"}
-                    </span>
-                    <svg
-                      viewBox="0 0 24 24"
-                      className={`h-3 w-3 shrink-0 transition-transform ${clientFolded ? "-rotate-90" : ""}`}
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="M6 9l6 6 6-6" />
-                    </svg>
-                  </button>
-                )}
-                {!isCollapsed && clientFolded ? null : (
-                  <nav className="flex flex-col gap-1">{renderItems(operationalBefore)}</nav>
-                )}
-              </div>
-
-              {reportsGroup.length > 0 && (
-                <div className="mt-3">
-                  <nav className="flex flex-col gap-1">{renderItems(reportsGroup)}</nav>
-                </div>
+            <div className="mt-4 border-t border-gray-100 pt-4">
+              {/* Client name as a static label (not a fold toggle). On the
+                  rail (icon-only) mode, render a matching-height invisible
+                  spacer so the icons below don't jump when the sidebar
+                  expands on hover. */}
+              {isCollapsed ? (
+                <div className="mb-2 h-4" aria-hidden="true" />
+              ) : (
+                <p className="mb-2 truncate px-3 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+                  {selectedClient ? selectedClient.name : "Client"}
+                </p>
               )}
-
-              {infoGroup.length > 0 && (
-                <div className="mt-3 border-t border-gray-100 pt-3">
-                  <nav className="flex flex-col gap-1">{renderItems(infoGroup)}</nav>
-                </div>
-              )}
-            </>
+              <nav className="flex flex-col gap-1">{renderItems(clientMenuItems)}</nav>
+            </div>
           )
         })() : (
           <>
