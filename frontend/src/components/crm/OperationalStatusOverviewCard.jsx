@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
+import { Link } from "react-router-dom"
 import {
     DEFAULT_OPERATIONAL_STATUS,
     OPERATIONAL_STATUS_LIST,
@@ -75,18 +76,31 @@ function OperationalStatusOverviewCard({ officeId }) {
                 <ul className="mt-3 flex flex-wrap gap-2">
                     {OPERATIONAL_STATUS_LIST.map((status) => {
                         const count = counts[status.id] || 0
+                        const disabled = count === 0
+                        // Each pill deep-links into the Clients list with the
+                        // matching ?status= filter applied. Zero-count pills
+                        // stay rendered but non-interactive so the bird's-eye
+                        // view remains complete.
                         return (
-                            <li
-                                key={status.id}
-                                className="flex shrink-0 items-center gap-2 rounded-lg border border-gray-200 bg-gray-50/60 px-2.5 py-1.5"
-                                title={status.description}
-                            >
-                                <span
-                                    className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 ring-inset ${getOperationalStatusBadgeClass(status.id)}`}
+                            <li key={status.id}>
+                                <Link
+                                    to={disabled ? "#" : `/clients?status=${status.id}`}
+                                    onClick={(e) => disabled && e.preventDefault()}
+                                    title={status.description}
+                                    className={`flex shrink-0 items-center gap-2 rounded-lg border px-2.5 py-1.5 transition ${
+                                        disabled
+                                            ? "cursor-default border-gray-100 bg-gray-50/40 opacity-60"
+                                            : "border-gray-200 bg-gray-50/60 hover:border-gray-400 hover:bg-white"
+                                    }`}
+                                    aria-disabled={disabled}
                                 >
-                                    {status.label}
-                                </span>
-                                <span className="text-sm font-semibold text-gray-900 tabular-nums">{count}</span>
+                                    <span
+                                        className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 ring-inset ${getOperationalStatusBadgeClass(status.id)}`}
+                                    >
+                                        {status.label}
+                                    </span>
+                                    <span className="text-sm font-semibold text-gray-900 tabular-nums">{count}</span>
+                                </Link>
                             </li>
                         )
                     })}

@@ -327,9 +327,9 @@ function ClientsListMock() {
     // Status values mirror the real operational status taxonomy
     // (frontend/src/constants/operationalStatuses.js).
     const rows = [
-        { name: "Blue Ridge Construction LLC", state: "FL", type: "1065", status: "Ready to review", tone: "emerald" },
-        { name: "Aurora Digital Studio", state: "NY", type: "1120-S", status: "Categorizing", tone: "violet" },
-        { name: "Sunset Cafe & Roasters", state: "CA", type: "Sch C", status: "Onboarding", tone: "gray" },
+        { name: "Blue Ridge Construction LLC", state: "FL", activity: "Construction", status: "Ready to review", tone: "emerald" },
+        { name: "Aurora Digital Studio", state: "NY", activity: "Creative services", status: "Categorizing", tone: "violet" },
+        { name: "Sunset Cafe & Roasters", state: "CA", activity: "Food & beverage", status: "Onboarding", tone: "gray" },
     ]
     const toneClasses = {
         emerald: "bg-emerald-50 text-emerald-700 ring-emerald-200",
@@ -357,7 +357,7 @@ function ClientsListMock() {
                     >
                         <div className="min-w-0">
                             <p className="truncate text-sm font-medium text-gray-900">{r.name}</p>
-                            <p className="text-[11px] text-gray-500">{r.type} · {r.state}</p>
+                            <p className="text-[11px] text-gray-500">{r.activity} · {r.state}</p>
                         </div>
                         <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${toneClasses[r.tone]}`}>
                             {r.status}
