@@ -11,6 +11,7 @@ import {
 } from "../repositories/clientOperationalStatus.repository.js"
 import { getClientById, listAllClientsByOfficeId } from "../repositories/clients.repository.js"
 import { getClientYearOperationalSignals } from "../repositories/transactions.repository.js"
+import { reconcileAutoTasksForClient } from "./worklistAutoTasks.service.js"
 
 function ensureClientBelongsToOffice(client, officeId) {
     const safeOfficeId = String(officeId || "").trim()
@@ -81,6 +82,10 @@ export async function computeOperationalStatusForClient(client) {
 // (or a default-shaped synthetic one when the rules don't return anything).
 async function runComputeAndPersist(client) {
     const computed = await computeOperationalStatusForClient(client)
+    // Fire-and-forget: reconcile the client's auto-generated worklist
+    // tasks. Best-effort — never blocks or fails the status path even
+    // if the tasks collection is unavailable.
+    reconcileAutoTasksForClient(client).catch(() => null)
     if (!computed) {
         return (
             (await getClientOperationalStatus(client._id)) ||
