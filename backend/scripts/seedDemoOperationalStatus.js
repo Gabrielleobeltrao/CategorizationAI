@@ -165,6 +165,12 @@ async function setManualStatus(db, officeId, clientId, override, ownerProfileId)
         manualReason: override.reason,
         manualSetAt: setAt,
         manualSetBy: String(ownerProfileId),
+        // "completed" carries the year it was completed for so it
+        // auto-resets when the rules window rolls over (Jan 1). "paused"
+        // is intentional hold — no year stamp.
+        manualForYear: override.status === "completed"
+          ? setAt.getUTCFullYear()
+          : null,
         // Keep any computed status untouched (it'll be there from a
         // previous read, or null). Effective status = manual when set.
         updatedAt: now,

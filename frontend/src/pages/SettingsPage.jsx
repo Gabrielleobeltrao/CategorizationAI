@@ -640,7 +640,10 @@ function SettingsPage() {
                 <div>
                   <h3 className="text-sm font-semibold text-gray-900">Bookkeeping</h3>
                   <p className="mt-1 text-xs text-gray-500">
-                    Clients, accounts, transactions, categories, ledger, P&amp;L.
+                    Multi-client books on a double-entry journal: transactions with CSV
+                    import, Chart of Accounts, categories, recurring entries, reconciliation,
+                    period close and the full report suite (P&amp;L, Balance Sheet, Trial
+                    Balance, General Ledger, Account Balances).
                   </p>
                 </div>
                 <span className="shrink-0 rounded-full bg-gray-900 px-2.5 py-0.5 text-[11px] font-medium text-white">
@@ -659,8 +662,10 @@ function SettingsPage() {
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-gray-900">AI categorization</p>
                     <p className="mt-1 text-xs text-gray-500">
-                      Enables the &quot;Categorize with AI&quot; button, the AI suggestion icon column
-                      on transactions, and the memory system that learns from past categorizations.
+                      Powers the AI suggestion icon column and the &quot;Categorize with AI&quot; bulk
+                      action on Transactions. Categorizations run as background jobs with a
+                      live progress queue, and a per-client memory (exact + semantic matches
+                      from past decisions) makes repeated patterns auto-apply over time.
                     </p>
                   </div>
                   <button
@@ -688,7 +693,9 @@ function SettingsPage() {
                 <div>
                   <h3 className="text-sm font-semibold text-gray-900">Operations CRM</h3>
                   <p className="mt-1 text-xs text-gray-500">
-                    Tasks, CRM status, missing documents, timeline, monthly closing, follow-ups.
+                    Tasks Manager + drag-and-drop Board, per-client Operational Status,
+                    auto-generated worklist tasks and built-in Team Chat. Adds the CRM
+                    menus, the unified Overview tab and per-client task surfaces.
                   </p>
                 </div>
                 <span
@@ -742,8 +749,11 @@ function SettingsPage() {
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-gray-900">Tasks</p>
                         <p className="mt-1 text-xs text-gray-500">
-                          Team-wide task board with assignees, due dates, priorities and
-                          status tracking. Turn off to hide the Tasks menu and pages.
+                          Tasks Manager + drag-and-drop Board with custom columns. Each
+                          task carries priority, due date, multiple assignees, status
+                          history and threaded comments. Auto-generated worklist items
+                          flow in here too. Turn off to hide the Tasks Manager, Board
+                          and per-client task surfaces.
                         </p>
                       </div>
                       <button
@@ -768,9 +778,41 @@ function SettingsPage() {
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-gray-900">Operational Status</p>
                         <p className="mt-1 text-xs text-gray-500">
-                          Automatic per-client status driven by bookkeeping data (onboarding,
-                          importing, needs review, etc). A few states can be manually overridden.
+                          Per-client status computed from real bookkeeping signals
+                          (Onboarding, Waiting documents, Categorizing, Ready to review)
+                          with manual Paused / Completed overrides. Surfaces as pipeline
+                          pills on the Clients list, drill-in counts on the Bookkeeping
+                          Overview, a popover with the reason + next-action button on the
+                          per-client Dashboard, and the manual override buttons. Same
+                          signals also generate worklist tasks automatically.
                         </p>
+                        <ul className="mt-2 flex flex-col gap-1 text-[11px] leading-snug text-gray-500">
+                          <li className="flex items-start gap-1.5">
+                            <span className="mt-0.5 text-gray-400">·</span>
+                            <span>
+                              <span className="font-semibold text-gray-700">Automatic statuses</span> reset
+                              every Jan 1 — they always look at the current calendar year,
+                              so a client &quot;Ready to review&quot; for 2026 falls back to
+                              &quot;Waiting documents&quot; until 2027 imports start.
+                            </span>
+                          </li>
+                          <li className="flex items-start gap-1.5">
+                            <span className="mt-0.5 text-gray-400">·</span>
+                            <span>
+                              <span className="font-semibold text-gray-700">Completed</span> is stamped with
+                              the year it was set for, and clears itself on the same Jan 1
+                              rollover — &quot;finished 2026&quot; doesn&apos;t bleed into 2027.
+                            </span>
+                          </li>
+                          <li className="flex items-start gap-1.5">
+                            <span className="mt-0.5 text-gray-400">·</span>
+                            <span>
+                              <span className="font-semibold text-gray-700">Paused</span> is an intentional
+                              hold and stays paused across year boundaries until someone
+                              clicks <em>Resume automatic status</em>.
+                            </span>
+                          </li>
+                        </ul>
                       </div>
                       <button
                         type="button"
@@ -794,7 +836,10 @@ function SettingsPage() {
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-gray-900">Team Chat</p>
                         <p className="mt-1 text-xs text-gray-500">
-                          Floating internal chat for office employees. Messages are retained for 90 days.
+                          Built-in direct messages and group conversations for the office,
+                          with voice notes and file attachments. Available as a floating
+                          widget across the app plus a dedicated Chat Manager page.
+                          Messages are retained for 90 days; uploaded files for 7.
                         </p>
                       </div>
                       <button

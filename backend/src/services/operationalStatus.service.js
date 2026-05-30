@@ -86,6 +86,14 @@ async function runComputeAndPersist(client) {
     // tasks. Best-effort — never blocks or fails the status path even
     // if the tasks collection is unavailable.
     reconcileAutoTasksForClient(client).catch(() => null)
+
+    // Year-boundary auto-reset for `completed`. "Completed" means the
+    // user finished the books for a specific year; once the rules
+    // window rolls over (Jan 1), the override is stale and the badge
+    // should fall back to whatever the new year's data says.
+    // `paused` is a hard hold and is left untouched.
+    await expireStaleCompletedOverride(client._id)
+
     if (!computed) {
         return (
             (await getClientOperationalStatus(client._id)) ||
@@ -98,6 +106,30 @@ async function runComputeAndPersist(client) {
         status: computed.status,
         reason: computed.reason,
     })
+}
+
+async function expireStaleCompletedOverride(clientId) {
+    const safeClientId = String(clientId || "").trim()
+    if (!safeClientId) return
+    const existing = await getClientOperationalStatus(safeClientId)
+    if (!existing) return
+    if (existing.manualStatus !== "completed") return
+    const currentYear = Number(getCurrentYearForRules())
+    if (existing.manualForYear === currentYear) return
+    // Year rolled over — clear the manual override so the computed
+    // rules take over again. setManualStatus with status=null wipes
+    // manualReason / manualSetAt / manualForYear in one go.
+    try {
+        await setManualStatus({
+            clientId: safeClientId,
+            officeId: existing.officeId,
+            status: null,
+            reason: "",
+            setBy: "system:year-rollover",
+        })
+    } catch {
+        // Best-effort — the next compute pass will retry.
+    }
 }
 
 function buildDefaultRecord(client) {
@@ -175,6 +207,10 @@ export async function setManualOperationalStatusService(clientId, patch, context
         status: requestedStatus,
         reason: patch?.reason,
         setBy: context?.actorProfileId || "",
+        // Stamp the active rules year so "completed" auto-clears when
+        // the year rolls over. The repository ignores forYear for the
+        // other manual status (paused), so it's safe to always pass.
+        forYear: Number(getCurrentYearForRules()),
     })
 }
 
