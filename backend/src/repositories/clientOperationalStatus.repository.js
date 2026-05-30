@@ -33,6 +33,13 @@ function normalizeRecord(doc) {
         manualReason: String(doc.manualReason || ""),
         manualSetAt: doc.manualSetAt || null,
         manualSetBy: String(doc.manualSetBy || ""),
+        // The year the manual override was set against. Used by the
+        // service to auto-clear "completed" overrides when the rules
+        // window rolls into a new year — "I finished 2026" shouldn't
+        // mean "I'm permanently finished".
+        manualForYear: Number.isFinite(Number(doc.manualForYear))
+            ? Number(doc.manualForYear)
+            : null,
         effectiveStatus: manualStatus || computedStatus || DEFAULT_OPERATIONAL_STATUS,
         updatedAt: doc.updatedAt || null,
     }
@@ -108,12 +115,19 @@ export async function setManualStatus(input) {
 
     const db = getDB()
     const now = new Date()
+    // Only "completed" carries a year stamp. "paused" is intentional
+    // hold and isn't tied to a fiscal cycle. Clearing the override
+    // (manualStatus === null) also clears the year.
+    const manualForYear = manualStatus === "completed"
+        ? Number(input?.forYear) || now.getUTCFullYear()
+        : null
     const setPayload = {
         officeId,
         manualStatus,
         manualReason: manualStatus ? String(input?.reason || "") : "",
         manualSetAt: manualStatus ? now : null,
         manualSetBy: manualStatus ? String(input?.setBy || "") : "",
+        manualForYear,
         updatedAt: now,
     }
     const setOnInsert = {

@@ -645,10 +645,17 @@ function Sidebar({ isCollapsed: rawCollapsed, isMobileOpen = false, onCloseMobil
         })() : (
           <>
             <div className="mt-4 border-t border-gray-100 pt-4">
-              {isCrmEnabled && !isCollapsed && (
-                <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                  Bookkeeping
-                </p>
+              {isCrmEnabled && (
+                <OfficeSectionLabel
+                  label="Bookkeeping"
+                  isCollapsed={isCollapsed}
+                  icon={(
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+                    </svg>
+                  )}
+                />
               )}
               <nav className="flex flex-col gap-2">
                 {bookkeepingNavItems.map((item) => (
@@ -674,11 +681,17 @@ function Sidebar({ isCollapsed: rawCollapsed, isMobileOpen = false, onCloseMobil
 
             {isCrmEnabled && visibleCrmNavItems.length > 0 && (
               <div className="mt-4 border-t border-gray-100 pt-4">
-                {!isCollapsed && (
-                  <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                    CRM Operacional
-                  </p>
-                )}
+                <OfficeSectionLabel
+                  label="CRM Operacional"
+                  isCollapsed={isCollapsed}
+                  icon={(
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="4" width="5" height="16" rx="1" />
+                      <rect x="10" y="4" width="5" height="10" rx="1" />
+                      <rect x="17" y="4" width="4" height="13" rx="1" />
+                    </svg>
+                  )}
+                />
                 <nav className="flex flex-col gap-2">
                   {visibleCrmNavItems.map((item) => (
                     <NavLink
@@ -780,6 +793,31 @@ function Sidebar({ isCollapsed: rawCollapsed, isMobileOpen = false, onCloseMobil
       </div>
       </aside>
     </>
+  )
+}
+
+// Office-level (top of the sidebar, no client selected) section header.
+// Mirrors the per-client section style: rail mode shows the icon
+// centered as a visual divider, expanded mode shows the same icon next
+// to an uppercase label. Both keep the same row height as a NavLink so
+// the icons in the rail stay vertically aligned.
+function OfficeSectionLabel({ label, icon, isCollapsed }) {
+  if (isCollapsed) {
+    return (
+      <div
+        className="mb-1 flex items-center justify-center rounded-lg px-2 py-2 text-sm text-gray-400"
+        title={label}
+        aria-label={label}
+      >
+        {icon}
+      </div>
+    )
+  }
+  return (
+    <p className="flex items-center gap-2 px-3 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+      <span className="shrink-0">{icon}</span>
+      <span>{label}</span>
+    </p>
   )
 }
 
