@@ -679,6 +679,13 @@ function ClientsPage() {
                                                     <OperationalStatusPopover
                                                         entry={operationalStatusMap[String(client.id)] || null}
                                                         clientId={client.id}
+                                                        onChange={(updated) => {
+                                                            if (!updated) return
+                                                            setOperationalStatusMap((prev) => ({
+                                                                ...prev,
+                                                                [String(client.id)]: updated,
+                                                            }))
+                                                        }}
                                                     />
                                                 </div>
                                             )}

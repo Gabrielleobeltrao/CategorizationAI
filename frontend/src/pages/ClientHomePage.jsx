@@ -22,7 +22,10 @@ import { ACCOUNT_TYPE_LABELS } from "../constants/accountTypes"
 import TaskCard from "../components/tasks/TaskCard"
 import TaskDetailsModal from "../components/tasks/TaskDetailsModal"
 import TaskEditModal from "../components/tasks/TaskEditModal"
+import OperationalStatusPopover from "../components/crm/OperationalStatusPopover"
 import { sortTasksDoneLast } from "../utils/tasks"
+import { useFeature } from "../hooks/useFeature"
+import { getClientOperationalStatus } from "../services/operationalStatus.service"
 
 const GetStartedPanel = lazy(() => import("../components/ledger/GetStartedPanel"))
 
@@ -61,6 +64,8 @@ function ClientHomePage() {
     const [isLoading, setIsLoading] = useState(false)
     const [employees, setEmployees] = useState([])
     const [officeClients, setOfficeClients] = useState([])
+    const isOperationalStatusEnabled = useFeature("crmOperationalStatus")
+    const [operationalStatus, setOperationalStatus] = useState(null)
 
     // Local copy of the tasks list so optimistic updates from the modal
     // are reflected immediately without refetching the whole dashboard.
@@ -112,6 +117,20 @@ function ClientHomePage() {
     useEffect(() => {
         setTasks(Array.isArray(data?.tasks) ? data.tasks : [])
     }, [data?.tasks])
+
+    // Pull the client's operational status separately — getClientHome doesn't
+    // bundle it. Skips the request when the feature flag is off.
+    useEffect(() => {
+        if (!clientId || !isOperationalStatusEnabled) {
+            setOperationalStatus(null)
+            return undefined
+        }
+        let active = true
+        getClientOperationalStatus(clientId)
+            .then((record) => { if (active) setOperationalStatus(record || null) })
+            .catch(() => { if (active) setOperationalStatus(null) })
+        return () => { active = false }
+    }, [clientId, isOperationalStatusEnabled])
 
     // Handlers — mirror the patterns used on Home.jsx.
     const handleTaskEdit = (task) => {
@@ -257,7 +276,16 @@ function ClientHomePage() {
                         <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
                             Dashboard
                         </p>
-                        <h1 className="text-2xl font-semibold text-gray-900">{client.name || "Client"}</h1>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <h1 className="text-2xl font-semibold text-gray-900">{client.name || "Client"}</h1>
+                            {isOperationalStatusEnabled && operationalStatus && (
+                                <OperationalStatusPopover
+                                    entry={operationalStatus}
+                                    clientId={clientId}
+                                    onChange={(updated) => setOperationalStatus(updated || null)}
+                                />
+                            )}
+                        </div>
                         <p className="text-sm text-gray-500">
                             {[client.businessType, client.mainActivity, client.state]
                                 .filter(Boolean)
