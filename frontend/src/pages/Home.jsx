@@ -390,7 +390,7 @@ function Home() {
                   hasRecent={hasRecent}
                 />
               )}
-              <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+              <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <PendingCategorizationCard
                   items={pending}
                   scope={effectiveScope}
