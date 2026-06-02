@@ -196,6 +196,14 @@ function EmployeesPage() {
 
         return modules
     }, [permissionCatalog])
+    const clientNameById = useMemo(() => {
+        const map = new Map()
+        for (const c of Array.isArray(officeClients) ? officeClients : []) {
+            const id = String(c?._id || c?.id || "")
+            if (id) map.set(id, c?.name || "Unnamed client")
+        }
+        return map
+    }, [officeClients])
     const currentRolePermissions = useMemo(() => {
         const currentRoleKey = String(currentUserProfile?.role || "").toLowerCase()
         if (!currentRoleKey) return []
@@ -967,8 +975,11 @@ function EmployeesPage() {
                             const isEditing = editingEmployeeId === employeeItem.id
 
                             return (
-                                <div key={employeeItem.id}>
-                                    <div className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-2 rounded-lg border border-gray-100 bg-gray-50/50 p-3 text-sm hover:bg-gray-50 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.8fr)_120px_120px] md:gap-3 md:rounded-none md:border-0 md:bg-transparent md:p-0 md:px-1 md:py-3 md:text-base">
+                                <div
+                                    key={employeeItem.id}
+                                    className="rounded-lg border border-gray-100 bg-gray-50/50 p-3 hover:bg-gray-50 md:rounded-none md:border-0 md:bg-transparent md:p-0 md:px-1 md:py-3"
+                                >
+                                    <div className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-2 text-sm md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.8fr)_120px_120px] md:gap-3 md:text-base">
                                         <div className="min-w-0 max-md:col-start-1 max-md:row-start-1">
                                             {isEditing ? (
                                                 <input
@@ -1182,6 +1193,33 @@ function EmployeesPage() {
                                             )}
                                         </div>
                                     </div>
+                                    {employeeItem.clientScope === "assigned" && (
+                                        <button
+                                            type="button"
+                                            onClick={() => openClientAccessModal(employeeItem)}
+                                            className="group mt-2 flex w-full flex-wrap items-center gap-1.5 rounded-md border border-dashed border-gray-300 bg-white px-3 py-1.5 text-left text-[11px] text-gray-700 hover:border-gray-400 hover:bg-gray-50"
+                                            title="Click to edit assigned clients"
+                                        >
+                                            <span className="font-semibold uppercase tracking-wide text-gray-500">
+                                                Clients ({employeeItem.assignedClientIds?.length || 0})
+                                            </span>
+                                            {(employeeItem.assignedClientIds || []).length === 0 ? (
+                                                <span className="text-gray-500">No clients assigned — click to add</span>
+                                            ) : (
+                                                (employeeItem.assignedClientIds || []).map((cid) => (
+                                                    <span
+                                                        key={cid}
+                                                        className="rounded-full bg-white px-2 py-0.5 text-gray-900 ring-1 ring-gray-300 group-hover:ring-gray-400"
+                                                    >
+                                                        {clientNameById.get(String(cid)) || "Unknown client"}
+                                                    </span>
+                                                ))
+                                            )}
+                                            <span className="ml-auto text-gray-500 opacity-0 transition group-hover:opacity-100">
+                                                Edit →
+                                            </span>
+                                        </button>
+                                    )}
                                 </div>
                             )
                         })}
