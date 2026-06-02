@@ -38,6 +38,7 @@ function BookkeepingDashboardPage({
   const { profile, office } = useAuth()
   const { error } = useNotification()
   const isOperationalStatusEnabled = useFeature("crmOperationalStatus")
+  const isAiEnabled = useFeature("bookkeepingLlm")
   const officeId = String(profile?.officeId || "").trim()
   const officeName = String(office?.name || "").trim()
 
@@ -136,6 +137,27 @@ function BookkeepingDashboardPage({
     return () => { active = false }
   }, [error, officeId, customRange, scopeOptions])
 
+  // When the bookkeepingLlm sub-feature is off, the office isn't running
+  // AI categorizations — so the AI Processed / Auto-Categorized KPIs and
+  // chart series carry no signal. Drop them from both the KPI strip and
+  // the chart series passed to PerformanceOverview so the dashboard
+  // doesn't show always-zero lines.
+  const filteredKpis = useMemo(() => {
+    if (isAiEnabled) return customData.kpis
+    return (customData.kpis || []).filter((kpi) => {
+      const id = String(kpi?.id || "").toLowerCase()
+      return !id.startsWith("ai_")
+    })
+  }, [customData.kpis, isAiEnabled])
+  const filteredChartSeries = useMemo(() => {
+    if (isAiEnabled) return undefined // let PerformanceOverview use defaults
+    return [
+      { key: "imported", label: "Imported", color: "#111827" },
+      { key: "categorized", label: "Categorized", color: "#2563eb" },
+      { key: "pending", label: "Pending", color: "#d97706" },
+    ]
+  }, [isAiEnabled])
+
   return (
     <section className="w-full px-12 py-8">
       <div className="mx-auto flex max-w-7xl flex-col gap-4 sm:gap-6">
@@ -159,8 +181,9 @@ function BookkeepingDashboardPage({
         <PerformanceOverview
           title="Performance Overview"
           subtitle="Office performance for the selected range"
-          kpis={customData.kpis}
+          kpis={filteredKpis}
           trend={customData.trend}
+          chartSeries={filteredChartSeries}
           range={customRange}
           onRangeChange={setCustomRange}
           isLoading={isCustomLoading}

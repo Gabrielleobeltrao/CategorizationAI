@@ -580,6 +580,7 @@ function TasksSection({ tasks, totalCount, client, employees, officeClients, onS
                         clientById={clientById}
                         employeeById={employeeById}
                         onSelect={onSelectTask}
+                        wrapTitle
                     />
                 ))}
             </ul>

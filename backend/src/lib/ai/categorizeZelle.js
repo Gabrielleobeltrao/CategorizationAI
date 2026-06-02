@@ -272,7 +272,13 @@ Rules:
         } tx=${transactions.length} ms=${elapsedMs}`
       )
 
-      return parsed
+      return {
+        parsed,
+        usage: {
+          tokensIn: Number(response?.usage?.prompt_tokens) || 0,
+          tokensOut: Number(response?.usage?.completion_tokens) || 0,
+        },
+      }
     } catch (error) {
       lastError = error
       const spendLimitReached = isLlmSpendLimitError(error)
@@ -347,12 +353,21 @@ async function categorizeZelle(transactions, business, options = {}) {
   const mergedCategoriesByName = new Map()
   const mergedResultById = new Map()
 
+  const onBatchUsage = typeof options.onBatchUsage === "function"
+    ? options.onBatchUsage
+    : null
+  // Direction loops share a single "stop after this batch" signal —
+  // once the billing callback says we're out of credits, we bail out
+  // and skip the remaining batches in both directions.
+  let stopRequested = false
+
   const runDirectionBatches = async (direction, directionTransactions) => {
     if (directionTransactions.length === 0) return
     const batches = chunkArray(directionTransactions, batchSize)
     for (let index = 0; index < batches.length; index += 1) {
+      if (stopRequested) break
       const batch = batches[index]
-      const output = await categorizeBatch({
+      const { parsed: output, usage } = await categorizeBatch({
         transactions: batch,
         business: safeBusiness,
         direction,
@@ -370,6 +385,24 @@ async function categorizeZelle(transactions, business, options = {}) {
         mergedCategoriesByName,
         mergedResultById,
       })
+      if (onBatchUsage) {
+        try {
+          const shouldContinue = await onBatchUsage({
+            batchIndex: index + 1,
+            totalBatches: batches.length,
+            direction,
+            model,
+            tokensIn: usage.tokensIn,
+            tokensOut: usage.tokensOut,
+          })
+          if (shouldContinue === false) {
+            stopRequested = true
+            break
+          }
+        } catch (err) {
+          console.warn(`[categorizeZelle] onBatchUsage threw: ${err?.message || err}`)
+        }
+      }
     }
   }
 

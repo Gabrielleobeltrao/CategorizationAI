@@ -7,6 +7,11 @@ import {
     getOfficeDashboardFeedByIdService,
     setOfficeFeaturesService,
 } from "../services/office.service.js"
+import {
+    computeOfficeAvgPerTx,
+    getOfficeCredits,
+    listRecentCreditEntries,
+} from "../services/credits.service.js"
 import { sendErrorResponse } from "../utils/httpError.js"
 
 export async function createOfficeController(req, res) {
@@ -107,6 +112,20 @@ export async function getOfficeDashboardCustomRangeController(req, res) {
             actorOfficeId: req.userProfile?.officeId,
         })
         return res.status(200).json(dashboard)
+    } catch (error) {
+        return sendErrorResponse(res, error)
+    }
+}
+
+export async function getOfficeCreditsController(req, res) {
+    try {
+        const { id } = req.params
+        const [credits, recent, avg] = await Promise.all([
+            getOfficeCredits(id),
+            listRecentCreditEntries(id, { limit: 10 }),
+            computeOfficeAvgPerTx(id),
+        ])
+        return res.status(200).json({ ...credits, recent, avg })
     } catch (error) {
         return sendErrorResponse(res, error)
     }

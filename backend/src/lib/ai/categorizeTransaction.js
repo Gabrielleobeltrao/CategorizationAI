@@ -231,7 +231,13 @@ Rules:
         } tx=${transactions.length} ms=${elapsedMs}`,
       )
 
-      return parsed.results
+      return {
+        results: parsed.results,
+        usage: {
+          tokensIn: Number(response?.usage?.prompt_tokens) || 0,
+          tokensOut: Number(response?.usage?.completion_tokens) || 0,
+        },
+      }
     } catch (error) {
       lastError = error
       const spendLimitReached = isLlmSpendLimitError(error)
@@ -264,12 +270,20 @@ async function categorizeTransaction(accounts, transactions, business, options =
   const maxRetries = Number(options.maxRetries || DEFAULT_LLM_MAX_RETRIES)
   const backoffMs = Number(options.backoffMs || DEFAULT_LLM_BACKOFF_MS)
 
+  // Optional billing callback — fires after every successful batch with
+  // the token usage so the caller can debit credits and decide whether
+  // to keep going. Returning false from the callback stops the loop
+  // and we return whatever we've categorized so far.
+  const onBatchUsage = typeof options.onBatchUsage === "function"
+    ? options.onBatchUsage
+    : null
+
   const batches = chunkArray(safeTransactions, batchSize)
   const batchResults = []
 
   for (let index = 0; index < batches.length; index += 1) {
     const batch = batches[index]
-    const results = await categorizeBatch({
+    const { results, usage } = await categorizeBatch({
       accounts: safeAccounts,
       transactions: batch,
       business: safeBusiness,
@@ -281,6 +295,21 @@ async function categorizeTransaction(accounts, transactions, business, options =
       totalBatches: batches.length,
     })
     batchResults.push(...results)
+
+    if (onBatchUsage) {
+      try {
+        const shouldContinue = await onBatchUsage({
+          batchIndex: index + 1,
+          totalBatches: batches.length,
+          model,
+          tokensIn: usage.tokensIn,
+          tokensOut: usage.tokensOut,
+        })
+        if (shouldContinue === false) break
+      } catch (err) {
+        console.warn(`[categorizeTransaction] onBatchUsage threw: ${err?.message || err}`)
+      }
+    }
   }
 
   const allowedAccountIds = new Set(safeAccounts.map((account) => String(account.id)))

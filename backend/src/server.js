@@ -25,6 +25,7 @@ import { ensureBoardCollectionsIndexes } from "./repositories/boardCollections.r
 import { ensureJournalEntriesIndexes } from "./repositories/journalEntries.repository.js"
 import { ensureActivityLogIndexes } from "./repositories/activityLog.repository.js"
 import { ensureChatIndexes } from "./repositories/chat.repository.js"
+import { ensureCreditLedgerIndexes } from "./repositories/creditLedger.repository.js"
 import {
   ensureChatFilesIndexes,
   pruneExpiredChatFiles,
@@ -61,6 +62,7 @@ await ensureJournalEntriesIndexes()
 await ensureActivityLogIndexes()
 await ensureChatIndexes()
 await ensureChatFilesIndexes()
+await ensureCreditLedgerIndexes()
 
 app.locals.auth = createAuth(getDB())
 await startCategorizationWorker()

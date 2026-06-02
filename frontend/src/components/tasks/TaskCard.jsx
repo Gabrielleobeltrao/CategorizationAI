@@ -31,7 +31,7 @@ function formatDate(value) {
     }).format(date)
 }
 
-function TaskCard({ task, clientById, employeeById, onSelect }) {
+function TaskCard({ task, clientById, employeeById, onSelect, wrapTitle = false }) {
     const taskClientIds = toIdArray(task, "clientIds", "clientId")
     const taskAssigneeIds = toIdArray(task, "assigneeIds", "assigneeId")
     const clientChips = taskClientIds
@@ -52,7 +52,7 @@ function TaskCard({ task, clientById, employeeById, onSelect }) {
 
     return (
         <li
-            className={`rounded-xl border border-gray-100 bg-gray-50/50 ${isDone ? "opacity-70" : ""}`}
+            className={`min-w-0 overflow-hidden rounded-xl border border-gray-100 bg-gray-50/50 ${isDone ? "opacity-70" : ""}`}
             style={{ borderLeft: `4px solid ${priorityMeta.color}` }}
         >
             <button
@@ -69,7 +69,7 @@ function TaskCard({ task, clientById, employeeById, onSelect }) {
                     )}
                     <div className="min-w-0 flex-1">
                         <div className="flex min-w-0 items-center gap-1.5">
-                            <p className={`min-w-0 truncate text-sm font-medium ${isDone ? "text-gray-500 line-through" : "text-gray-900"}`}>
+                            <p className={`min-w-0 text-sm font-medium ${wrapTitle ? "line-clamp-2 wrap-break-word" : "truncate"} ${isDone ? "text-gray-500 line-through" : "text-gray-900"}`}>
                                 {task.title || "(Untitled)"}
                             </p>
                             {task.source === "operational-signal" && (
