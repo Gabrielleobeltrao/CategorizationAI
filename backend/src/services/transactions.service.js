@@ -27,6 +27,13 @@ import { ObjectId } from "mongodb"
 import categorizeTransaction from "../lib/ai/categorizeTransaction.js"
 import categorizeZelle from "../lib/ai/categorizeZelle.js"
 import {
+    assertHasCredits,
+    chargeForLlmCall,
+    chargeForMemoryMatches,
+    chargeForZelleMatches,
+    getOfficeCredits,
+} from "./credits.service.js"
+import {
   buildTransactionDerivedFields,
   buildTransactionSearchTerms,
   buildTransactionSearchText,
@@ -1707,6 +1714,12 @@ export async function categorizeTransactionsWithLlmService(input) {
     throw new Error("No categories available for this client")
   }
 
+  // Pre-flight: refuse to start the job if the office has no AI credits.
+  // The worker-level loop will also bail mid-job if the balance hits
+  // zero between batches.
+  const officeId = String(client.officeId || "").trim()
+  if (officeId) await assertHasCredits(officeId)
+
   const eligibleTransactions = mode === "selected"
     ? await listEligibleTransactionsForLlmByIds(clientId, transactionIds)
     : await listEligibleTransactionsForLlmByClientId(clientId)
@@ -1741,6 +1754,17 @@ export async function categorizeTransactionsWithLlmService(input) {
     memoryUpdates,
     remainingGroups,
   } = await splitGroupsByMemory(clientId, transactionGroups, categoryById)
+  // Bill the initial memory hit count up-front. Skips the LLM but
+  // still consumes infrastructure, so we charge a flat per-tx fee.
+  if (officeId && memoryUpdates.length > 0) {
+    await chargeForMemoryMatches({
+      officeId,
+      count: memoryUpdates.length,
+      kind: "memory.match",
+      jobId: input?.jobId || null,
+      meta: { clientId, flow: "llm" },
+    }).catch(() => null)
+  }
   let currentExactMemoryByFingerprint = exactMemoryByFingerprint
   let currentSemanticMemoryByFingerprint = semanticMemoryByFingerprint
   let pendingGroups = [...remainingGroups]
@@ -1770,6 +1794,24 @@ export async function categorizeTransactionsWithLlmService(input) {
       },
       {
         batchSize: LLM_INTRA_JOB_BATCH_SIZE,
+        onBatchUsage: officeId
+          ? async ({ tokensIn, tokensOut, model }) => {
+              await chargeForLlmCall({
+                officeId,
+                tokensIn,
+                tokensOut,
+                model,
+                jobId: input?.jobId || null,
+                kind: "llm.categorize",
+                // count = how many tx the LLM categorized in this
+                // batch. Lets computeOfficeAvgPerTx weight LLM rows
+                // correctly without guessing from token totals.
+                meta: { clientId, count: currentBatchGroups.length },
+              })
+              const { balance } = await getOfficeCredits(officeId)
+              return balance > 0
+            }
+          : undefined,
       }
     )
 
@@ -1810,6 +1852,18 @@ export async function categorizeTransactionsWithLlmService(input) {
       currentSemanticMemoryByFingerprint = nextWave.semanticMemoryByFingerprint
       updates.push(...nextWave.memoryUpdates)
       pendingGroups = nextWave.remainingGroups
+      // The post-batch memory pass can absorb new transactions that
+      // the just-finished LLM batch promoted into memory. Bill those
+      // here too so the credit ledger captures every applied match.
+      if (officeId && nextWave.memoryUpdates.length > 0) {
+        await chargeForMemoryMatches({
+          officeId,
+          count: nextWave.memoryUpdates.length,
+          kind: "memory.match",
+          jobId: input?.jobId || null,
+          meta: { clientId, flow: "post-batch" },
+        }).catch(() => null)
+      }
     } else {
       pendingGroups = remainingAfterBatch
     }
@@ -1861,6 +1915,9 @@ export async function categorizeZelleTransactionsService(input) {
 
   if (!client) throw new Error("client not found")
 
+  const officeId = String(client.officeId || "").trim()
+  if (officeId) await assertHasCredits(officeId)
+
   const eligibleTransactions = mode === "selected"
     ? await listEligibleTransactionsForZelleByIds(clientId, transactionIds)
     : await listEligibleTransactionsForZelleByClientId(clientId)
@@ -1898,6 +1955,17 @@ export async function categorizeZelleTransactionsService(input) {
     transactionGroups,
     categoryById
   )
+  // Zelle takes the same memory shortcut as the LLM flow. Bill the
+  // matched transactions before we drop into the LLM batches —
+  // priced at CREDITS_PER_ZELLE_MATCH (higher than plain memory).
+  if (officeId && memoryUpdates.length > 0) {
+    await chargeForZelleMatches({
+      officeId,
+      count: memoryUpdates.length,
+      jobId: input?.jobId || null,
+      meta: { clientId, flow: "zelle" },
+    }).catch(() => null)
+  }
   let currentExactMemoryByFingerprint = exactMemoryByFingerprint
   let currentSemanticMemoryByFingerprint = semanticMemoryByFingerprint
   let pendingGroups = [...remainingGroups]
@@ -1922,6 +1990,21 @@ export async function categorizeZelleTransactionsService(input) {
       },
       {
         batchSize: LLM_INTRA_JOB_BATCH_SIZE,
+        onBatchUsage: officeId
+          ? async ({ tokensIn, tokensOut, model }) => {
+              await chargeForLlmCall({
+                officeId,
+                tokensIn,
+                tokensOut,
+                model,
+                jobId: input?.jobId || null,
+                kind: "llm.categorize.zelle",
+                meta: { clientId, count: currentBatchGroups.length },
+              })
+              const { balance } = await getOfficeCredits(officeId)
+              return balance > 0
+            }
+          : undefined,
       }
     )
 
@@ -1999,6 +2082,18 @@ export async function categorizeZelleTransactionsService(input) {
       currentSemanticMemoryByFingerprint = nextWave.semanticMemoryByFingerprint
       updates.push(...nextWave.memoryUpdates)
       pendingGroups = nextWave.remainingGroups
+      // The post-batch memory pass can absorb new transactions that
+      // the just-finished LLM batch promoted into memory. Bill those
+      // here too so the credit ledger captures every applied match —
+      // still the Zelle flow, so use the higher Zelle rate.
+      if (officeId && nextWave.memoryUpdates.length > 0) {
+        await chargeForZelleMatches({
+          officeId,
+          count: nextWave.memoryUpdates.length,
+          jobId: input?.jobId || null,
+          meta: { clientId, flow: "zelle-post-batch" },
+        }).catch(() => null)
+      }
     } else {
       pendingGroups = remainingAfterBatch
     }

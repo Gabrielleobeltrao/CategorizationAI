@@ -6,6 +6,12 @@ import PopupModal from "../ui/PopupModal"
 import { getTransactionAmountPresentation } from "../../utils/amountPresentation"
 import { CATEGORY_TYPE_OPTIONS } from "../../constants/categoryTypes"
 import { getCategoryDisplayName } from "../../utils/categoryPresentation"
+import {
+    AVG_CREDITS_PER_TRANSACTION,
+    CREDITS_PER_MEMORY_MATCH,
+    estimateCreditCostForTransactions,
+    formatCredits,
+} from "../../services/credits.service"
 
 const UNCATEGORIZED_INCOME_FILTER_VALUE = "__uncategorized_income__"
 const UNCATEGORIZED_EXPENSES_FILTER_VALUE = "__uncategorized_expenses__"
@@ -411,6 +417,8 @@ function LedgerEntriesTable({
     showUploadModal = false,
     onCloseUploadModal,
     onCategorizeWithLlm,
+    isOutOfCredits = false,
+    creditBalance = null,
 }) {
     const [editingTargetIds, setEditingTargetIds] = useState([])
     const [editingDraft, setEditingDraft] = useState(null)
@@ -1845,18 +1853,25 @@ function LedgerEntriesTable({
                             <button
                                 type="button"
                                 className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-2 text-sm font-medium ${
-                                    isCategorizingWithLlm
+                                    isCategorizingWithLlm || isOutOfCredits
                                         ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
                                         : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
                                 }`}
                                 onClick={handleCategorizeWithLlmClick}
-                                disabled={isCategorizingWithLlm}
+                                disabled={isCategorizingWithLlm || isOutOfCredits}
+                                title={isOutOfCredits ? "Office is out of AI credits — top up in Settings." : undefined}
                             >
                                 <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                     <path d="M12 3v18" />
                                     <path d="M3 12h18" />
                                 </svg>
-                                <span>{isCategorizingWithLlm ? "Categorizing..." : "Categorize with AI"}</span>
+                                <span>
+                                    {isCategorizingWithLlm
+                                        ? "Categorizing..."
+                                        : isOutOfCredits
+                                            ? "Out of credits"
+                                            : "Categorize with AI"}
+                                </span>
                             </button>
 
                         </div>
@@ -2990,6 +3005,16 @@ function LedgerEntriesTable({
                         )}
                     </div>
 
+                    <CostEstimateBlock
+                        balance={creditBalance}
+                        targetCount={
+                            pendingLlmPayload?.mode === "selected"
+                                ? Number(pendingLlmPayload?.targetCount || 0)
+                                : Number(pendingLlmPayload?.targetCount || pendingLlmPreviewEntries.length || 0)
+                        }
+                        modeIsAll={pendingLlmPayload?.mode === "all_client"}
+                    />
+
                     <div className="max-h-56 overflow-y-auto rounded-xl border border-gray-200 bg-white">
                         <div className="overflow-x-auto">
                             <div className="min-w-[760px]">
@@ -3404,6 +3429,81 @@ function LedgerEntriesTable({
                     )}
                 </div>
             </PopupModal>
+        </div>
+    )
+}
+
+// Shown above the preview list in the Categorize-with-AI modal. Pulls
+// the live balance and the rough per-transaction estimate so the user
+// can decide before kicking off a job that may be costly.
+function CostEstimateBlock({ balance, targetCount, modeIsAll }) {
+    const safeBalance = Number(balance) || 0
+    const safeCount = Math.max(0, Number(targetCount) || 0)
+    const estimate = estimateCreditCostForTransactions(safeCount)
+    const projectedAfter = Math.max(0, Math.round((safeBalance - estimate) * 100) / 100)
+    const overBudget = balance !== null && estimate > safeBalance
+    const showEstimate = safeCount > 0
+
+    return (
+        <div
+            className={`rounded-xl border ${
+                overBudget ? "border-rose-200 bg-rose-50/40" : "border-gray-200 bg-white"
+            }`}
+        >
+            <div className="grid grid-cols-1 gap-3 px-3 py-2.5 sm:grid-cols-3">
+                <Stat
+                    label="Current balance"
+                    value={balance !== null ? formatCredits(safeBalance) : "—"}
+                    sub={balance === null ? "Loading…" : "credits"}
+                />
+                <Stat
+                    label="Cost estimate"
+                    value={showEstimate ? formatCredits(estimate) : "—"}
+                    sub={
+                        showEstimate
+                            ? `${safeCount.toLocaleString("en-US")} tx × ~${AVG_CREDITS_PER_TRANSACTION} cr`
+                            : "No eligible transactions"
+                    }
+                    tone={overBudget ? "rose" : "neutral"}
+                />
+                <Stat
+                    label="After this run"
+                    value={
+                        balance !== null && showEstimate
+                            ? formatCredits(projectedAfter)
+                            : "—"
+                    }
+                    sub={
+                        overBudget
+                            ? "Not enough credits — job will stop mid-way"
+                            : "credits remaining"
+                    }
+                    tone={overBudget ? "rose" : "neutral"}
+                />
+            </div>
+            <p className="border-t border-gray-100 px-3 py-1.5 text-[10px] leading-relaxed text-gray-500">
+                Upper-bound estimate — assumes every transaction reaches the LLM.
+                Transactions matched by memory (exact or semantic) skip the LLM and
+                cost just {CREDITS_PER_MEMORY_MATCH.toFixed(2)} credits each, so the
+                actual debit is usually lower than shown here.
+                {modeIsAll && (
+                    <> &quot;All eligible&quot; mode also includes Zelle + regular
+                    uncategorized non-split transactions; the actual count may
+                    differ slightly from the preview above.</>
+                )}
+            </p>
+        </div>
+    )
+}
+
+function Stat({ label, value, sub, tone = "neutral" }) {
+    const valueClass =
+        tone === "rose" ? "text-rose-700" : "text-gray-900"
+    return (
+        <div className="min-w-0">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">{label}</p>
+            <p className={`mt-0.5 text-lg font-bold tabular-nums leading-tight ${valueClass}`}>{value}</p>
+            <p className="text-[10px] text-gray-500">{sub}</p>
         </div>
     )
 }

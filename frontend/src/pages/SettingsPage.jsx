@@ -3,6 +3,13 @@ import { Link } from "react-router-dom"
 import { updateMyProfile } from "../services/auth.service"
 import { useAuth } from "../contexts/auth.context"
 import { getCachedOfficeById, getOfficeById, updateOfficeById, updateOfficeFeatures } from "../services/office.service"
+import {
+  getOfficeCredits,
+  formatCredits,
+  AVG_CREDITS_PER_TRANSACTION,
+  CREDITS_PER_MEMORY_MATCH,
+  CREDITS_PER_ZELLE_MATCH,
+} from "../services/credits.service"
 import { hasPermission } from "../utils/permissions"
 import { useNotification } from "../contexts/notification.context"
 import { useFeature } from "../hooks/useFeature"
@@ -63,6 +70,7 @@ function formatStatus(value) {
 function SettingsPage() {
   const { profile, updateProfile, refreshAuth } = useAuth()
   const [office, setOffice] = useState(null)
+  const [credits, setCredits] = useState(null)
   const [accountForm, setAccountForm] = useState({
     name: "",
   })
@@ -146,6 +154,23 @@ function SettingsPage() {
       active = false
     }
   }, [error, profile])
+
+  // Credits live on their own effect — the office data above goes
+  // through a cache that can short-circuit the load, but the credit
+  // balance is fresh-on-mount so the user sees current numbers no
+  // matter how they got to the page.
+  useEffect(() => {
+    const officeId = String(profile?.officeId || "").trim()
+    if (!officeId) {
+      setCredits(null)
+      return undefined
+    }
+    let active = true
+    getOfficeCredits(officeId)
+      .then((c) => { if (active) setCredits(c || null) })
+      .catch(() => { if (active) setCredits(null) })
+    return () => { active = false }
+  }, [profile?.officeId])
 
   const handleChange = (field, value) => {
     setForm((current) => ({
@@ -519,7 +544,7 @@ function SettingsPage() {
                   Address
                 </span>
                 <textarea
-                  className="min-h-[140px] rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-gray-500 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500"
+                  className="min-h-35 rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-gray-500 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500"
                   value={form.address}
                   onChange={(e) => handleChange("address", e.target.value)}
                   disabled={!canEditOffice}
@@ -667,6 +692,25 @@ function SettingsPage() {
                       live progress queue, and a per-client memory (exact + semantic matches
                       from past decisions) makes repeated patterns auto-apply over time.
                     </p>
+                    {/* Credit balance panel. Each LLM call debits credits
+                        priced per input + output token. When the balance
+                        hits zero the Categorize with AI button on
+                        Transactions is disabled and any running job
+                        stops on the next batch. */}
+                    {credits && (
+                      <CreditsBalancePanel
+                        balance={credits.balance}
+                        approxPerTx={
+                          Number(credits?.avg?.avgPerTx) > 0
+                            ? Number(credits.avg.avgPerTx)
+                            : AVG_CREDITS_PER_TRANSACTION
+                        }
+                        avgMeta={credits?.avg}
+                        llmTypicalRate={AVG_CREDITS_PER_TRANSACTION}
+                        memoryRate={CREDITS_PER_MEMORY_MATCH}
+                        zelleRate={CREDITS_PER_ZELLE_MATCH}
+                      />
+                    )}
                   </div>
                   <button
                     type="button"
@@ -987,6 +1031,99 @@ function ChatNotificationsPreference() {
         </div>
       </div>
     </section>
+  )
+}
+
+function CreditsBalancePanel({ balance, approxPerTx, memoryRate = 0, zelleRate = 0, avgMeta = null, llmTypicalRate = 0 }) {
+  const isLow = balance > 0 && balance <= 1000
+  const isEmpty = balance <= 0
+  const txEstimate = approxPerTx > 0 ? Math.floor(balance / approxPerTx) : 0
+  const isDynamicAvg = avgMeta && !avgMeta.isFallback && Number(avgMeta.sampleTxCount) > 0
+  return (
+    <div
+      className={`mt-3 overflow-hidden rounded-xl border ${
+        isEmpty
+          ? "border-rose-200 bg-rose-50/60"
+          : isLow
+            ? "border-amber-200 bg-amber-50/60"
+            : "border-gray-200 bg-white"
+      }`}
+    >
+      <div className="px-3 py-2.5">
+        <div className="min-w-0">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+              Credit balance
+            </p>
+            <span
+              className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 ring-inset ${
+                isEmpty
+                  ? "bg-rose-100 text-rose-700 ring-rose-200"
+                  : isLow
+                    ? "bg-amber-100 text-amber-800 ring-amber-200"
+                    : "bg-emerald-50 text-emerald-700 ring-emerald-200"
+              }`}
+            >
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${
+                  isEmpty
+                    ? "bg-rose-500"
+                    : isLow
+                      ? "bg-amber-500"
+                      : "bg-emerald-500"
+                }`}
+              />
+              {isEmpty ? "Empty" : isLow ? "Low" : "Healthy"}
+            </span>
+          </div>
+          <p
+            className={`mt-0.5 text-2xl font-bold tabular-nums leading-tight ${
+              isEmpty
+                ? "text-rose-700"
+                : isLow
+                  ? "text-amber-700"
+                  : "text-gray-900"
+            }`}
+          >
+            {formatCredits(Math.max(0, balance))}
+          </p>
+          <p className="mt-0.5 text-[11px] text-gray-500">
+            {isEmpty
+              ? "Out of credits — top-up coming with Stripe."
+              : `≈ ${txEstimate.toLocaleString("en-US")} transaction${txEstimate === 1 ? "" : "s"} left at this rate`}
+          </p>
+          {!isEmpty && (
+            <p className="mt-0.5 text-[10px] text-gray-400">
+              Rate: {approxPerTx.toFixed(2)} cr/tx —
+              {isDynamicAvg
+                ? ` your last ${Number(avgMeta.sampleTxCount).toLocaleString("en-US")} categorizations (blends LLM + memory + Zelle).`
+                : ` blended estimate (not enough history yet — needs ≥ 50 categorized transactions to personalize).`}
+            </p>
+          )}
+        </div>
+      </div>
+      <div className="border-t border-gray-100/70 bg-white/70 px-3 py-2 text-[10px] leading-relaxed text-gray-500">
+        <p>
+          <span className="font-semibold text-gray-700">LLM categorization</span> ≈
+          {" "}{(llmTypicalRate || approxPerTx).toFixed(2)} credits per transaction (priced per input +
+          output token on each LLM call).
+        </p>
+        {memoryRate > 0 && (
+          <p className="mt-0.5">
+            <span className="font-semibold text-gray-700">Memory match</span> ≈
+            {" "}{memoryRate.toFixed(2)} credits per transaction (exact / semantic
+            hits skip the LLM but still consume infrastructure).
+          </p>
+        )}
+        {zelleRate > 0 && (
+          <p className="mt-0.5">
+            <span className="font-semibold text-gray-700">Zelle flow</span> ≈
+            {" "}{zelleRate.toFixed(2)} credits per matched transaction (counterparty
+            extraction + Zelle-specific routing is pricier than plain memory).
+          </p>
+        )}
+      </div>
+    </div>
   )
 }
 

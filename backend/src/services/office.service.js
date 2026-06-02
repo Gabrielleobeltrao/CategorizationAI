@@ -13,6 +13,7 @@ import {
 } from "../repositories/dashboard.repository.js"
 import { OPEN_TEST_ENABLED } from "../config/openTest.js"
 import { resolveOpenTestMarkerService } from "./openTest.service.js"
+import { seedInitialCreditsForNewOffice } from "./credits.service.js"
 
 function normalizeOptionalText(value) {
   if (value === undefined) return undefined
@@ -31,6 +32,15 @@ export async function createOfficeService(input, context = {}) {
     businessEmail: normalizeOptionalText(input.businessEmail),
     openTest: null,
   })
+
+  // Seed the default AI credit balance so the office can run
+  // categorizations from day one. Best-effort — failures here shouldn't
+  // block office creation.
+  try {
+    await seedInitialCreditsForNewOffice(String(office._id))
+  } catch (err) {
+    console.warn(`[office.service] initial credit grant failed for ${office._id}: ${err?.message || err}`)
+  }
 
   if (!shouldValidateOpenTestCode) {
     return office

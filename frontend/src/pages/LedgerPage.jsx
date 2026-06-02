@@ -34,6 +34,8 @@ import { CATEGORY_TYPE_OPTIONS, normalizeCategoryType } from "../constants/categ
 import { ACCOUNT_TYPE_OPTIONS, BALANCE_SHEET_ACCOUNT_TYPES } from "../constants/accountTypes"
 import { createHalfEntry } from "../services/journalEntries.service"
 import { showApiError } from "../utils/errorPresentation"
+import { useAuth } from "../contexts/auth.context"
+import { getOfficeCredits } from "../services/credits.service"
 
 const BALANCE_SHEET_ACCOUNT_TYPE_OPTIONS = ACCOUNT_TYPE_OPTIONS.filter((opt) =>
     BALANCE_SHEET_ACCOUNT_TYPES.includes(opt.value),
@@ -328,6 +330,8 @@ function LedgerPage() {
     const preselectedCategoryName = String(searchParams.get("category") || "").trim()
     const { success, error } = useNotification()
     const { jobs, startCategorizationJob, startTransactionsImportJob } = useCategorizationJobs()
+    const { profile } = useAuth()
+    const [creditBalance, setCreditBalance] = useState(null)
     const [client, setClient] = useState(null)
     const [accounts, setAccounts] = useState([])
     const [categoryList, setCategoryList] = useState([])
@@ -530,6 +534,23 @@ function LedgerPage() {
             summaryRequestAbortRef.current?.abort()
         }
     }, [])
+
+    // Pull the office AI credit balance — used to gate the
+    // "Categorize with AI" button. Re-fetches whenever a new
+    // categorization job finishes so the balance refresh is timely
+    // without a manual reload.
+    useEffect(() => {
+        const officeId = String(profile?.officeId || "").trim()
+        if (!officeId) {
+            setCreditBalance(null)
+            return undefined
+        }
+        let active = true
+        getOfficeCredits(officeId)
+            .then((c) => { if (active) setCreditBalance(Number(c?.balance) || 0) })
+            .catch(() => { if (active) setCreditBalance(null) })
+        return () => { active = false }
+    }, [profile?.officeId, jobs.length])
 
     useEffect(() => {
         let active = true
@@ -1677,6 +1698,8 @@ function LedgerPage() {
                                         overlayBoundaryRef={pageScrollRef}
                                         onCategorizeWithLlm={handleCategorizeWithLlmPreview}
                                         isCategorizingWithLlm={isCategorizingWithLlm}
+                                        isOutOfCredits={creditBalance !== null && creditBalance <= 0}
+                                        creditBalance={creditBalance}
                                         pendingLlmEntryIds={pendingLlmEntryIds}
                                         isLoading={isLoadingTransactions || !isBaseDataLoaded}
                                         isSearchDisabled={!isBaseDataLoaded}
