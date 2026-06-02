@@ -60,7 +60,7 @@ function DraggableTaskCard({ task, clientById, employeeById, onSelect, isDraggin
             // bottom) so the priority-colored left border still shows.
             className={`cursor-grab touch-none active:cursor-grabbing [&>li]:border-t-gray-200 [&>li]:border-r-gray-200 [&>li]:border-b-gray-200 [&>li]:bg-white [&>li]:shadow-sm ${isDragging ? "opacity-40" : ""}`}
         >
-            <TaskCard task={task} clientById={clientById} employeeById={employeeById} onSelect={onSelect} />
+            <TaskCard task={task} clientById={clientById} employeeById={employeeById} onSelect={onSelect} wrapTitle />
         </div>
     )
 }
@@ -644,6 +644,7 @@ function BoardPage() {
                                         clientById={clientById}
                                         employeeById={employeeById}
                                         onSelect={setViewingTask}
+                                        wrapTitle
                                     />
                                 ))}
                             </ul>
@@ -714,7 +715,7 @@ function BoardPage() {
                                         <button
                                             type="button"
                                             onClick={() => setIsAddingColumn(true)}
-                                            className="flex h-full min-h-[120px] w-full items-center justify-center gap-1.5 rounded-md text-sm font-medium text-gray-500 transition hover:bg-gray-50 hover:text-gray-800"
+                                            className="flex h-full min-h-30 w-full items-start justify-center gap-1.5 rounded-md pt-3 text-sm font-medium text-gray-500 transition hover:bg-gray-50 hover:text-gray-800"
                                         >
                                             <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
                                                 <path d="M12 5v14" />
@@ -729,7 +730,7 @@ function BoardPage() {
                         <DragOverlay>
                             {activeTask ? (
                                 <div className="w-72 opacity-95 [&>li]:border-gray-200 [&>li]:bg-white [&>li]:shadow-lg">
-                                    <TaskCard task={activeTask} clientById={clientById} employeeById={employeeById} />
+                                    <TaskCard task={activeTask} clientById={clientById} employeeById={employeeById} wrapTitle />
                                 </div>
                             ) : null}
                         </DragOverlay>
