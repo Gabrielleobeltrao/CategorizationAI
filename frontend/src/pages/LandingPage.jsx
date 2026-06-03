@@ -6,7 +6,9 @@ function LandingPage() {
             <Header />
             <Hero />
             <FeatureBookkeeping />
+            <FeatureClientDashboard />
             <FeatureAI />
+            <FeaturePricing />
             <FeatureReports />
             <FeatureCrm />
             <FeatureChat />
@@ -33,10 +35,11 @@ function Header() {
                 </div>
                 <nav className="hidden gap-6 text-sm text-gray-600 md:flex">
                     <a href="#bookkeeping" className="hover:text-gray-900">Bookkeeping</a>
+                    <a href="#dashboard" className="hover:text-gray-900">Dashboard</a>
                     <a href="#ai" className="hover:text-gray-900">AI</a>
+                    <a href="#pricing" className="hover:text-gray-900">Pricing</a>
                     <a href="#reports" className="hover:text-gray-900">Reports</a>
                     <a href="#crm" className="hover:text-gray-900">CRM</a>
-                    <a href="#chat" className="hover:text-gray-900">Chat</a>
                     <a href="#team" className="hover:text-gray-900">Team</a>
                 </nav>
                 <div className="flex items-center gap-2">
@@ -679,6 +682,111 @@ function JournalEntriesMock() {
 }
 
 // --------------------------------------------------------------------
+// Per-client Dashboard section
+// --------------------------------------------------------------------
+
+function FeatureClientDashboard() {
+    return (
+        <section id="dashboard" className="border-b border-gray-100 bg-gray-50/50">
+            <div className="mx-auto grid max-w-7xl gap-12 px-6 py-20 lg:grid-cols-[1fr_1.05fr]">
+                <ClientDashboardMock />
+                <div className="flex flex-col justify-center">
+                    <SectionHeadingLeft
+                        eyebrow="Per-client Dashboard"
+                        title="Every client gets their own command center."
+                        body="One look tells you where each client stands — what got imported, what still needs review, which bank accounts are out of sync, and what your team needs to follow up on. No more digging through tabs to figure out where the work is."
+                    />
+                    <FeatureBulletsCompact
+                        items={[
+                            "Pending categorization + reconciliation health at a glance",
+                            "Open tasks scoped to this client only",
+                            "Action items auto-generated from operational signals",
+                            "Period close status + last activity timeline",
+                        ]}
+                    />
+                </div>
+            </div>
+        </section>
+    )
+}
+
+function ClientDashboardMock() {
+    const kpis = [
+        { label: "Imported", value: "1,284", hint: "this month" },
+        { label: "Categorized", value: "96%", hint: "1,233 of 1,284", accent: "good" },
+        { label: "Pending", value: "23", hint: "needs review", accent: "warn" },
+        { label: "Reconciled", value: "3 / 4", hint: "1 account out", accent: "warn" },
+    ]
+    const tasks = [
+        { title: "Close April books for Cedar & Sage", date: "Jun 04", priority: "high" },
+        { title: "Request 2 months of statements", date: "Jun 06", priority: "medium" },
+        { title: "Classify Venmo deposit — $1,500", date: "Jun 07", priority: "medium" },
+    ]
+    const PRIORITY = {
+        high:   { color: "#f97316", label: "High" },
+        medium: { color: "#facc15", label: "Medium" },
+        low:    { color: "#94a3b8", label: "Low" },
+    }
+    return (
+        <BrowserFrame title="Cedar & Sage Apothecary · Dashboard">
+            <div className="bg-white p-5">
+                <div className="flex items-end justify-between">
+                    <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-500">Client overview</p>
+                        <h3 className="mt-1 text-lg font-bold text-gray-900">Cedar & Sage Apothecary</h3>
+                        <p className="text-[11px] text-gray-500">1120-S · Wellness retail · Portland, OR</p>
+                    </div>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                        Ready to close
+                    </span>
+                </div>
+
+                <div className="mt-4 grid grid-cols-4 gap-2">
+                    {kpis.map((k) => (
+                        <div key={k.label} className="rounded-lg border border-gray-100 bg-gray-50 px-2.5 py-2">
+                            <p className="text-[9px] font-semibold uppercase tracking-wide text-gray-500">{k.label}</p>
+                            <p className={`mt-0.5 text-base font-bold tabular-nums ${
+                                k.accent === "good" ? "text-emerald-700" :
+                                k.accent === "warn" ? "text-amber-700" : "text-gray-900"
+                            }`}>{k.value}</p>
+                            <p className="text-[9px] text-gray-500">{k.hint}</p>
+                        </div>
+                    ))}
+                </div>
+
+                <div className="mt-4 rounded-lg border border-gray-100">
+                    <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2">
+                        <p className="text-[11px] font-semibold text-gray-800">Open tasks</p>
+                        <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[9px] font-semibold text-gray-600">3</span>
+                    </div>
+                    <ul className="divide-y divide-gray-100">
+                        {tasks.map((t) => {
+                            const p = PRIORITY[t.priority]
+                            return (
+                                <li
+                                    key={t.title}
+                                    className="flex items-center gap-2 px-3 py-2"
+                                    style={{ borderLeft: `3px solid ${p.color}` }}
+                                >
+                                    <p className="flex-1 truncate text-[11px] text-gray-700">{t.title}</p>
+                                    <span className="shrink-0 text-[9px] text-gray-500">{t.date}</span>
+                                </li>
+                            )
+                        })}
+                    </ul>
+                </div>
+
+                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 text-[11px] text-amber-900">
+                    <p className="font-semibold">Action needed</p>
+                    <p className="mt-0.5 text-amber-800">23 uncategorized transactions · Chase Checking needs reconciliation (9 uncleared legs).</p>
+                </div>
+            </div>
+        </BrowserFrame>
+    )
+}
+
+// --------------------------------------------------------------------
 // AI section
 // --------------------------------------------------------------------
 
@@ -689,15 +797,15 @@ function FeatureAI() {
                 <div>
                     <SectionHeadingLeft
                         eyebrow="AI categorization"
-                        title="The AI does the boring part."
-                        body="Uncategorized rows flow through the LLM pipeline. The model suggests a category, you review or auto-apply. Confidence and rationale travel with every suggestion."
+                        title="Three paths to the same result — at very different costs."
+                        body="Every uncategorized transaction runs through a three-tier pipeline. Familiar patterns resolve from per-client memory (no LLM call). Zelle transactions take a dedicated parser that extracts the counterparty. Everything else hits the LLM with confidence and rationale attached."
                     />
                     <FeatureBulletsCompact
                         items={[
-                            "Batch categorize whole imports in one click",
-                            "Confidence score on every suggestion",
-                            "Manual edits override the AI permanently",
-                            "Per-client memory — your conventions stick",
+                            "Memory: exact + semantic matches skip the LLM entirely",
+                            "Zelle: counterparty extraction → automatic owner / vendor routing",
+                            "LLM: only for transactions memory hasn't seen yet",
+                            "Manual edits permanently override and train the memory",
                         ]}
                     />
                 </div>
@@ -708,13 +816,22 @@ function FeatureAI() {
 }
 
 function AIMock() {
+    // Three-tier pipeline shown in action: memory matches resolve
+    // instantly (no LLM cost), the Zelle parser routes counterparty
+    // transfers, and only the unknown rows hit the LLM.
     const rows = [
-        { desc: "STARBUCKS #3849", suggestion: "Meals & Entertainment", confidence: 0.94, status: "auto" },
-        { desc: "HOME DEPOT #6021", suggestion: "Materials & Supplies", confidence: 0.88, status: "auto" },
-        { desc: "ZELLE FROM CLIENT", suggestion: "Service Revenue", confidence: 0.81, status: "review" },
-        { desc: "POS DEBIT TST*RW02", suggestion: "—", confidence: 0, status: "skipped" },
-        { desc: "DELTA AIRLINES", suggestion: "Travel", confidence: 0.97, status: "auto" },
+        { desc: "STARBUCKS #3849",  suggestion: "Meals & Entertainment", confidence: 0.94, path: "memory" },
+        { desc: "HOME DEPOT #6021", suggestion: "Materials & Supplies",  confidence: 0.88, path: "memory" },
+        { desc: "ZELLE FROM IRIS",  suggestion: "Owner Capital Contribution", confidence: 0.92, path: "zelle" },
+        { desc: "DELTA AIRLINES",   suggestion: "Travel",                confidence: 0.97, path: "llm" },
+        { desc: "POS DEBIT TST*RW02", suggestion: "—",                   confidence: 0,    path: "review" },
     ]
+    const PATH_META = {
+        memory: { label: "Memory", color: "bg-emerald-50 text-emerald-700", dot: "bg-emerald-500" },
+        zelle:  { label: "Zelle",  color: "bg-indigo-50 text-indigo-700",   dot: "bg-indigo-500" },
+        llm:    { label: "LLM",    color: "bg-sky-50 text-sky-700",         dot: "bg-sky-500" },
+        review: { label: "Review", color: "bg-amber-50 text-amber-700",     dot: "bg-amber-500" },
+    }
     return (
         <BrowserFrame title="AI Categorization · live">
             <div className="border-b border-gray-100 px-4 py-3">
@@ -725,31 +842,109 @@ function AIMock() {
                 <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
                     <div className="h-full w-4/5 rounded-full bg-gradient-to-r from-sky-500 to-emerald-500" />
                 </div>
+                <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[10px] text-gray-500">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-1.5 py-0.5 font-semibold text-emerald-700">
+                        <span className="h-1 w-1 rounded-full bg-emerald-500" /> 2 memory hits · skipped LLM
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-1.5 py-0.5 font-semibold text-indigo-700">
+                        <span className="h-1 w-1 rounded-full bg-indigo-500" /> 1 Zelle resolved
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-1.5 py-0.5 font-semibold text-sky-700">
+                        <span className="h-1 w-1 rounded-full bg-sky-500" /> 1 LLM call
+                    </span>
+                </div>
             </div>
             <ul className="divide-y divide-gray-100 text-[12px]">
-                {rows.map((r) => (
-                    <li key={r.desc} className="flex items-center gap-3 px-4 py-2.5">
-                        <span className="font-mono text-[11px] text-gray-500 w-44 shrink-0 truncate">{r.desc}</span>
-                        <span className="flex-1 truncate text-gray-800">{r.suggestion}</span>
-                        {r.status === "auto" && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
-                                <span className="h-1 w-1 rounded-full bg-emerald-500" />
-                                Auto · {Math.round(r.confidence * 100)}%
+                {rows.map((r) => {
+                    const meta = PATH_META[r.path]
+                    return (
+                        <li key={r.desc} className="flex items-center gap-3 px-4 py-2.5">
+                            <span className="font-mono text-[11px] text-gray-500 w-44 shrink-0 truncate">{r.desc}</span>
+                            <span className="flex-1 truncate text-gray-800">{r.suggestion}</span>
+                            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${meta.color}`}>
+                                <span className={`h-1 w-1 rounded-full ${meta.dot}`} />
+                                {meta.label}
+                                {r.confidence > 0 && ` · ${Math.round(r.confidence * 100)}%`}
                             </span>
-                        )}
-                        {r.status === "review" && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-                                Review · {Math.round(r.confidence * 100)}%
-                            </span>
-                        )}
-                        {r.status === "skipped" && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-600">
-                                Skipped
-                            </span>
-                        )}
-                    </li>
-                ))}
+                        </li>
+                    )
+                })}
             </ul>
+        </BrowserFrame>
+    )
+}
+
+// --------------------------------------------------------------------
+// Pricing transparency section
+// --------------------------------------------------------------------
+
+function FeaturePricing() {
+    return (
+        <section id="pricing" className="border-b border-gray-100 bg-gray-50/50">
+            <div className="mx-auto grid max-w-7xl gap-12 px-6 py-20 lg:grid-cols-[1fr_1.05fr]">
+                <CreditsCardMock />
+                <div className="flex flex-col justify-center">
+                    <SectionHeadingLeft
+                        eyebrow="Pricing transparency"
+                        title="Pay only for the AI you use — and watch it get cheaper."
+                        body="Every categorization is billed transparently. LLM calls pay per token, memory hits skip the model entirely at a flat fee, and Zelle transactions have their own rate. The more your team works in the platform, the cheaper each transaction becomes."
+                    />
+                    <FeatureBulletsCompact
+                        items={[
+                            "LLM calls priced per input / output token",
+                            "Memory hits flat-fee — no model, no token cost",
+                            "Zelle path with its own dedicated rate",
+                            "Live estimate from your last 500 categorizations",
+                        ]}
+                    />
+                </div>
+            </div>
+        </section>
+    )
+}
+
+function CreditsCardMock() {
+    return (
+        <BrowserFrame title="Settings · Credit balance">
+            <div className="bg-white p-6">
+                <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+                    <div className="px-3 py-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                                Credit balance
+                            </p>
+                            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 ring-1 ring-inset ring-emerald-200">
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                                Healthy
+                            </span>
+                        </div>
+                        <p className="mt-0.5 text-2xl font-bold tabular-nums leading-tight text-gray-900">
+                            5,000
+                        </p>
+                        <p className="mt-0.5 text-[11px] text-gray-500">
+                            ≈ 11,668 transactions left at this rate
+                        </p>
+                        <p className="mt-0.5 text-[10px] text-gray-400">
+                            Rate: 0.43 cr/tx — your last 500 categorizations (blends LLM + memory + Zelle).
+                        </p>
+                    </div>
+                    <div className="border-t border-gray-100/70 bg-white/70 px-3 py-2 text-[10px] leading-relaxed text-gray-500">
+                        <p>
+                            <span className="font-semibold text-gray-700">LLM categorization</span> ≈ 0.67 credits per transaction (priced per input + output token on each LLM call).
+                        </p>
+                        <p className="mt-0.5">
+                            <span className="font-semibold text-gray-700">Memory match</span> ≈ 0.20 credits per transaction (exact / semantic hits skip the LLM but still consume infrastructure).
+                        </p>
+                        <p className="mt-0.5">
+                            <span className="font-semibold text-gray-700">Zelle flow</span> ≈ 0.30 credits per matched transaction (counterparty extraction + Zelle-specific routing).
+                        </p>
+                    </div>
+                </div>
+                <div className="mt-5 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-[11px] leading-relaxed text-gray-600">
+                    <p className="font-semibold text-gray-800">As your office matures, the rate falls.</p>
+                    <p className="mt-1">Repeat patterns turn into memory matches automatically. Fewer LLM calls, more flat-fee categorizations, lower blended cost per transaction.</p>
+                </div>
+            </div>
         </BrowserFrame>
     )
 }
